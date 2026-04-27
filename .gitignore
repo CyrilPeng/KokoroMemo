@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+.env
+data/
+*.sqlite
+*.lance/
+.venv/
+dist/
+*.egg-info/
+
+# Rust / Tauri
+gui/src-tauri/target/
+gui/src-tauri/Cargo.lock
+
+# Node
+gui/node_modules/
+gui/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
+config.yaml

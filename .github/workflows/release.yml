@@ -1,0 +1,128 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-backend:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: kokoromemo-server-x86_64-pc-windows-msvc.exe
+          - os: ubuntu-22.04
+            target: kokoromemo-server-x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: kokoromemo-server-aarch64-apple-darwin
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install nuitka ordered-set zstandard
+
+      - name: Build with Nuitka
+        run: |
+          python -m nuitka --standalone --onefile \
+            --assume-yes-for-downloads \
+            --include-package=app \
+            --include-package=uvicorn \
+            --include-package=fastapi \
+            --include-package=httpx \
+            --include-package=lancedb \
+            --include-package=pyarrow \
+            --include-package=aiosqlite \
+            --include-package=pydantic \
+            --include-package=yaml \
+            --output-filename=${{ matrix.target }} \
+            app/main.py
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ matrix.os }}
+          path: ${{ matrix.target }}
+
+  build-tauri:
+    needs: build-backend
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            backend-artifact: backend-windows-latest
+            binary-name: kokoromemo-server-x86_64-pc-windows-msvc.exe
+            sidecar-name: kokoromemo-server-x86_64-pc-windows-msvc.exe
+          - os: ubuntu-22.04
+            backend-artifact: backend-ubuntu-22.04
+            binary-name: kokoromemo-server-x86_64-unknown-linux-gnu
+            sidecar-name: kokoromemo-server-x86_64-unknown-linux-gnu
+          - os: macos-latest
+            backend-artifact: backend-macos-latest
+            binary-name: kokoromemo-server-aarch64-apple-darwin
+            sidecar-name: kokoromemo-server-aarch64-apple-darwin
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev patchelf
+
+      - name: Download backend binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.backend-artifact }}
+          path: gui/src-tauri/binaries/
+
+      - name: Make binary executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x gui/src-tauri/binaries/${{ matrix.binary-name }}
+
+      - name: Install frontend deps
+        working-directory: gui
+        run: npm install
+
+      - name: Use tag commit message as release body
+        id: release_body
+        shell: bash
+        run: |
+          tag_commit="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+          {
+            echo 'body<<EOF'
+            git log -1 --pretty=%B "$tag_commit"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build Tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: gui
+          tagName: ${{ github.ref_name }}
+          releaseName: 'KokoroMemo ${{ github.ref_name }}'
+          releaseBody: ${{ steps.release_body.outputs.body }}
+          releaseDraft: false
+          prerelease: false

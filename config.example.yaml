@@ -1,0 +1,93 @@
+server:
+  host: "127.0.0.1"
+  port: 14514
+  webui_port: 14515
+  log_level: "INFO"
+  allow_remote_access: false
+
+llm:
+  # 支持: openai_compatible | openai_responses | anthropic | gemini
+  provider: "openai_compatible"
+  base_url: "https://api.example.com/v1"
+  api_key: ""
+  api_key_env: "LLM_API_KEY"
+  model: "your-chat-model"
+  timeout_seconds: 120
+
+  # provider 说明:
+  # openai_compatible: 标准 OpenAI Chat Completions（也适用于 DeepSeek、Grok、中转站等）
+  #   base_url 示例: https://api.openai.com/v1 或 https://api.deepseek.com/v1
+  # openai_responses: OpenAI Responses API
+  #   base_url 示例: https://api.openai.com/v1
+  # anthropic: Anthropic Claude Messages API
+  #   base_url 示例: https://api.anthropic.com/v1
+  # gemini: Google Gemini API
+  #   base_url 示例: https://generativelanguage.googleapis.com/v1beta
+
+embedding:
+  enabled: true
+  provider: "modelark"
+  base_url: "https://ai.gitee.com/v1"
+  api_key: ""
+  api_key_env: "MODELARK_API_KEY"
+  model: "qwen3-embedding-8b"
+  dimension: 4096  # 必须与模型实际输出维度一致，切换模型后需重建索引
+  timeout_seconds: 8
+  batch_size: 16
+  normalize: true
+
+rerank:
+  enabled: false
+  provider: "modelark"
+  base_url: "https://ai.gitee.com/v1"
+  api_key: ""
+  api_key_env: "MODELARK_API_KEY"
+  model: "qwen3-reranker-8b"
+  timeout_seconds: 8
+  candidate_top_k: 30
+  final_top_k: 8
+  max_documents_per_request: 20  # 每批请求最大候选文本数量
+
+memory:
+  enabled: true
+  inject_enabled: true
+  extraction_enabled: true
+  max_recent_turns_for_query: 6
+  vector_top_k: 30
+  final_top_k: 6
+  max_injected_chars: 1500
+  scopes:
+    include_global: true
+    include_character: true
+    include_conversation: true
+  scoring:
+    vector_weight: 0.55
+    importance_weight: 0.20
+    recency_weight: 0.10
+    scope_weight: 0.10
+    confidence_weight: 0.05
+  extraction:
+    min_importance: 0.45
+    min_confidence: 0.55
+    extract_after_each_turn: true
+    fallback_rule_based: true
+
+storage:
+  root_dir: "./data"
+  sqlite:
+    app_db: "./data/app.sqlite"
+    memory_db: "./data/memory/memory.sqlite"
+    journal_mode: "WAL"
+    busy_timeout_ms: 5000
+  lancedb:
+    path: "./data/vector_indexes/qwen3_embedding_4096/lancedb"
+    table: "memories"
+    vector_column: "vector"
+    text_column: "content"
+    metric: "cosine"
+    create_fts_index: true
+
+compatibility:
+  expose_v1_models: true
+  expose_root_chat_completions: true
+  cors_enabled: true

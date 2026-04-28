@@ -83,7 +83,8 @@ const config = ref({
   judge_model: '',
   judge_timeout_seconds: 30,
   judge_temperature: 0,
-  judge_mode: 'rule_then_llm',
+  judge_mode: 'model_only',
+  judge_user_rules: '',
   judge_prompt: '',
 })
 
@@ -100,9 +101,8 @@ const providerOptions = [
 ]
 
 const judgeModeOptions = [
-  { label: '规则优先，模型补充', value: 'rule_then_llm' },
-  { label: '仅模型判断', value: 'llm_only' },
-  { label: '仅规则判断', value: 'rule_only' },
+  { label: '仅模型判断（推荐）', value: 'model_only' },
+  { label: '模型 + 用户辅助规则', value: 'model_with_user_rules' },
 ]
 
 const providerUrlPlaceholder = computed(() => {
@@ -177,7 +177,8 @@ async function loadConfig() {
       config.value.judge_model = data.memory?.judge?.model || ''
       config.value.judge_timeout_seconds = data.memory?.judge?.timeout_seconds || 30
       config.value.judge_temperature = data.memory?.judge?.temperature ?? 0
-      config.value.judge_mode = data.memory?.judge?.mode || 'rule_then_llm'
+      config.value.judge_mode = normalizeJudgeMode(data.memory?.judge?.mode || 'model_only')
+      config.value.judge_user_rules = (data.memory?.judge?.user_rules || []).join('\n')
       config.value.judge_prompt = data.memory?.judge?.prompt || ''
     }
   } catch (e) {
@@ -225,6 +226,7 @@ async function saveConfig() {
           timeout_seconds: config.value.judge_timeout_seconds,
           temperature: config.value.judge_temperature,
           mode: config.value.judge_mode,
+          user_rules: config.value.judge_user_rules.split('\n').map((line: string) => line.trim()).filter(Boolean),
           prompt: config.value.judge_prompt,
         },
       },
@@ -259,6 +261,11 @@ async function rebuildIndex() {
   } catch (e) {
     message.error('无法连接到后端服务')
   }
+}
+
+function normalizeJudgeMode(mode: string) {
+  if (mode === 'model_with_user_rules' || mode === 'rule_then_llm' || mode === 'user_rules_then_model') return 'model_with_user_rules'
+  return 'model_only'
 }
 
 onMounted(loadConfig)
@@ -531,14 +538,20 @@ onMounted(loadConfig)
               记忆判断模型
               <NTooltip trigger="hover">
                 <template #trigger><span class="help-icon">?</span></template>
-                类似 SillyTavern 填表 API，使用更便宜更快的模型判断一轮对话是否应写入长期记忆。关闭时仅使用本地规则。
+                类似 SillyTavern 填表 API，使用更便宜更快的模型判断一轮对话是否应写入长期记忆。关闭后不再自动填表，只保留原始对话落盘、状态板和手动记忆管理。
               </NTooltip>
             </template>
             <NSwitch v-model:value="config.judge_enabled" />
           </NFormItem>
           <template v-if="config.judge_enabled">
             <NFormItem label="判断模式">
-              <NSelect v-model:value="config.judge_mode" :options="judgeModeOptions" style="width: 240px;" />
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <NSelect v-model:value="config.judge_mode" :options="judgeModeOptions" style="width: 240px;" />
+                <NTooltip trigger="hover">
+                  <template #trigger><span class="help-icon">?</span></template>
+                  “仅模型判断”完全交给记忆判断模型；“模型 + 用户辅助规则”会把下方规则附加进 Prompt，由模型参考执行，不再使用内置硬编码正则。
+                </NTooltip>
+              </div>
             </NFormItem>
             <NFormItem label="Provider">
               <NSelect v-model:value="config.judge_provider" :options="providerOptions" style="width: 280px;" />
@@ -571,6 +584,16 @@ onMounted(loadConfig)
             </NFormItem>
             <NFormItem label="Temperature">
               <NInputNumber v-model:value="config.judge_temperature" :min="0" :max="1" :step="0.05" style="width: 200px;" />
+            </NFormItem>
+            <NFormItem>
+              <template #label>
+                用户辅助规则
+                <NTooltip trigger="hover">
+                  <template #trigger><span class="help-icon">?</span></template>
+                  每行一条规则，仅在“模型 + 用户辅助规则”模式下生效。例如：用户要求改变称呼时生成 preference，tags 包含 addressing。
+                </NTooltip>
+              </template>
+              <NInput v-model:value="config.judge_user_rules" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" placeholder="每行一条辅助规则，留空则不附加" />
             </NFormItem>
             <NFormItem label="自定义 Prompt">
               <NInput v-model:value="config.judge_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" placeholder="留空使用内置记忆判断 Prompt" />

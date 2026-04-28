@@ -25,7 +25,18 @@ def auto_review(
         return "reject"
 
     tags = tags or []
-    if "addressing" in tags and importance >= 0.85 and confidence >= 0.85 and risk_level != "high":
+    if "risk:high" in tags:
+        risk_level = "high"
+    elif "risk:medium" in tags:
+        risk_level = "medium"
+    elif "risk:low" in tags:
+        risk_level = "low"
+
+    if "suggested_action:reject" in tags:
+        return "reject"
+    if "suggested_action:pending" in tags:
+        return "pending"
+    if "suggested_action:auto_approve" in tags and importance >= 0.7 and confidence >= 0.8 and risk_level != "high":
         return "approve"
 
     # Types that always need review in AIRP scenarios.

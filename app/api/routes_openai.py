@@ -347,6 +347,8 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
                 model=cfg.memory.judge.model or cfg.llm.model,
                 timeout_seconds=cfg.memory.judge.timeout_seconds,
                 temperature=cfg.memory.judge.temperature,
+                mode=cfg.memory.judge.mode,
+                user_rules=cfg.memory.judge.user_rules,
                 prompt=cfg.memory.judge.prompt,
             )
 
@@ -362,7 +364,6 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
             min_importance=cfg.memory.extraction.min_importance,
             min_confidence=cfg.memory.extraction.min_confidence,
             judge_config=judge_config,
-            judge_mode=cfg.memory.judge.mode if cfg.memory.judge.enabled else "rule_only",
         )
     except Exception as e:
         logger.warning("Memory extraction failed: %s", e)

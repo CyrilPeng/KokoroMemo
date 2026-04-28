@@ -6,7 +6,6 @@ import json
 import logging
 
 from app.core.ids import generate_id
-from app.memory.extractor import extract_memories_rule_based
 from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
 from app.memory.review_policy import auto_review, determine_risk_level
 from app.storage.sqlite_cards import (
@@ -32,37 +31,31 @@ async def extract_and_route(
     min_importance: float = 0.45,
     min_confidence: float = 0.55,
     judge_config: MemoryJudgeConfigView | None = None,
-    judge_mode: str = "rule_only",
 ) -> None:
     """Extract candidate memory cards and route through review policy.
 
     Flow:
-    1. Rule-based extraction → candidate cards
+    1. Memory judge model → candidate cards
     2. review_policy.auto_review() for each
     3. auto_approve → write card(approved) + embed + LanceDB
     4. pending → write inbox item
     5. reject → discard (log only)
     """
-    extracted = []
-    if judge_mode != "llm_only":
-        extracted.extend(extract_memories_rule_based(
-            user_message, assistant_message, character_id,
+    if not judge_config:
+        return
+
+    try:
+        extracted = await judge_memories_with_llm(
+            user_message,
+            assistant_message,
+            character_id,
+            judge_config,
             min_importance=min_importance,
             min_confidence=min_confidence,
-        ))
-    if judge_config and judge_mode in {"llm_only", "rule_then_llm"}:
-        try:
-            llm_extracted = await judge_memories_with_llm(
-                user_message,
-                assistant_message,
-                character_id,
-                judge_config,
-                min_importance=min_importance,
-                min_confidence=min_confidence,
-            )
-            extracted = _merge_extracted(extracted, llm_extracted)
-        except Exception as e:
-            logger.warning("Memory judge failed (fallback to rules): %s", e)
+        )
+    except Exception as e:
+        logger.warning("Memory judge failed: %s", e)
+        return
 
     if not extracted:
         return
@@ -73,7 +66,7 @@ async def extract_and_route(
             logger.debug("Skipping duplicate card: %s", mem.content[:50])
             continue
 
-        risk_level = determine_risk_level(mem.memory_type, mem.confidence)
+        risk_level = _risk_level_from_tags(mem.tags) or determine_risk_level(mem.memory_type, mem.confidence)
         decision = auto_review(
             card_type=mem.memory_type,
             importance=mem.importance,
@@ -145,7 +138,7 @@ async def extract_and_route(
                 conversation_id=conversation_id,
                 suggested_action="approve",
                 risk_level=risk_level,
-                reason=f"规则提炼: {mem.memory_type}",
+                reason=f"记忆判断模型: {mem.memory_type}",
                 status="pending",
             )
             logger.info("Card sent to inbox: %s (type=%s, risk=%s)", inbox_id, mem.memory_type, risk_level)
@@ -155,13 +148,8 @@ async def extract_and_route(
             logger.debug("Card rejected by policy: type=%s, importance=%.2f", mem.memory_type, mem.importance)
 
 
-def _merge_extracted(rule_memories, llm_memories):
-    merged = []
-    seen: set[tuple[str, str]] = set()
-    for mem in [*rule_memories, *llm_memories]:
-        key = (mem.memory_type, mem.content.strip())
-        if key in seen:
-            continue
-        seen.add(key)
-        merged.append(mem)
-    return merged
+def _risk_level_from_tags(tags: list[str]) -> str | None:
+    for tag in tags:
+        if tag in {"risk:low", "risk:medium", "risk:high"}:
+            return tag.split(":", 1)[1]
+    return None

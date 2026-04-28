@@ -138,6 +138,7 @@ async def get_current_config():
                 "timeout_seconds": cfg.memory.judge.timeout_seconds,
                 "temperature": cfg.memory.judge.temperature,
                 "mode": cfg.memory.judge.mode,
+                "user_rules": cfg.memory.judge.user_rules,
                 "prompt": cfg.memory.judge.prompt,
             },
         },

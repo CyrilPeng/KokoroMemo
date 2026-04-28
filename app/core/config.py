@@ -173,7 +173,7 @@ class StateUpdaterConfig:
 
 @dataclass
 class MemoryJudgeConfig:
-    enabled: bool = False
+    enabled: bool = True
     provider: str = "openai_compatible"
     base_url: str = ""
     api_key: str = ""
@@ -181,7 +181,8 @@ class MemoryJudgeConfig:
     model: str = ""
     timeout_seconds: int = 30
     temperature: float = 0.0
-    mode: str = "rule_then_llm"
+    mode: str = "model_only"
+    user_rules: list[str] = field(default_factory=list)
     prompt: str = ""
 
     def get_api_key(self) -> str:

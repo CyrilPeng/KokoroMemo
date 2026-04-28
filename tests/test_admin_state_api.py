@@ -79,6 +79,7 @@ async def test_admin_config_returns_direct_config_keys(monkeypatch):
     cfg.llm.api_key = "config-llm-key"
     cfg.embedding.api_key = "config-embedding-key"
     cfg.rerank.api_key = "config-rerank-key"
+    cfg.memory.judge.user_rules = ["称呼变化生成 preference"]
     set_config(cfg)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -88,3 +89,6 @@ async def test_admin_config_returns_direct_config_keys(monkeypatch):
     assert data["llm"]["api_key"] == "config-llm-key"
     assert data["embedding"]["api_key"] == "config-embedding-key"
     assert data["rerank"]["api_key"] == "config-rerank-key"
+    assert data["memory"]["judge"]["enabled"] is True
+    assert data["memory"]["judge"]["mode"] == "model_only"
+    assert data["memory"]["judge"]["user_rules"] == ["称呼变化生成 preference"]

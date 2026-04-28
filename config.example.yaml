@@ -74,7 +74,7 @@ memory:
     extract_after_each_turn: true
     fallback_rule_based: true
   judge:
-    enabled: false
+    enabled: true
     provider: "openai_compatible"
     base_url: ""
     api_key: ""
@@ -82,7 +82,8 @@ memory:
     model: ""
     timeout_seconds: 30
     temperature: 0.0
-    mode: "rule_then_llm"  # rule_only | llm_only | rule_then_llm
+    mode: "model_only"  # model_only | model_with_user_rules
+    user_rules: []
     prompt: ""
   hot_context:
     enabled: true

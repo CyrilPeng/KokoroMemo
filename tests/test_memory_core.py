@@ -9,7 +9,6 @@ import pytest
 
 from app.memory.card_retriever import retrieve_cards
 from app.memory.card_extractor import extract_and_route
-from app.memory.extractor import extract_memories_rule_based
 from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
 from app.memory.graph import insert_edge
 from app.memory.query_builder import RetrievalQuery
@@ -62,17 +61,14 @@ def test_preference_defaults_to_pending_review():
     assert auto_review("preference", importance=0.8, confidence=0.9, risk_level="low") == "pending"
 
 
-def test_addressing_preference_extracts_high_confidence_memory():
-    memories = extract_memories_rule_based("从现在起叫我主人", "好的，主人。", character_id="c1")
-    assert len(memories) == 1
-    assert memories[0].content == "用户希望被称呼为“主人”。"
-    assert memories[0].importance >= 0.85
-    assert memories[0].confidence >= 0.85
-    assert "addressing" in memories[0].tags
-
-
-def test_addressing_preference_can_auto_approve():
-    assert auto_review("preference", importance=0.9, confidence=0.9, risk_level="low", tags=["addressing"]) == "approve"
+def test_model_suggested_auto_approve_can_approve_low_risk_preference():
+    assert auto_review(
+        "preference",
+        importance=0.9,
+        confidence=0.9,
+        risk_level="low",
+        tags=["suggested_action:auto_approve"],
+    ) == "approve"
 
 
 @pytest.mark.asyncio
@@ -112,7 +108,7 @@ async def test_graph_expands_constrains_card():
 
 
 @pytest.mark.asyncio
-async def test_addressing_preference_auto_approves_and_syncs_vector():
+async def test_extraction_disabled_without_judge_config():
     test_dir = make_test_dir()
     memory_db = test_dir / "memory.sqlite"
     try:
@@ -133,11 +129,10 @@ async def test_addressing_preference_auto_approves_and_syncs_vector():
         )
 
         with sqlite3.connect(memory_db) as conn:
-            rows = conn.execute("SELECT card_type, content, status, vector_synced FROM memory_cards").fetchall()
+            card_count = conn.execute("SELECT COUNT(*) FROM memory_cards").fetchone()[0]
             inbox_count = conn.execute("SELECT COUNT(*) FROM memory_inbox").fetchone()[0]
-        assert rows == [("preference", "用户希望被称呼为“主人”。", "approved", 1)]
+        assert card_count == 0
         assert inbox_count == 0
-        assert store.upserted[0]["content"] == "用户希望被称呼为“主人”。"
     finally:
         cleanup_test_dir(test_dir)
 
@@ -147,7 +142,7 @@ async def test_llm_memory_judge_extracts_addressing(monkeypatch):
     class FakeProvider:
         async def chat(self, body, timeout):
             return {
-                "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"tags":["preference","addressing"]}]}'}}]
+                "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"risk_level":"low","suggested_action":"auto_approve","tags":["preference","addressing"]}]}'}}]
             }
 
     monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
@@ -160,6 +155,34 @@ async def test_llm_memory_judge_extracts_addressing(monkeypatch):
     assert len(memories) == 1
     assert memories[0].content == "用户希望被称呼为“主人”。"
     assert "addressing" in memories[0].tags
+    assert "suggested_action:auto_approve" in memories[0].tags
+
+
+@pytest.mark.asyncio
+async def test_memory_judge_injects_user_rules(monkeypatch):
+    captured = {}
+
+    class FakeProvider:
+        async def chat(self, body, timeout):
+            captured["system"] = body["messages"][0]["content"]
+            return {"choices": [{"message": {"content": '{"memories":[]}'}}]}
+
+    monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
+    await judge_memories_with_llm(
+        "继续",
+        "好的。",
+        "c1",
+        MemoryJudgeConfigView(
+            "openai_compatible",
+            "http://judge",
+            "key",
+            "cheap-model",
+            mode="model_with_user_rules",
+            user_rules=["用户要求改变称呼时生成 preference。"],
+        ),
+    )
+    assert "用户自定义辅助规则" in captured["system"]
+    assert "用户要求改变称呼时生成 preference" in captured["system"]
 
 
 @pytest.mark.asyncio
@@ -175,7 +198,7 @@ async def test_llm_memory_judge_routes_to_approved_card(monkeypatch):
         class FakeProvider:
             async def chat(self, body, timeout):
                 return {
-                    "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"tags":["preference","addressing"]}]}'}}]
+                    "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"risk_level":"low","suggested_action":"auto_approve","tags":["preference","addressing"]}]}'}}]
                 }
 
         monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
@@ -189,7 +212,6 @@ async def test_llm_memory_judge_routes_to_approved_card(monkeypatch):
             embedding_provider=DummyEmbeddingProvider(8),
             lancedb_store=store,
             judge_config=MemoryJudgeConfigView("openai_compatible", "http://judge", "key", "cheap-model"),
-            judge_mode="llm_only",
         )
 
         with sqlite3.connect(memory_db) as conn:

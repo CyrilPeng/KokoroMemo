@@ -103,7 +103,7 @@ async def get_current_config():
     embedding_key = cfg.embedding.get_api_key()
     rerank_key = cfg.rerank.get_api_key()
     return {
-        "server": {"host": cfg.server.host, "port": cfg.server.port, "webui_port": cfg.server.webui_port},
+        "server": {"host": cfg.server.host, "port": cfg.server.port, "webui_port": cfg.server.webui_port, "timezone": cfg.server.timezone},
         "storage": {"root_dir": cfg.storage.root_dir},
         "vector_index": {"path": resolve_lancedb_path(cfg), "table": cfg.storage.lancedb.table},
         "embedding": {
@@ -215,6 +215,8 @@ async def save_config(data: dict = Body(...)):
     # Reload config in memory
     new_cfg = load_config(str(out_path))
     set_config(new_cfg)
+    from app.core.time_util import set_configured_timezone
+    set_configured_timezone(new_cfg.server.timezone or None)
     reset_services()
 
     # Check if restart is needed

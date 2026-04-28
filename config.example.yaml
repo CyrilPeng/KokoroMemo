@@ -6,6 +6,7 @@ server:
   allow_remote_access: false
   admin_token: ""
   admin_token_env: "ADMIN_TOKEN"
+  timezone: ""  # IANA 时区名，如 "Asia/Shanghai"、"America/New_York"；留空使用系统本地时间
 
 llm:
   # 支持: openai_compatible | openai_responses | anthropic | gemini

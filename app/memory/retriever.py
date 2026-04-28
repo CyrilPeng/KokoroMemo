@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.core.time_util import naive_local_now
+
 from app.memory.query_builder import RetrievalQuery
 from app.providers.embedding_base import EmbeddingProvider
 from app.storage.lancedb_store import LanceDBStore
@@ -31,7 +33,10 @@ def _recency_score(updated_at: str | None) -> float:
         return 0.5
     try:
         dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-        now = datetime.now() if dt.tzinfo is None else datetime.now().astimezone(dt.tzinfo)
+        if dt.tzinfo is not None:
+            now = datetime.now(dt.tzinfo)
+        else:
+            now = naive_local_now()
         days = (now - dt).total_seconds() / 86400
     except Exception:
         return 0.5

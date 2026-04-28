@@ -19,6 +19,7 @@ class ServerConfig:
     allow_remote_access: bool = False
     admin_token_env: str = "ADMIN_TOKEN"
     admin_token: str = ""
+    timezone: str = ""
 
     def get_admin_token(self) -> str:
         if self.admin_token:

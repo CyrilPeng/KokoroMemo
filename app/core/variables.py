@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone, timedelta
 
+from app.core.time_util import datetime_now, naive_local_now
+
 # Chinese weekday names
 _WEEKDAYS_CN = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
@@ -27,10 +29,10 @@ def resolve_variables(
     tz_offset_hours: float | None = None,
 ) -> str:
     """Replace all {{variable}} placeholders in text."""
-    if tz_offset_hours is None:
-        now = datetime.now().astimezone()
-    else:
+    if tz_offset_hours is not None:
         now = datetime.now(timezone(timedelta(hours=tz_offset_hours)))
+    else:
+        now = datetime_now()
 
     variables = {
         "date": now.strftime("%Y-%m-%d"),
@@ -60,10 +62,10 @@ def relative_time_label(created_at: str | None) -> str:
         return ""
     try:
         dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            now = datetime.now()
+        if dt.tzinfo is not None:
+            now = datetime.now(dt.tzinfo)
         else:
-            now = datetime.now().astimezone(dt.tzinfo)
+            now = naive_local_now()
         delta = now - dt
         seconds = delta.total_seconds()
 

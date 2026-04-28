@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import load_config
 from app.core.logging import setup_logging
 from app.core.state import set_config
+from app.core.time_util import set_configured_timezone
 
 
 @asynccontextmanager
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
     load_dotenv()
     cfg = load_config()
     set_config(cfg)
+    set_configured_timezone(cfg.server.timezone or None)
     setup_logging(cfg.server.log_level)
 
     # Ensure data directories exist

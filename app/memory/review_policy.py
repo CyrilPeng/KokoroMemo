@@ -8,6 +8,7 @@ def auto_review(
     importance: float,
     confidence: float,
     risk_level: str = "low",
+    tags: list[str] | None = None,
 ) -> str:
     """Determine review action for a candidate card.
 
@@ -22,6 +23,10 @@ def auto_review(
     # Direct reject: trivial content
     if importance < 0.3:
         return "reject"
+
+    tags = tags or []
+    if "addressing" in tags and importance >= 0.85 and confidence >= 0.85 and risk_level != "high":
+        return "approve"
 
     # Types that always need review in AIRP scenarios.
     if card_type in ("boundary", "preference", "relationship", "world_state", "character_state"):

@@ -62,6 +62,7 @@ async def extract_and_route(
             importance=mem.importance,
             confidence=mem.confidence,
             risk_level=risk_level,
+            tags=mem.tags,
         )
 
         card_payload = {

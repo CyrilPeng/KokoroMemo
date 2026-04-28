@@ -11,7 +11,7 @@ logger = logging.getLogger("kokoromemo.extractor")
 
 # Patterns that suggest user is expressing something worth remembering
 _MEMORY_PATTERNS = [
-    (r"记住|以后|从现在开始|从今天起", "preference", 0.7),
+    (r"记住|以后|从现在(?:开始|起)|从今天起", "preference", 0.7),
     (r"我喜欢|我不喜欢|我讨厌|我爱", "preference", 0.75),
     (r"不要再|别再|你不能|你不要|禁止", "boundary", 0.8),
     (r"你应该|你要|你必须|你得", "preference", 0.65),
@@ -19,6 +19,11 @@ _MEMORY_PATTERNS = [
     (r"我们约好|答应我|你保证|约定", "promise", 0.75),
     (r"我.*?岁|我的生日|我住在|我的工作", "preference", 0.6),
     (r"我们之前|上次我们|你还记得", "event", 0.5),
+]
+
+_ADDRESSING_PATTERNS = [
+    r"(?:从现在(?:开始|起)|从今天起|以后|往后|今后)?\s*(?:请)?(?:叫我|称呼我|喊我)\s*[“\"']?([^，。！？\s“”\"']{1,24})[”\"']?",
+    r"(?:我的称呼|我的名字|我的昵称)(?:是|叫)\s*[“\"']?([^，。！？\s“”\"']{1,24})[”\"']?",
 ]
 
 
@@ -43,6 +48,22 @@ def extract_memories_rule_based(
     results = []
 
     if not user_message or len(user_message.strip()) < 4:
+        return results
+
+    addressing = _extract_addressing_preference(user_message)
+    if addressing:
+        content = f"用户希望被称呼为“{addressing}”。"
+        importance = 0.9
+        confidence = 0.9
+        if importance >= min_importance and confidence >= min_confidence:
+            results.append(ExtractedMemory(
+                scope="character" if character_id else "global",
+                memory_type="preference",
+                content=content,
+                importance=importance,
+                confidence=confidence,
+                tags=["preference", "addressing"],
+            ))
         return results
 
     for pattern, mem_type, base_importance in _MEMORY_PATTERNS:
@@ -73,3 +94,15 @@ def extract_memories_rule_based(
             break  # One memory per user message in rule-based mode
 
     return results
+
+
+def _extract_addressing_preference(user_message: str) -> str | None:
+    """Extract explicit user preferred form of address."""
+    for pattern in _ADDRESSING_PATTERNS:
+        match = re.search(pattern, user_message)
+        if not match:
+            continue
+        name = match.group(1).strip(" ，。！？\"'“”")
+        if name and not re.search(r"^(一下|一下吧|吧|好吗|可以吗)$", name):
+            return name
+    return None

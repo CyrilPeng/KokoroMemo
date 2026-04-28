@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h } from 'vue'
+import { computed, h, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -13,6 +13,7 @@ import {
   darkTheme,
 } from 'naive-ui'
 import type { MenuOption, GlobalThemeOverrides } from 'naive-ui'
+import { invoke } from '@tauri-apps/api/core'
 import {
   HomeOutline,
   BulbOutline,
@@ -39,6 +40,17 @@ function handleMenuUpdate(key: string) {
   router.push(key)
 }
 
+
+async function syncCloseToTraySetting() {
+  const enabled = localStorage.getItem('kokoromemo.closeToTray') !== 'false'
+  try {
+    await invoke('set_close_to_tray', { enabled })
+  } catch (e) {
+    // Browser dev mode or older desktop builds without this command.
+  }
+}
+
+onMounted(syncCloseToTraySetting)
 const themeOverrides: GlobalThemeOverrides = {
   common: {
     primaryColor: '#a78bfa',

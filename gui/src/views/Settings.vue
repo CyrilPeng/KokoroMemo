@@ -7,6 +7,8 @@ import {
 import { apiFetch, getServerUrl, setServerUrl } from '../api'
 import { useI18n } from 'vue-i18n'
 import { setLanguage, getLanguage } from '../i18n'
+import { invoke } from '@tauri-apps/api/core'
+import { getVersion } from '@tauri-apps/api/app'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -23,8 +25,94 @@ const fetchingEmbedding = ref(false)
 const fetchingRerank = ref(false)
 const fetchingJudge = ref(false)
 const fetchingStateFiller = ref(false)
+const updateChecking = ref(false)
+const updateInfo = ref<{
+  checked: boolean
+  hasUpdate: boolean
+  currentVersion: string
+  latestVersion: string
+  releaseUrl: string
+  error: string
+}>({
+  checked: false,
+  hasUpdate: false,
+  currentVersion: '',
+  latestVersion: '',
+  releaseUrl: '',
+  error: '',
+})
+const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/CyrilPeng/KokoroMemo/releases/latest'
+const CURRENT_VERSION_FALLBACK = '0.1.0'
+
+function normalizeVersion(version: string) {
+  return version.trim().replace(/^v/i, '').split(/[+-]/)[0]
+}
+
+function compareVersions(a: string, b: string) {
+  const left = normalizeVersion(a).split('.').map((part) => Number.parseInt(part, 10) || 0)
+  const right = normalizeVersion(b).split('.').map((part) => Number.parseInt(part, 10) || 0)
+  const length = Math.max(left.length, right.length)
+  for (let i = 0; i < length; i += 1) {
+    const diff = (left[i] || 0) - (right[i] || 0)
+    if (diff !== 0) return diff > 0 ? 1 : -1
+  }
+  return 0
+}
+
+async function getCurrentAppVersion() {
+  try {
+    return await getVersion()
+  } catch (e) {
+    return CURRENT_VERSION_FALLBACK
+  }
+}
+
+async function checkForUpdates(silent = false) {
+  updateChecking.value = true
+  try {
+    const currentVersion = await getCurrentAppVersion()
+    const resp = await fetch(GITHUB_LATEST_RELEASE_API, {
+      headers: { Accept: 'application/vnd.github+json' },
+    })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const data = await resp.json()
+    const latestVersion = data.tag_name || data.name || ''
+    const releaseUrl = data.html_url || 'https://github.com/CyrilPeng/KokoroMemo/releases/latest'
+    const hasUpdate = latestVersion ? compareVersions(latestVersion, currentVersion) > 0 : false
+    updateInfo.value = {
+      checked: true,
+      hasUpdate,
+      currentVersion,
+      latestVersion,
+      releaseUrl,
+      error: '',
+    }
+    if (!silent) {
+      message[hasUpdate ? 'success' : 'info'](
+        hasUpdate ? t('settings.updateAvailable') : t('settings.noUpdateAvailable'),
+      )
+    }
+  } catch (e) {
+    updateInfo.value = {
+      ...updateInfo.value,
+      checked: true,
+      error: e instanceof Error ? e.message : String(e),
+    }
+    if (!silent) message.error(t('settings.updateCheckFailed'))
+  } finally {
+    updateChecking.value = false
+  }
+}
+
+function openReleasePage() {
+  if (updateInfo.value.releaseUrl) {
+    window.open(updateInfo.value.releaseUrl, '_blank', 'noopener,noreferrer')
+  }
+}
+
 
 const language = ref(getLanguage())
+const closeToTray = ref(localStorage.getItem('kokoromemo.closeToTray') !== 'false')
 const languageOptions = [
   { label: '中文', value: 'zh-CN' },
   { label: 'English', value: 'en-US' },
@@ -32,6 +120,24 @@ const languageOptions = [
 function handleLanguageChange(val: string) {
   setLanguage(val)
   language.value = val
+}
+
+async function handleCloseToTrayChange(enabled: boolean) {
+  closeToTray.value = enabled
+  localStorage.setItem('kokoromemo.closeToTray', enabled ? 'true' : 'false')
+  try {
+    await invoke('set_close_to_tray', { enabled })
+  } catch (e) {
+    // Browser dev mode or older desktop builds without this command.
+  }
+}
+
+async function syncCloseToTraySetting() {
+  try {
+    await invoke('set_close_to_tray', { enabled: closeToTray.value })
+  } catch (e) {
+    // Browser dev mode or older desktop builds without this command.
+  }
 }
 const timezone = ref('')
 
@@ -325,7 +431,11 @@ function normalizeJudgeMode(mode: string) {
   return 'model_only'
 }
 
-onMounted(loadConfig)
+onMounted(() => {
+  loadConfig()
+  syncCloseToTraySetting()
+  checkForUpdates(true)
+})
 </script>
 
 <template>
@@ -396,6 +506,55 @@ onMounted(loadConfig)
                 <template #trigger><span class="help-icon">?</span></template>
                 {{ $t('settings.languageHelp') }}
               </NTooltip>
+            </div>
+          </NFormItem>
+          <NFormItem>
+            <template #label>
+              {{ $t('settings.closeToTray') }}
+              <NTooltip trigger="hover">
+                <template #trigger><span class="help-icon">?</span></template>
+                {{ $t('settings.closeToTrayHelp') }}
+              </NTooltip>
+            </template>
+            <NSwitch v-model:value="closeToTray" @update:value="handleCloseToTrayChange" />
+          </NFormItem>
+          <NFormItem>
+            <template #label>
+              {{ $t('settings.updateCheck') }}
+              <NTooltip trigger="hover">
+                <template #trigger><span class="help-icon">?</span></template>
+                {{ $t('settings.updateCheckHelp') }}
+              </NTooltip>
+            </template>
+            <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <NButton size="small" :loading="updateChecking" @click="checkForUpdates(false)">
+                  {{ $t('settings.checkNow') }}
+                </NButton>
+                <NButton
+                  v-if="updateInfo.releaseUrl"
+                  size="small"
+                  secondary
+                  @click="openReleasePage"
+                >
+                  {{ $t('settings.openReleasePage') }}
+                </NButton>
+              </div>
+              <NAlert
+                v-if="updateInfo.checked"
+                :type="updateInfo.error ? 'error' : updateInfo.hasUpdate ? 'warning' : 'success'"
+                :show-icon="false"
+              >
+                <template v-if="updateInfo.error">
+                  {{ $t('settings.updateCheckFailed') }}: {{ updateInfo.error }}
+                </template>
+                <template v-else-if="updateInfo.hasUpdate">
+                  {{ $t('settings.updateAvailableDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}
+                </template>
+                <template v-else>
+                  {{ $t('settings.noUpdateDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}
+                </template>
+              </NAlert>
             </div>
           </NFormItem>
         </NForm>

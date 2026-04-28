@@ -335,8 +335,20 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
 
     try:
         from app.memory.card_extractor import extract_and_route
+        from app.memory.judge import MemoryJudgeConfigView
         ep = get_embedding_provider(cfg)
         store = get_lancedb_store(cfg)
+        judge_config = None
+        if cfg.memory.judge.enabled:
+            judge_config = MemoryJudgeConfigView(
+                provider=cfg.memory.judge.provider,
+                base_url=cfg.memory.judge.base_url or cfg.llm.base_url,
+                api_key=cfg.memory.judge.get_api_key() or cfg.llm.get_api_key(),
+                model=cfg.memory.judge.model or cfg.llm.model,
+                timeout_seconds=cfg.memory.judge.timeout_seconds,
+                temperature=cfg.memory.judge.temperature,
+                prompt=cfg.memory.judge.prompt,
+            )
 
         await extract_and_route(
             db_path=cfg.storage.sqlite.memory_db,
@@ -349,6 +361,8 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
             lancedb_store=store,
             min_importance=cfg.memory.extraction.min_importance,
             min_confidence=cfg.memory.extraction.min_confidence,
+            judge_config=judge_config,
+            judge_mode=cfg.memory.judge.mode if cfg.memory.judge.enabled else "rule_only",
         )
     except Exception as e:
         logger.warning("Memory extraction failed: %s", e)

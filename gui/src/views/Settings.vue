@@ -13,11 +13,13 @@ const loading = ref(true)
 const llmModels = ref<{label: string, value: string}[]>([])
 const embeddingModels = ref<{label: string, value: string}[]>([])
 const rerankModels = ref<{label: string, value: string}[]>([])
+const judgeModels = ref<{label: string, value: string}[]>([])
 const fetchingLlm = ref(false)
 const fetchingEmbedding = ref(false)
 const fetchingRerank = ref(false)
+const fetchingJudge = ref(false)
 
-async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | 'embedding' | 'rerank') {
+async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | 'embedding' | 'rerank' | 'judge') {
   if (!baseUrl) {
     message.warning('请先填写 Base URL')
     return
@@ -26,7 +28,7 @@ async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | '
     message.warning('请先填写 API Key，否则无法从远端获取模型列表')
     return
   }
-  const flagRef = target === 'llm' ? fetchingLlm : target === 'embedding' ? fetchingEmbedding : fetchingRerank
+  const flagRef = target === 'llm' ? fetchingLlm : target === 'embedding' ? fetchingEmbedding : target === 'rerank' ? fetchingRerank : fetchingJudge
   flagRef.value = true
   try {
     const resp = await apiFetch('/admin/fetch-models', {
@@ -39,7 +41,8 @@ async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | '
       const options = data.models.map((m: string) => ({ label: m, value: m }))
       if (target === 'llm') llmModels.value = options
       else if (target === 'embedding') embeddingModels.value = options
-      else rerankModels.value = options
+      else if (target === 'rerank') rerankModels.value = options
+      else judgeModels.value = options
       message.success(`获取到 ${data.models.length} 个模型`)
     } else {
       message.error(data.message || '未获取到模型列表')
@@ -73,6 +76,15 @@ const config = ref({
   memory_enabled: true,
   max_injected_chars: 1500,
   final_top_k: 6,
+  judge_enabled: false,
+  judge_provider: 'openai_compatible',
+  judge_base_url: '',
+  judge_api_key: '',
+  judge_model: '',
+  judge_timeout_seconds: 30,
+  judge_temperature: 0,
+  judge_mode: 'rule_then_llm',
+  judge_prompt: '',
 })
 
 const forwardModeOptions = [
@@ -85,6 +97,12 @@ const providerOptions = [
   { label: 'OpenAI Responses API', value: 'openai_responses' },
   { label: 'Anthropic Claude', value: 'anthropic' },
   { label: 'Google Gemini', value: 'gemini' },
+]
+
+const judgeModeOptions = [
+  { label: '规则优先，模型补充', value: 'rule_then_llm' },
+  { label: '仅模型判断', value: 'llm_only' },
+  { label: '仅规则判断', value: 'rule_only' },
 ]
 
 const providerUrlPlaceholder = computed(() => {
@@ -152,6 +170,15 @@ async function loadConfig() {
       config.value.memory_enabled = data.memory?.enabled ?? true
       config.value.max_injected_chars = data.memory?.max_injected_chars || 1500
       config.value.final_top_k = data.memory?.final_top_k || 6
+      config.value.judge_enabled = data.memory?.judge?.enabled ?? false
+      config.value.judge_provider = data.memory?.judge?.provider || 'openai_compatible'
+      config.value.judge_base_url = data.memory?.judge?.base_url || ''
+      config.value.judge_api_key = data.memory?.judge?.api_key || ''
+      config.value.judge_model = data.memory?.judge?.model || ''
+      config.value.judge_timeout_seconds = data.memory?.judge?.timeout_seconds || 30
+      config.value.judge_temperature = data.memory?.judge?.temperature ?? 0
+      config.value.judge_mode = data.memory?.judge?.mode || 'rule_then_llm'
+      config.value.judge_prompt = data.memory?.judge?.prompt || ''
     }
   } catch (e) {
     // use defaults
@@ -189,6 +216,17 @@ async function saveConfig() {
         enabled: config.value.memory_enabled,
         max_injected_chars: config.value.max_injected_chars,
         final_top_k: config.value.final_top_k,
+        judge: {
+          enabled: config.value.judge_enabled,
+          provider: config.value.judge_provider,
+          base_url: config.value.judge_base_url,
+          api_key: config.value.judge_api_key,
+          model: config.value.judge_model,
+          timeout_seconds: config.value.judge_timeout_seconds,
+          temperature: config.value.judge_temperature,
+          mode: config.value.judge_mode,
+          prompt: config.value.judge_prompt,
+        },
       },
     }
     payload.llm.api_key = config.value.llm_api_key
@@ -487,6 +525,57 @@ onMounted(loadConfig)
           <NFormItem label="最大召回条数">
             <NInputNumber v-model:value="config.final_top_k" :min="1" :max="20" style="width: 200px;" />
           </NFormItem>
+          <NDivider style="margin: 8px 0;" />
+          <NFormItem>
+            <template #label>
+              记忆判断模型
+              <NTooltip trigger="hover">
+                <template #trigger><span class="help-icon">?</span></template>
+                类似 SillyTavern 填表 API，使用更便宜更快的模型判断一轮对话是否应写入长期记忆。关闭时仅使用本地规则。
+              </NTooltip>
+            </template>
+            <NSwitch v-model:value="config.judge_enabled" />
+          </NFormItem>
+          <template v-if="config.judge_enabled">
+            <NFormItem label="判断模式">
+              <NSelect v-model:value="config.judge_mode" :options="judgeModeOptions" style="width: 240px;" />
+            </NFormItem>
+            <NFormItem label="Provider">
+              <NSelect v-model:value="config.judge_provider" :options="providerOptions" style="width: 280px;" />
+            </NFormItem>
+            <NFormItem label="Base URL">
+              <NInput v-model:value="config.judge_base_url" placeholder="留空则复用对话大模型 Base URL" />
+            </NFormItem>
+            <NFormItem label="API Key">
+              <NInput v-model:value="config.judge_api_key" type="password" show-password-on="click" placeholder="留空则复用对话大模型 Key" />
+            </NFormItem>
+            <NFormItem label="模型名称">
+              <div style="display: flex; gap: 8px; flex: 1;">
+                <NSelect
+                  v-if="judgeModels.length > 0"
+                  v-model:value="config.judge_model"
+                  :options="judgeModels"
+                  filterable
+                  tag
+                  placeholder="例如便宜快速的小模型"
+                  style="flex: 1;"
+                />
+                <NInput v-else v-model:value="config.judge_model" placeholder="留空则复用对话大模型" style="flex: 1;" />
+                <NButton size="small" :loading="fetchingJudge" @click="fetchModelList(config.judge_base_url || config.llm_base_url, config.judge_api_key || config.llm_api_key, 'judge')">
+                  拉取
+                </NButton>
+              </div>
+            </NFormItem>
+            <NFormItem label="超时时间">
+              <NInputNumber v-model:value="config.judge_timeout_seconds" :min="5" :max="120" style="width: 200px;" />
+            </NFormItem>
+            <NFormItem label="Temperature">
+              <NInputNumber v-model:value="config.judge_temperature" :min="0" :max="1" :step="0.05" style="width: 200px;" />
+            </NFormItem>
+            <NFormItem label="自定义 Prompt">
+              <NInput v-model:value="config.judge_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" placeholder="留空使用内置记忆判断 Prompt" />
+            </NFormItem>
+          </template>
         </NForm>
 
         <NDivider style="margin: 16px 0;" />

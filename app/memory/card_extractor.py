@@ -7,6 +7,7 @@ import logging
 
 from app.core.ids import generate_id
 from app.memory.extractor import extract_memories_rule_based
+from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
 from app.memory.review_policy import auto_review, determine_risk_level
 from app.storage.sqlite_cards import (
     card_exists_with_content,
@@ -30,6 +31,8 @@ async def extract_and_route(
     lancedb_store=None,
     min_importance: float = 0.45,
     min_confidence: float = 0.55,
+    judge_config: MemoryJudgeConfigView | None = None,
+    judge_mode: str = "rule_only",
 ) -> None:
     """Extract candidate memory cards and route through review policy.
 
@@ -40,12 +43,26 @@ async def extract_and_route(
     4. pending → write inbox item
     5. reject → discard (log only)
     """
-    # Extract using existing rule-based logic
-    extracted = extract_memories_rule_based(
-        user_message, assistant_message, character_id,
-        min_importance=min_importance,
-        min_confidence=min_confidence,
-    )
+    extracted = []
+    if judge_mode != "llm_only":
+        extracted.extend(extract_memories_rule_based(
+            user_message, assistant_message, character_id,
+            min_importance=min_importance,
+            min_confidence=min_confidence,
+        ))
+    if judge_config and judge_mode in {"llm_only", "rule_then_llm"}:
+        try:
+            llm_extracted = await judge_memories_with_llm(
+                user_message,
+                assistant_message,
+                character_id,
+                judge_config,
+                min_importance=min_importance,
+                min_confidence=min_confidence,
+            )
+            extracted = _merge_extracted(extracted, llm_extracted)
+        except Exception as e:
+            logger.warning("Memory judge failed (fallback to rules): %s", e)
 
     if not extracted:
         return
@@ -136,3 +153,15 @@ async def extract_and_route(
         else:
             # Rejected by policy, discard
             logger.debug("Card rejected by policy: type=%s, importance=%.2f", mem.memory_type, mem.importance)
+
+
+def _merge_extracted(rule_memories, llm_memories):
+    merged = []
+    seen: set[tuple[str, str]] = set()
+    for mem in [*rule_memories, *llm_memories]:
+        key = (mem.memory_type, mem.content.strip())
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(mem)
+    return merged

@@ -10,6 +10,7 @@ import pytest
 from app.memory.card_retriever import retrieve_cards
 from app.memory.card_extractor import extract_and_route
 from app.memory.extractor import extract_memories_rule_based
+from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
 from app.memory.graph import insert_edge
 from app.memory.query_builder import RetrievalQuery
 from app.memory.review_policy import auto_review
@@ -137,5 +138,62 @@ async def test_addressing_preference_auto_approves_and_syncs_vector():
         assert rows == [("preference", "用户希望被称呼为“主人”。", "approved", 1)]
         assert inbox_count == 0
         assert store.upserted[0]["content"] == "用户希望被称呼为“主人”。"
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_llm_memory_judge_extracts_addressing(monkeypatch):
+    class FakeProvider:
+        async def chat(self, body, timeout):
+            return {
+                "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"tags":["preference","addressing"]}]}'}}]
+            }
+
+    monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
+    memories = await judge_memories_with_llm(
+        "从现在起叫我主人",
+        "好的，主人。",
+        "c1",
+        MemoryJudgeConfigView("openai_compatible", "http://judge", "key", "cheap-model"),
+    )
+    assert len(memories) == 1
+    assert memories[0].content == "用户希望被称呼为“主人”。"
+    assert "addressing" in memories[0].tags
+
+
+@pytest.mark.asyncio
+async def test_llm_memory_judge_routes_to_approved_card(monkeypatch):
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        store = FakeLanceDBStore([])
+        store.upserted = []
+        store.upsert = lambda rows: store.upserted.extend(rows)
+
+        class FakeProvider:
+            async def chat(self, body, timeout):
+                return {
+                    "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"tags":["preference","addressing"]}]}'}}]
+                }
+
+        monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
+        await extract_and_route(
+            db_path=str(memory_db),
+            user_message="以后都这么称呼我",
+            assistant_message="好的，主人。",
+            user_id="u1",
+            character_id="c1",
+            conversation_id="conv1",
+            embedding_provider=DummyEmbeddingProvider(8),
+            lancedb_store=store,
+            judge_config=MemoryJudgeConfigView("openai_compatible", "http://judge", "key", "cheap-model"),
+            judge_mode="llm_only",
+        )
+
+        with sqlite3.connect(memory_db) as conn:
+            row = conn.execute("SELECT content, status, vector_synced FROM memory_cards").fetchone()
+        assert row == ("用户希望被称呼为“主人”。", "approved", 1)
     finally:
         cleanup_test_dir(test_dir)

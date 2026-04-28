@@ -172,6 +172,25 @@ class StateUpdaterConfig:
 
 
 @dataclass
+class MemoryJudgeConfig:
+    enabled: bool = False
+    provider: str = "openai_compatible"
+    base_url: str = ""
+    api_key: str = ""
+    api_key_env: str = "MEMORY_JUDGE_API_KEY"
+    model: str = ""
+    timeout_seconds: int = 30
+    temperature: float = 0.0
+    mode: str = "rule_then_llm"
+    prompt: str = ""
+
+    def get_api_key(self) -> str:
+        if self.api_key:
+            return self.api_key
+        return os.environ.get(self.api_key_env, "")
+
+
+@dataclass
 class RetrievalGateConfig:
     enabled: bool = True
     mode: str = "auto"
@@ -212,6 +231,7 @@ class MemoryConfig:
     extraction: ExtractionConfig = field(default_factory=ExtractionConfig)
     hot_context: HotContextConfig = field(default_factory=HotContextConfig)
     state_updater: StateUpdaterConfig = field(default_factory=StateUpdaterConfig)
+    judge: MemoryJudgeConfig = field(default_factory=MemoryJudgeConfig)
     retrieval_gate: RetrievalGateConfig = field(default_factory=RetrievalGateConfig)
 
 

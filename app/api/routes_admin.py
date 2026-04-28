@@ -128,6 +128,18 @@ async def get_current_config():
             "enabled": cfg.memory.enabled,
             "final_top_k": cfg.memory.final_top_k,
             "max_injected_chars": cfg.memory.max_injected_chars,
+            "judge": {
+                "enabled": cfg.memory.judge.enabled,
+                "provider": cfg.memory.judge.provider,
+                "base_url": cfg.memory.judge.base_url,
+                "api_key": cfg.memory.judge.api_key,
+                "api_key_set": bool(cfg.memory.judge.get_api_key()),
+                "model": cfg.memory.judge.model,
+                "timeout_seconds": cfg.memory.judge.timeout_seconds,
+                "temperature": cfg.memory.judge.temperature,
+                "mode": cfg.memory.judge.mode,
+                "prompt": cfg.memory.judge.prompt,
+            },
         },
         "llm": {
             "forward_mode": cfg.llm.forward_mode,

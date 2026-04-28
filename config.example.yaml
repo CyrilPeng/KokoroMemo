@@ -73,6 +73,17 @@ memory:
     min_confidence: 0.55
     extract_after_each_turn: true
     fallback_rule_based: true
+  judge:
+    enabled: false
+    provider: "openai_compatible"
+    base_url: ""
+    api_key: ""
+    api_key_env: "MEMORY_JUDGE_API_KEY"
+    model: ""
+    timeout_seconds: 30
+    temperature: 0.0
+    mode: "rule_then_llm"  # rule_only | llm_only | rule_then_llm
+    prompt: ""
   hot_context:
     enabled: true
     inject_always: true

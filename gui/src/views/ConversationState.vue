@@ -4,6 +4,7 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NDivider,
   NForm,
   NFormItem,
   NGrid,
@@ -11,6 +12,7 @@ import {
   NInput,
   NInputNumber,
   NModal,
+  NPopconfirm,
   NSelect,
   NSpace,
   NSpin,
@@ -44,6 +46,12 @@ const editingItem = ref<any | null>(null)
 const editForm = ref({ field_id: '', item_value: '', priority: 70, confidence: 0.8, user_locked: false })
 const templateJson = ref('')
 const fillForm = ref({ user_message: '', assistant_message: '' })
+const configLoaded = ref(false)
+const stateItemCount = ref(0)
+const isNewSession = ref(false)
+const presets = ref<any[]>([])
+const showPresetModal = ref(false)
+const presetForm = ref({ name: '', description: '' })
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? '（内置）' : ''}`, value: item.template_id })))
 const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
@@ -78,34 +86,46 @@ async function fetchMemoryLibraries() {
   memoryLibraries.value = (await resp.json()).items || []
 }
 
-async function fetchMemoryMounts() {
+async function fetchConfig() {
   if (!conversationId.value.trim()) return
-  const resp = await apiFetch(`/admin/conversations/${conversationId.value}/memory-mounts`, { headers: authHeaders() })
-  memoryMounts.value = (await resp.json()).items || []
-  mountedLibraryIds.value = memoryMounts.value.map((item) => item.library_id)
-  writeLibraryId.value = memoryMounts.value.find((item) => item.is_write_target)?.library_id || mountedLibraryIds.value[0] || ''
+  const resp = await apiFetch(`/admin/conversations/${conversationId.value}/config`, { headers: authHeaders() })
+  const data = await resp.json()
+  stateItemCount.value = data.state_item_count || 0
+  isNewSession.value = !!data.is_new_session
+  if (data.mounts?.length) {
+    memoryMounts.value = data.mounts
+    mountedLibraryIds.value = data.mounted_library_ids || []
+    writeLibraryId.value = data.write_library_id || ''
+  }
+  if (data.template_id) {
+    selectedTemplateId.value = data.template_id
+  }
+  configLoaded.value = true
+}
+
+async function fetchPresets() {
+  const resp = await apiFetch('/admin/memory-mount-presets', { headers: authHeaders() })
+  presets.value = (await resp.json()).items || []
 }
 
 async function fetchAll() {
   if (!ensureConversationId()) return
   loading.value = true
   try {
-    await Promise.all([fetchTemplates(), fetchMemoryLibraries()])
-    const [templateResp, mountResp, stateResp, decisionResp, eventResp] = await Promise.all([
+    await Promise.all([fetchTemplates(), fetchMemoryLibraries(), fetchPresets()])
+    const [templateResp, stateResp, decisionResp, eventResp] = await Promise.all([
       apiFetch(`/admin/conversations/${conversationId.value}/state/template`, { headers: authHeaders() }),
-      apiFetch(`/admin/conversations/${conversationId.value}/memory-mounts`, { headers: authHeaders() }),
       apiFetch(`/admin/conversations/${conversationId.value}/state?limit=500`, { headers: authHeaders() }),
       apiFetch(`/admin/conversations/${conversationId.value}/retrieval-decisions?limit=100`, { headers: authHeaders() }),
       apiFetch(`/admin/conversations/${conversationId.value}/state/events?limit=100`, { headers: authHeaders() }),
     ])
     currentTemplate.value = await templateResp.json()
-    memoryMounts.value = (await mountResp.json()).items || []
-    mountedLibraryIds.value = memoryMounts.value.map((item) => item.library_id)
-    writeLibraryId.value = memoryMounts.value.find((item) => item.is_write_target)?.library_id || mountedLibraryIds.value[0] || ''
     selectedTemplateId.value = currentTemplate.value?.template_id || ''
     stateItems.value = (await stateResp.json()).items || []
     decisions.value = (await decisionResp.json()).items || []
     events.value = (await eventResp.json()).items || []
+    stateItemCount.value = stateItems.value.filter((item) => item.status === 'active').length
+    await fetchConfig()
     saveLocalInputs()
   } catch (e: any) {
     message.error(`加载失败：${e.message || e}`)
@@ -113,7 +133,7 @@ async function fetchAll() {
   loading.value = false
 }
 
-async function saveMemoryMounts() {
+async function saveFullConfig() {
   if (!ensureConversationId()) return
   if (!mountedLibraryIds.value.length) {
     message.warning('请至少挂载一个长期记忆库')
@@ -123,15 +143,20 @@ async function saveMemoryMounts() {
     writeLibraryId.value = mountedLibraryIds.value[0]
   }
   try {
-    const resp = await apiFetch(`/admin/conversations/${conversationId.value}/memory-mounts`, {
+    const resp = await apiFetch(`/admin/conversations/${conversationId.value}/config`, {
       method: 'POST',
       headers: authHeaders(true),
-      body: JSON.stringify({ library_ids: mountedLibraryIds.value, write_library_id: writeLibraryId.value }),
+      body: JSON.stringify({
+        library_ids: mountedLibraryIds.value,
+        write_library_id: writeLibraryId.value,
+        template_id: selectedTemplateId.value || undefined,
+      }),
     })
     const data = await resp.json()
     if (data.status !== 'ok') throw new Error(data.message || '保存失败')
-    message.success('长期记忆挂载已保存')
-    fetchMemoryMounts()
+    message.success('会话配置已保存')
+    isNewSession.value = false
+    await fetchAll()
   } catch (e: any) {
     message.error(e.message || String(e))
   }
@@ -223,6 +248,22 @@ async function rebuildFromCards() {
   fetchAll()
 }
 
+async function clearState() {
+  if (!ensureConversationId()) return
+  try {
+    const resp = await apiFetch(`/admin/conversations/${conversationId.value}/state/clear`, {
+      method: 'POST',
+      headers: authHeaders(true),
+    })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || '清空失败')
+    message.success(`已清空 ${data.cleared || 0} 个状态项`)
+    fetchAll()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
 function openTemplateModal() {
   templateJson.value = JSON.stringify({
     name: '自定义状态板',
@@ -264,6 +305,59 @@ async function runStateFiller() {
   showFillModal.value = false
   message.success(`AI 填表完成：写入 ${data.applied || 0} 项，跳过 ${data.skipped || 0} 项`)
   fetchAll()
+}
+
+function applyPreset(preset: any) {
+  try {
+    const libraryIds: string[] = JSON.parse(preset.library_ids_json || '[]')
+    if (libraryIds.length) {
+      mountedLibraryIds.value = libraryIds
+      writeLibraryId.value = preset.write_library_id || libraryIds[0]
+      message.success(`已应用预设：${preset.name}`)
+    }
+  } catch {
+    message.error('预设数据解析失败')
+  }
+}
+
+async function saveAsPreset() {
+  if (!mountedLibraryIds.value.length) {
+    message.warning('请先选择挂载的记忆库')
+    return
+  }
+  showPresetModal.value = true
+}
+
+async function confirmSavePreset() {
+  try {
+    const resp = await apiFetch('/admin/memory-mount-presets', {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({
+        name: presetForm.value.name || '未命名挂载组合',
+        description: presetForm.value.description,
+        library_ids: mountedLibraryIds.value,
+        write_library_id: writeLibraryId.value,
+      }),
+    })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || '保存失败')
+    showPresetModal.value = false
+    presetForm.value = { name: '', description: '' }
+    message.success('挂载组合预设已保存')
+    await fetchPresets()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
+async function deletePreset(presetId: string) {
+  const resp = await apiFetch(`/admin/memory-mount-presets/${presetId}`, { method: 'DELETE', headers: authHeaders() })
+  const data = await resp.json()
+  if (data.status === 'ok') {
+    message.success('预设已删除')
+    await fetchPresets()
+  }
 }
 
 function findField(fieldId: string) {
@@ -338,7 +432,7 @@ onMounted(() => {
   const savedToken = localStorage.getItem('kokoromemo.adminToken')
   if (saved) conversationId.value = saved
   if (savedToken) adminToken.value = savedToken
-  Promise.all([fetchTemplates(), fetchMemoryLibraries()]).catch(() => {})
+  Promise.all([fetchTemplates(), fetchMemoryLibraries(), fetchPresets()]).catch(() => {})
 })
 </script>
 
@@ -346,39 +440,42 @@ onMounted(() => {
   <div>
     <div style="margin-bottom: 28px;">
       <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">会话状态板</h1>
-      <p style="color: #71717a; font-size: 14px;">按模板维护多标签热状态，并调试 Retrieval Gate 决策。</p>
+      <p style="color: #71717a; font-size: 14px;">管理当前会话配置、状态板模板和长期记忆挂载。</p>
     </div>
 
-    <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
-      <NSpace align="center" wrap>
-        <NInput v-model:value="conversationId" placeholder="conversation_id" style="width: 320px;" @blur="saveLocalInputs" />
-        <NInput v-model:value="adminToken" type="password" placeholder="ADMIN_TOKEN（未配置可留空）" style="width: 220px;" @blur="saveLocalInputs" />
-        <NSelect v-model:value="selectedTemplateId" :options="templateOptions" placeholder="状态板模板" style="width: 260px;" />
-        <NButton type="primary" @click="fetchAll">加载</NButton>
-        <NButton @click="changeTemplate">应用模板</NButton>
-        <NButton @click="openTemplateModal">新建模板</NButton>
-        <NButton @click="showFillModal = true">手动 AI 填表</NButton>
-        <NButton @click="rebuildFromCards">从长期记忆投影</NButton>
-        <NTooltip trigger="hover">
-          <template #trigger><span class="help-icon">?</span></template>
-          模板定义标签页和字段；AI 填表只会更新可写字段。锁定字段不会被 AI 覆盖。
-        </NTooltip>
-      </NSpace>
-    </NCard>
+    <!-- 会话配置面板 -->
+    <NCard title="当前会话配置" style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+      <NGrid :cols="4" :x-gap="12" :y-gap="12" responsive="screen" item-responsive>
+        <NGridItem span="4 m:2">
+          <NFormItem label="会话 ID" label-placement="top" style="margin-bottom: 0;">
+            <NSpace :wrap="false">
+              <NInput v-model:value="conversationId" placeholder="输入 conversation_id" style="width: 280px;" @blur="saveLocalInputs" />
+              <NButton type="primary" @click="fetchAll">加载</NButton>
+            </NSpace>
+          </NFormItem>
+        </NGridItem>
+        <NGridItem span="4 m:2">
+          <NFormItem label="管理密钥" label-placement="top" style="margin-bottom: 0;">
+            <NInput v-model:value="adminToken" type="password" placeholder="ADMIN_TOKEN（未配置可留空）" style="width: 220px;" @blur="saveLocalInputs" />
+          </NFormItem>
+        </NGridItem>
 
-    <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
-      <template #header>
-        <NSpace align="center">
-          <span>长期记忆挂载</span>
-          <NTag size="small" type="info">{{ mountedLibraryNames }}</NTag>
-          <NTooltip trigger="hover">
-            <template #trigger><span class="help-icon">?</span></template>
-            长期记忆类似全局世界书：当前会话只会从挂载的记忆库召回，新生成的长期记忆会写入“写入目标”。
-          </NTooltip>
-        </NSpace>
-      </template>
-      <NGrid :cols="3" :x-gap="12" :y-gap="12" responsive="screen" item-responsive>
-        <NGridItem span="3 m:2">
+        <NGridItem span="4 m:2">
+          <NFormItem label="状态板模板" label-placement="top" style="margin-bottom: 0;">
+            <NSpace :wrap="false">
+              <NSelect v-model:value="selectedTemplateId" :options="templateOptions" placeholder="选择模板" style="width: 260px;" />
+              <NButton @click="changeTemplate" :disabled="!configLoaded">切换</NButton>
+              <NButton @click="openTemplateModal">新建</NButton>
+            </NSpace>
+          </NFormItem>
+        </NGridItem>
+        <NGridItem span="4 m:2">
+          <NFormItem label="写入目标" label-placement="top" style="margin-bottom: 0;">
+            <NSelect v-model:value="writeLibraryId" :options="memoryLibraryOptions.filter((item) => mountedLibraryIds.includes(item.value))" placeholder="自动记忆写入库" style="width: 220px;" />
+          </NFormItem>
+        </NGridItem>
+
+        <NGridItem span="4">
           <NFormItem label="挂载记忆库" label-placement="top" style="margin-bottom: 0;">
             <NSelect
               :value="mountedLibraryIds"
@@ -390,15 +487,70 @@ onMounted(() => {
             />
           </NFormItem>
         </NGridItem>
-        <NGridItem span="3 m:1">
-          <NFormItem label="写入目标" label-placement="top" style="margin-bottom: 0;">
-            <NSpace align="center" :wrap="false">
-              <NSelect v-model:value="writeLibraryId" :options="memoryLibraryOptions.filter((item) => mountedLibraryIds.includes(item.value))" placeholder="自动记忆写入库" style="min-width: 220px;" />
-              <NButton type="primary" @click="saveMemoryMounts">保存挂载</NButton>
+
+        <NGridItem span="4">
+          <NFormItem label="挂载组合预设" label-placement="top" style="margin-bottom: 0;">
+            <NSpace align="center" :wrap="true">
+              <NButton v-for="preset in presets" :key="preset.preset_id" size="small" quaternary type="info" @click="applyPreset(preset)">
+                {{ preset.name }}
+                <template #icon>
+                  <NPopconfirm @positive-click="deletePreset(preset.preset_id)">
+                    <template #trigger><span class="preset-delete" @click.stop>x</span></template>
+                    确认删除预设？
+                  </NPopconfirm>
+                </template>
+              </NButton>
+              <NButton size="small" dashed @click="saveAsPreset" :disabled="!mountedLibraryIds.length">保存当前为预设</NButton>
             </NSpace>
           </NFormItem>
         </NGridItem>
       </NGrid>
+
+      <!-- 会话状态摘要 -->
+      <NDivider style="margin: 12px 0;" />
+      <NSpace align="center" justify="space-between" :wrap="true">
+        <NSpace align="center" :wrap="true">
+          <NTag v-if="isNewSession" type="warning" size="small">新会话</NTag>
+          <NTag v-else type="success" size="small">已配置</NTag>
+          <span style="color: #a1a1aa; font-size: 13px;">
+            模板：<strong style="color: #e4e4e7;">{{ currentTemplate?.name || '未选择' }}</strong>
+            &nbsp;|&nbsp;
+            挂载：<strong style="color: #e4e4e7;">{{ mountedLibraryNames }}</strong>
+            &nbsp;|&nbsp;
+            状态项：<strong style="color: #e4e4e7;">{{ stateItemCount }}</strong>
+          </span>
+        </NSpace>
+        <NSpace>
+          <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">保存配置</NButton>
+          <NPopconfirm @positive-click="clearState">
+            <template #trigger><NButton :disabled="!stateItemCount">清空状态板</NButton></template>
+            确认清空当前会话的所有状态项？
+          </NPopconfirm>
+        </NSpace>
+      </NSpace>
+    </NCard>
+
+    <!-- 操作按钮栏 -->
+    <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+      <NSpace align="center" :wrap="true">
+        <NButton @click="showFillModal = true" :disabled="!configLoaded">手动 AI 填表</NButton>
+        <NButton @click="rebuildFromCards" :disabled="!configLoaded">从长期记忆投影</NButton>
+        <NTooltip trigger="hover">
+          <template #trigger><span class="help-icon">?</span></template>
+          AI 填表只更新可写字段。锁定字段不会被 AI 覆盖。投影将长期记忆中的偏好和边界卡片投射到状态板。
+        </NTooltip>
+      </NSpace>
+    </NCard>
+
+    <!-- 新会话初始化提示 -->
+    <NCard v-if="configLoaded && isNewSession" style="background: rgba(167, 139, 250, 0.08); border: 1px solid #a78bfa; margin-bottom: 16px;">
+      <NSpace align="center" justify="space-between">
+        <div>
+          <div style="color: #e4e4e7; font-weight: 600; margin-bottom: 4px;">这是一个新会话</div>
+          <div style="color: #a1a1aa; font-size: 13px;">当前会话尚未配置。请在上方选择记忆库组合和状态板模板，然后点击"保存配置"。</div>
+        </div>
+        <NButton type="primary" @click="saveFullConfig">快速初始化</NButton>
+      </NSpace>
     </NCard>
 
     <NSpin :show="loading">
@@ -424,6 +576,7 @@ onMounted(() => {
       </NTabs>
     </NSpin>
 
+    <!-- 编辑状态项 Modal -->
     <NModal v-model:show="showEditModal" preset="card" title="状态项" style="width: 620px; background: #18181b;">
       <NForm label-placement="top">
         <NFormItem label="字段"><NSelect v-model:value="editForm.field_id" :options="fieldOptions" filterable /></NFormItem>
@@ -437,17 +590,28 @@ onMounted(() => {
       <template #footer><NSpace justify="end"><NButton @click="showEditModal = false">取消</NButton><NButton type="primary" @click="saveItem">保存</NButton></NSpace></template>
     </NModal>
 
+    <!-- 新建模板 Modal -->
     <NModal v-model:show="showTemplateModal" preset="card" title="新建状态板模板（JSON）" style="width: 760px; background: #18181b;">
       <NInput v-model:value="templateJson" type="textarea" :autosize="{ minRows: 18, maxRows: 28 }" />
       <template #footer><NSpace justify="end"><NButton @click="showTemplateModal = false">取消</NButton><NButton type="primary" @click="saveTemplate">保存模板</NButton></NSpace></template>
     </NModal>
 
+    <!-- AI 填表 Modal -->
     <NModal v-model:show="showFillModal" preset="card" title="手动运行 AI 填表" style="width: 680px; background: #18181b;">
       <NForm label-placement="top">
         <NFormItem label="用户发言"><NInput v-model:value="fillForm.user_message" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
         <NFormItem label="助手回复"><NInput v-model:value="fillForm.assistant_message" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showFillModal = false">取消</NButton><NButton type="primary" @click="runStateFiller">运行</NButton></NSpace></template>
+    </NModal>
+
+    <!-- 保存挂载预设 Modal -->
+    <NModal v-model:show="showPresetModal" preset="card" title="保存挂载组合预设" style="width: 480px; background: #18181b;">
+      <NForm label-placement="top">
+        <NFormItem label="预设名称"><NInput v-model:value="presetForm.name" placeholder="例如：跑团常用、日常聊天" /></NFormItem>
+        <NFormItem label="描述（可选）"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showPresetModal = false">取消</NButton><NButton type="primary" @click="confirmSavePreset">保存</NButton></NSpace></template>
     </NModal>
   </div>
 </template>
@@ -483,5 +647,14 @@ onMounted(() => {
 .help-icon:hover {
   background: #52525b;
   color: #e4e4e7;
+}
+.preset-delete {
+  color: #71717a;
+  font-size: 11px;
+  margin-left: 4px;
+  cursor: pointer;
+}
+.preset-delete:hover {
+  color: #ef4444;
 }
 </style>

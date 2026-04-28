@@ -52,6 +52,8 @@ const isNewSession = ref(false)
 const presets = ref<any[]>([])
 const showPresetModal = ref(false)
 const presetForm = ref({ name: '', description: '' })
+const showCopyModal = ref(false)
+const copyForm = ref({ target_conversation_id: '', copy_mounts: true })
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? '（内置）' : ''}`, value: item.template_id })))
 const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
@@ -259,6 +261,48 @@ async function clearState() {
     if (data.status !== 'ok') throw new Error(data.message || '清空失败')
     message.success(`已清空 ${data.cleared || 0} 个状态项`)
     fetchAll()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
+async function resetState() {
+  if (!ensureConversationId()) return
+  try {
+    const resp = await apiFetch(`/admin/conversations/${conversationId.value}/state/reset`, {
+      method: 'POST',
+      headers: authHeaders(true),
+    })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || '重置失败')
+    message.success(`已重置状态板（清空 ${data.cleared || 0} 项，保留模板绑定）`)
+    fetchAll()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
+function openCopyModal() {
+  copyForm.value = { target_conversation_id: '', copy_mounts: true }
+  showCopyModal.value = true
+}
+
+async function confirmCopy() {
+  if (!ensureConversationId()) return
+  if (!copyForm.value.target_conversation_id.trim()) {
+    message.warning('请输入目标 conversation_id')
+    return
+  }
+  try {
+    const resp = await apiFetch(`/admin/conversations/${conversationId.value}/state/copy`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify(copyForm.value),
+    })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || '复制失败')
+    showCopyModal.value = false
+    message.success(`已复制 ${data.copied_items || 0} 个状态项${data.copied_mounts ? ` 和 ${data.copied_mounts} 个挂载配置` : ''}`)
   } catch (e: any) {
     message.error(e.message || String(e))
   }
@@ -522,6 +566,11 @@ onMounted(() => {
         </NSpace>
         <NSpace>
           <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">保存配置</NButton>
+          <NButton @click="openCopyModal" :disabled="!stateItemCount">复制到新会话</NButton>
+          <NPopconfirm @positive-click="resetState">
+            <template #trigger><NButton :disabled="!stateItemCount">重置为空</NButton></template>
+            确认重置状态板？将清空所有状态项但保留模板绑定。
+          </NPopconfirm>
           <NPopconfirm @positive-click="clearState">
             <template #trigger><NButton :disabled="!stateItemCount">清空状态板</NButton></template>
             确认清空当前会话的所有状态项？
@@ -612,6 +661,15 @@ onMounted(() => {
         <NFormItem label="描述（可选）"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showPresetModal = false">取消</NButton><NButton type="primary" @click="confirmSavePreset">保存</NButton></NSpace></template>
+    </NModal>
+
+    <!-- 复制到新会话 Modal -->
+    <NModal v-model:show="showCopyModal" preset="card" title="复制状态板到新会话" style="width: 480px; background: #18181b;">
+      <NForm label-placement="top">
+        <NFormItem label="目标 conversation_id"><NInput v-model:value="copyForm.target_conversation_id" placeholder="输入新会话 ID" /></NFormItem>
+        <NFormItem label="同时复制记忆挂载配置"><NSwitch v-model:value="copyForm.copy_mounts" /></NFormItem>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showCopyModal = false">取消</NButton><NButton type="primary" @click="confirmCopy">复制</NButton></NSpace></template>
     </NModal>
   </div>
 </template>

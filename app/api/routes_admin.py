@@ -1167,6 +1167,45 @@ async def clear_conversation_state(conversation_id: str, request: Request):
     return {"status": "ok", "cleared": cleared}
 
 
+@router.post("/admin/conversations/{conversation_id}/state/copy")
+async def copy_conversation_state(conversation_id: str, request: Request, data: dict = Body(...)):
+    """Copy state items and optionally mounts to a target conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import copy_conversation_mounts
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    target_id = data.get("target_conversation_id")
+    if not target_id:
+        raise HTTPException(status_code=400, detail="target_conversation_id is required")
+    if target_id == conversation_id:
+        raise HTTPException(status_code=400, detail="target_conversation_id must differ from source")
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+
+    store = SQLiteStateStore(db_path)
+    copied_items = await store.copy_state_items(conversation_id, target_id)
+
+    copied_mounts = 0
+    if data.get("copy_mounts", True):
+        copied_mounts = await copy_conversation_mounts(db_path, conversation_id, target_id)
+
+    return {"status": "ok", "copied_items": copied_items, "copied_mounts": copied_mounts}
+
+
+@router.post("/admin/conversations/{conversation_id}/state/reset")
+async def reset_conversation_state(conversation_id: str, request: Request):
+    """Clear state items but keep the template binding."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    cleared = await store.reset_to_template_empty(conversation_id)
+    return {"status": "ok", "cleared": cleared}
+
+
 # --- Memory Mount Presets API ---
 
 @router.get("/admin/memory-mount-presets")

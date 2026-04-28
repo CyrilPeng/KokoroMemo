@@ -739,6 +739,46 @@ async def get_inbox_item(db_path: str, inbox_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+# --- copy mounts ---
+
+async def copy_conversation_mounts(db_path: str, source_conversation_id: str, target_conversation_id: str) -> int:
+    """Copy memory mount configuration from one conversation to another. Returns count copied."""
+    await init_cards_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT * FROM conversation_memory_mounts
+               WHERE conversation_id = ? AND status = 'active'
+               ORDER BY sort_order ASC""",
+            (source_conversation_id,),
+        )
+        rows = await cursor.fetchall()
+        if not rows:
+            return 0
+        # Clear existing mounts for target
+        await db.execute(
+            "UPDATE conversation_memory_mounts SET status = 'deleted', updated_at = datetime('now', 'localtime') WHERE conversation_id = ?",
+            (target_conversation_id,),
+        )
+        for row in rows:
+            await db.execute(
+                """INSERT INTO conversation_memory_mounts
+                   (mount_id, conversation_id, library_id, user_id, character_id, is_write_target, sort_order, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+                   ON CONFLICT(conversation_id, library_id) WHERE status = 'active' DO UPDATE SET
+                    is_write_target = excluded.is_write_target,
+                    sort_order = excluded.sort_order,
+                    status = 'active',
+                    updated_at = datetime('now', 'localtime')""",
+                (
+                    generate_id("mount_"), target_conversation_id, row["library_id"],
+                    row["user_id"], row["character_id"], row["is_write_target"], row["sort_order"],
+                ),
+            )
+        await db.commit()
+    return len(rows)
+
+
 # --- memory_mount_presets ---
 
 async def list_mount_presets(db_path: str, include_deleted: bool = False) -> list[dict]:

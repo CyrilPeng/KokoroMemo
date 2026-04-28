@@ -843,6 +843,103 @@ class SQLiteStateStore:
             await db.commit()
         return cleared
 
+    async def copy_state_items(self, source_conversation_id: str, target_conversation_id: str) -> int:
+        """Copy all active state items from one conversation to another. Returns count copied."""
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """SELECT * FROM conversation_state_items
+                   WHERE conversation_id = ? AND status = 'active'""",
+                (source_conversation_id,),
+            )
+            rows = await cursor.fetchall()
+            if not rows:
+                return 0
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """SELECT * FROM conversation_state_items
+                   WHERE conversation_id = ? AND status = 'active'""",
+                (source_conversation_id,),
+            )
+            rows = await cursor.fetchall()
+            count = 0
+            for row in rows:
+                new_item_id = generate_id("state_")
+                await db.execute(
+                    """INSERT INTO conversation_state_items
+                       (item_id, user_id, character_id, conversation_id, world_id, template_id, tab_id,
+                        field_id, field_key, category, item_key, title, content, item_value, status,
+                        priority, user_locked, confidence, source, source_turn_id,
+                        source_turn_ids_json, source_message_ids_json, linked_card_ids_json,
+                        linked_summary_ids_json, ttl_turns, metadata_json, created_by,
+                        last_seen_at, expires_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), ?)""",
+                    (
+                        new_item_id,
+                        row["user_id"],
+                        row["character_id"],
+                        target_conversation_id,
+                        row["world_id"],
+                        row["template_id"],
+                        row["tab_id"],
+                        row["field_id"],
+                        row["field_key"],
+                        row["category"],
+                        row["item_key"],
+                        row["title"],
+                        row["content"],
+                        row["item_value"] or row["content"],
+                        "active",
+                        row["priority"],
+                        row["user_locked"],
+                        row["confidence"],
+                        "copied",
+                        row["source_turn_id"],
+                        row["source_turn_ids_json"],
+                        row["source_message_ids_json"],
+                        row["linked_card_ids_json"],
+                        row["linked_summary_ids_json"],
+                        row["ttl_turns"],
+                        row["metadata_json"],
+                        row["created_by"],
+                        row["expires_at"],
+                    ),
+                )
+                count += 1
+
+            # Copy the template binding
+            template_cursor = await db.execute(
+                "SELECT template_id FROM conversation_state_boards WHERE conversation_id = ?",
+                (source_conversation_id,),
+            )
+            template_row = await template_cursor.fetchone()
+            if template_row:
+                await db.execute(
+                    """INSERT INTO conversation_state_boards (conversation_id, template_id)
+                       VALUES (?, ?)
+                       ON CONFLICT(conversation_id) DO UPDATE SET
+                        template_id = excluded.template_id,
+                        updated_at = datetime('now', 'localtime')""",
+                    (target_conversation_id, template_row[0]),
+                )
+
+            await db.execute(
+                """INSERT INTO conversation_state_events
+                   (event_id, conversation_id, item_id, event_type, payload_json)
+                   VALUES (?, ?, NULL, 'batch_copy', ?)""",
+                (
+                    generate_id("state_evt_"),
+                    target_conversation_id,
+                    json.dumps({"source": source_conversation_id, "copied_count": count}, ensure_ascii=False),
+                ),
+            )
+            await db.commit()
+        return count
+
+    async def reset_to_template_empty(self, conversation_id: str) -> int:
+        """Clear all state items but keep the template binding. Returns count cleared."""
+        return await self.clear_conversation_state_items(conversation_id)
+
     async def mark_items_injected(self, item_ids: list[str]) -> None:
         if not item_ids:
             return

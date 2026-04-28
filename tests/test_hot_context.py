@@ -161,6 +161,42 @@ async def test_state_store_upsert_list_resolve_and_decision():
         cleanup_test_dir(test_dir)
 
 
+@pytest.mark.asyncio
+async def test_state_store_upsert_same_key():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        store = SQLiteStateStore(str(memory_db))
+        await store.upsert_item(
+            ConversationStateItem(
+                item_id=None,
+                conversation_id="conv1",
+                user_id="u1",
+                category="scene",
+                item_key="current_scene",
+                content="在图书馆",
+                confidence=0.8,
+            )
+        )
+        await store.upsert_item(
+            ConversationStateItem(
+                item_id=None,
+                conversation_id="conv1",
+                user_id="u1",
+                category="scene",
+                item_key="current_scene",
+                content="前往车站",
+                confidence=0.9,
+            )
+        )
+        items = await store.list_active_items("conv1")
+        assert len(items) == 1
+        assert items[0].content == "前往车站"
+        assert items[0].confidence == 0.9
+    finally:
+        cleanup_test_dir(test_dir)
+
+
 def test_state_renderer_empty_returns_empty():
     assert render_state_board([], StateRenderOptions()) == ""
 
@@ -181,6 +217,23 @@ def test_state_renderer_respects_order_and_budget():
     )
     assert rendered.startswith(HOT_CONTEXT_HEADER)
     assert rendered.index("稳定边界") < rendered.index("当前场景")
+
+
+def test_state_renderer_budget_limit():
+    items = [
+        ConversationStateItem(None, "conv1", "scene", f"场景描述{i}" * 10, confidence=0.8)
+        for i in range(15)
+    ]
+    rendered = render_state_board(
+        items,
+        StateRenderOptions(
+            max_chars=200,
+            section_order=["scene"],
+            include_sections={"scene": True},
+            max_items_per_section={"scene": 15},
+        ),
+    )
+    assert len(rendered) <= 200
 
 
 @pytest.mark.asyncio
@@ -371,6 +424,21 @@ def test_retrieval_gate_low_confidence_triggers():
     )
     assert decision.should_retrieve is True
     assert decision.reason == "low_state_confidence"
+
+
+def test_retrieval_gate_new_session():
+    decision = decide_retrieval(
+        RetrievalGateInput(
+            query=make_query("你好啊今天天气不错"),
+            state_items=[],
+            turn_index=0,
+            vector_search_on_new_session=True,
+            trigger_keywords=[],
+            skip_when_latest_user_text_chars_below=4,
+        )
+    )
+    assert decision.should_retrieve is True
+    assert "new_session" in decision.reason
 
 
 def test_state_updater_rule_location_and_promise():

@@ -30,11 +30,14 @@
 ```text
 接收聊天请求
 → 保存完整对话
-→ 检索本地长期记忆
-→ 将相关记忆注入上下文
+→ 读取并渲染会话状态板 (Hot Context)
+→ Retrieval Gate 判断是否需要长期召回
+→ 按需检索本地长期记忆 (LanceDB / 图扩展 / Rerank)
+→ 注入状态板 + 相关记忆到上下文
 → 转发给真实聊天模型
 → 流式返回回复
-→ 提炼候选记忆
+→ 后台维护会话状态板 (State Updater)
+→ 后台提炼候选记忆 (Memory Extractor)
 → 等待审核或自动入库
 ```
 
@@ -64,7 +67,47 @@ KokoroMemo 采用分层记忆策略，避免每一轮都昂贵地搜索长期向
 冷记忆 Semantic Index：LanceDB 语义索引，仅在需要具体历史细节时由 Retrieval Gate 按需调用。
 ```
 
-请求流程会先注入 `【KokoroMemo 会话状态板】`，再由 Retrieval Gate 判断是否需要执行长期召回。普通短句和当前剧情推进可以只依赖状态板；当用户提到“还记得 / 上次 / 之前 / 约定”等历史触发词，或状态板置信度不足时，再调用 LanceDB、图扩展和可选 Rerank。
+请求流程会先注入 `【KokoroMemo 会话状态板】`，再由 Retrieval Gate 判断是否需要执行长期召回。普通短句和当前剧情推进可以只依赖状态板；当用户提到”还记得 / 上次 / 之前 / 约定”等历史触发词，或状态板置信度不足时，再调用 LanceDB、图扩展和可选 Rerank。
+
+### 会话状态板 (Hot State Board)
+
+会话状态板负责维护”当前正在发生什么”，默认每轮注入上下文。它使用**模板系统**组织字段：
+
+```text
+模板 (Template) → 标签页 (Tab) → 字段 (Field)
+```
+
+内置两个模板：
+- **通用角色扮演** (`tpl_roleplay_general`)：3 个标签页（互动方式 / 约束边界 / 当前场景），13 个字段
+- **跑团/剧情推进** (`tpl_trpg_story`)：3 个标签页（角色 / 任务 / 世界），12 个字段
+
+状态板支持 14 种类别：`scene`（场景）、`key_person`（关键人物）、`main_quest`（主线任务）、`side_quest`（支线任务）、`promise`（承诺）、`open_loop`（伏笔）、`relationship`（关系）、`boundary`（边界）、`preference`（偏好）、`location`（地点）、`item`（物品）、`world_state`（世界状态）、`recent_summary`（近期摘要）、`mood`（情绪）。
+
+关键特性：
+- **字段级锁定**：用户可锁定特定字段，防止 AI 自动覆盖
+- **置信度过滤**：低于阈值（默认 0.55）的更新会被跳过
+- **过期机制**：支持 `expires_at` 自动过期临时状态
+- **卡片投影**：approved 的 boundary / preference 长期记忆卡片可投影为状态项
+- **后台维护**：State Updater 在每轮对话后自动维护状态（支持规则提取和 LLM 模板填充两种模式）
+
+### Retrieval Gate 按需召回门控
+
+Retrieval Gate 决定当前请求是否需要调用昂贵的长期记忆检索（Embedding → LanceDB → 图扩展 → Rerank）。
+
+三种模式：
+- `auto`（默认）：根据规则自动判断
+- `always`：每轮都调用长期召回，兼容旧行为
+- `never`：不调用长期召回，只依赖状态板
+
+`auto` 模式的触发条件：
+- **新会话首次请求**：需要加载角色长期背景
+- **关键词匹配**：用户提到”记得””上次””约定”等历史触发词
+- **周期刷新**：每 N 轮（默认 6 轮）进行一次轻量刷新
+- **低置信度**：状态板平均置信度低于阈值（默认 0.65）
+
+`auto` 模式的跳过条件：
+- 用户发言过短（少于 4 个字符）
+- 状态板已包含足够上下文
 
 ---
 
@@ -1052,6 +1095,50 @@ permissive_auto：尽量自动通过，但仍保留撤回能力
 #### `memory.retrieval`
 
 控制召回路径、召回数量和注入预算。
+
+#### `memory.hot_context`
+
+控制会话状态板的行为。
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `enabled` | 是否启用状态板 | `true` |
+| `inject_always` | 是否每轮注入 | `true` |
+| `max_chars` | 注入文本最大字符数 | `1200` |
+| `section_order` | 各类别注入顺序 | 边界 → 场景 → 人物 → 关系 → 任务 → ... |
+| `max_items_per_section` | 每个类别最多注入条目数 | 各类别不同 |
+
+#### `memory.state_updater`
+
+控制后台状态维护的行为。
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `enabled` | 是否启用状态维护 | `true` |
+| `mode` | 更新模式 | `model_template` |
+| `update_after_each_turn` | 每轮后是否更新 | `true` |
+| `update_every_n_turns` | 每 N 轮更新一次 | `1` |
+| `min_confidence` | 最低置信度过滤 | `0.55` |
+| `model` | 用于状态填充的 LLM 模型 | 继承 `llm.model` |
+
+模式说明：
+- `model_template`：使用 LLM 按模板字段填充状态（默认，推荐）
+- `rule_only`：仅使用正则规则提取场景/任务/承诺/边界等
+
+#### `memory.retrieval_gate`
+
+控制按需召回门控的行为。
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `enabled` | 是否启用门控 | `true` |
+| `mode` | 门控模式 | `auto` |
+| `vector_search_on_new_session` | 新会话首次请求是否召回 | `true` |
+| `vector_search_every_n_turns` | 每 N 轮强制召回 | `6` |
+| `vector_search_when_state_confidence_below` | 置信度低于此值时召回 | `0.65` |
+| `trigger_keywords` | 触发长期召回的关键词列表 | 见 config.example.yaml |
+| `skip_when_latest_user_text_chars_below` | 跳过召回的最短文本长度 | `4` |
+| `skip_when_state_is_sufficient` | 状态充分时跳过召回 | `true` |
 
 #### `storage`
 

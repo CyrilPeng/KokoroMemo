@@ -46,7 +46,7 @@ const showEditModal = ref(false)
 const showTemplateModal = ref(false)
 const showFillModal = ref(false)
 const editingItem = ref<any | null>(null)
-const editForm = ref({ field_id: '', item_value: '', priority: 70, confidence: 0.8, user_locked: false })
+const editForm = ref({ field_id: '', item_value: '', priority: 70, confidence: 0.8, user_locked: false, linked_card_ids: '' })
 const templateJson = ref('')
 const fillForm = ref({ user_message: '', assistant_message: '' })
 const configLoaded = ref(false)
@@ -189,7 +189,7 @@ async function changeTemplate() {
 
 function openCreateModal(field?: any) {
   editingItem.value = null
-  editForm.value = { field_id: field?.field_id || '', item_value: '', priority: 70, confidence: 0.8, user_locked: false }
+  editForm.value = { field_id: field?.field_id || '', item_value: '', priority: 70, confidence: 0.8, user_locked: false, linked_card_ids: '' }
   showEditModal.value = true
 }
 
@@ -201,6 +201,7 @@ function openEditModal(row: any, field?: any) {
     priority: row.priority ?? 70,
     confidence: row.confidence ?? 0.8,
     user_locked: !!row.user_locked,
+    linked_card_ids: (row.linked_card_ids || []).join(', '),
   }
   showEditModal.value = true
 }
@@ -220,6 +221,9 @@ async function saveItem() {
     priority: editForm.value.priority,
     confidence: editForm.value.confidence,
     user_locked: editForm.value.user_locked,
+    linked_card_ids: editForm.value.linked_card_ids
+      ? editForm.value.linked_card_ids.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : [],
   })
   const url = editingItem.value ? `/admin/state/${editingItem.value.item_id}` : `/admin/conversations/${conversationId.value}/state`
   const method = editingItem.value ? 'PATCH' : 'POST'
@@ -613,6 +617,8 @@ const boardColumns = [
   { title: t('state.column.field'), key: 'label', width: 160, render: (row: any) => h('div', [h('div', row.field.label), h('div', { class: 'km-muted' }, row.field.field_key)]) },
   { title: t('state.column.value'), key: 'value', ellipsis: { tooltip: true }, render: (row: any) => row.item?.item_value || row.item?.content || row.field.default_value || '—' },
   { title: t('state.column.confidence'), key: 'confidence', width: 90, render: (row: any) => row.item ? Number(row.item.confidence).toFixed(2) : '—' },
+  { title: t('state.column.priority'), key: 'priority', width: 80, render: (row: any) => row.item?.priority ?? '—' },
+  { title: t('state.column.linkedCards'), key: 'linked_cards', width: 120, render: (row: any) => row.item?.linked_card_ids?.length ? h(NTag, { size: 'small', type: 'info' }, { default: () => `${row.item.linked_card_ids.length}` }) : '—' },
   { title: t('state.column.source'), key: 'source', width: 120, render: (row: any) => row.item?.source || '—' },
   { title: t('state.column.updatedAt'), key: 'updated_at', width: 170, render: (row: any) => row.item?.updated_at || '—' },
   { title: t('state.column.locked'), key: 'locked', width: 80, render: (row: any) => row.item?.user_locked ? h(NTag, { size: 'small', type: 'warning' }, { default: () => t('state.column.locked') }) : '—' },
@@ -623,6 +629,8 @@ const legacyColumns = [
   { title: t('state.column.category'), key: 'category', width: 110 },
   { title: t('state.column.key'), key: 'item_key', width: 160 },
   { title: t('state.column.content'), key: 'item_value', ellipsis: { tooltip: true } },
+  { title: t('state.column.priority'), key: 'priority', width: 80 },
+  { title: t('state.column.status'), key: 'status', width: 90, render: (row: any) => h(NTag, { size: 'small', type: row.status === 'active' ? 'success' : row.status === 'resolved' ? 'warning' : 'default' }, { default: () => row.status }) },
   { title: t('state.column.source'), key: 'source', width: 120 },
   { title: t('state.column.actions'), key: 'actions', width: 180, render: (row: any) => [hButton(t('state.actions.edit'), () => openEditModal(row)), hButton(t('state.actions.done'), () => resolveItem(row)), hButton(t('state.actions.delete'), () => deleteItem(row))] },
 ]
@@ -632,7 +640,11 @@ const decisionColumns = [
   { title: t('state.column.mode'), key: 'mode', width: 90 },
   { title: t('state.column.retrieve'), key: 'should_retrieve', width: 80, render: (row: any) => row.should_retrieve ? t('common.yes') : t('common.no') },
   { title: t('state.column.reason'), key: 'reason', ellipsis: { tooltip: true } },
-  { title: t('state.column.latestInput'), key: 'latest_user_text', ellipsis: { tooltip: true } },
+  { title: t('state.column.latestInput'), key: 'latest_user_text', width: 120, ellipsis: { tooltip: true } },
+  { title: t('state.column.requestId'), key: 'request_id', width: 160, ellipsis: { tooltip: true } },
+  { title: t('state.column.triggeredRoutes'), key: 'triggered_routes_json', width: 140, ellipsis: { tooltip: true } },
+  { title: t('state.column.skippedRoutes'), key: 'skipped_routes_json', width: 140, ellipsis: { tooltip: true } },
+  { title: t('state.column.stateConfidence'), key: 'state_confidence', width: 110, render: (row: any) => row.state_confidence != null ? Number(row.state_confidence).toFixed(2) : '—' },
 ]
 
 const eventColumns = [
@@ -819,6 +831,7 @@ onMounted(() => {
           <NGridItem><NFormItem :label="$t('state.confidence')"><NInputNumber v-model:value="editForm.confidence" :min="0" :max="1" :step="0.05" style="width: 100%;" /></NFormItem></NGridItem>
           <NGridItem><NFormItem :label="$t('state.locked')"><NSwitch v-model:value="editForm.user_locked" /></NFormItem></NGridItem>
         </NGrid>
+        <NFormItem :label="$t('state.actions.linkCards')"><NInput v-model:value="editForm.linked_card_ids" placeholder="card_id1, card_id2" /></NFormItem>
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showEditModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="saveItem">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>

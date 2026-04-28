@@ -843,6 +843,32 @@ class SQLiteStateStore:
             await db.commit()
         return cleared
 
+    async def expire_old_items(self, conversation_id: str) -> int:
+        """Proactively expire items whose expires_at has passed. Returns count expired."""
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """UPDATE conversation_state_items
+                   SET status = 'expired', updated_at = datetime('now', 'localtime')
+                   WHERE conversation_id = ? AND status = 'active'
+                     AND expires_at IS NOT NULL AND expires_at < datetime('now', 'localtime')""",
+                (conversation_id,),
+            )
+            expired = cursor.rowcount
+            if expired > 0:
+                await db.execute(
+                    """INSERT INTO conversation_state_events
+                       (event_id, conversation_id, item_id, event_type, payload_json)
+                       VALUES (?, ?, NULL, 'batch_expire', ?)""",
+                    (
+                        generate_id("state_evt_"),
+                        conversation_id,
+                        json.dumps({"expired_count": expired}, ensure_ascii=False),
+                    ),
+                )
+            await db.commit()
+        return expired
+
     async def copy_state_items(self, source_conversation_id: str, target_conversation_id: str) -> int:
         """Copy all active state items from one conversation to another. Returns count copied."""
         await self.init_schema()

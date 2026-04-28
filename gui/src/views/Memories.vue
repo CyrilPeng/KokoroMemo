@@ -225,6 +225,54 @@ function handleFilterChange() {
   fetchMemories()
 }
 
+async function exportLibrary() {
+  if (!selectedLibraryId.value) return
+  try {
+    const resp = await apiFetch(`/admin/memory-libraries/${selectedLibraryId.value}/export`)
+    const data = await resp.json()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `library_${selectedLibraryId.value}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success('记忆库已导出')
+  } catch (e: any) {
+    message.error(e.message || '导出失败')
+  }
+}
+
+function triggerImportLibrary() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const resp = await apiFetch('/admin/memory-libraries/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const result = await resp.json()
+      if (result.status === 'ok') {
+        selectedLibraryId.value = result.library_id
+        message.success(`已导入记忆库（${result.imported_cards || 0} 条记忆）`)
+        fetchMemories()
+      } else {
+        message.error(result.message || '导入失败')
+      }
+    } catch (e: any) {
+      message.error(`导入失败：${e.message || e}`)
+    }
+  }
+  input.click()
+}
+
 onMounted(fetchMemories)
 </script>
 
@@ -248,6 +296,8 @@ onMounted(fetchMemories)
           <NButton size="small" :disabled="!selectedLibraryId" @click="openEditLibrary">编辑记忆库</NButton>
           <NButton size="small" :disabled="!selectedLibraryId" @click="openPresetModal">另存为预设</NButton>
           <NPopconfirm @positive-click="deleteLibrary"><template #trigger><NButton size="small" type="error" quaternary :disabled="!selectedLibraryId">删除记忆库</NButton></template>确认删除当前自定义记忆库？默认记忆库不可删除。</NPopconfirm>
+          <NButton size="small" :disabled="!selectedLibraryId" @click="exportLibrary">导出</NButton>
+          <NButton size="small" @click="triggerImportLibrary">导入</NButton>
           <NButton size="small" @click="fetchMemories" quaternary style="color: #71717a;">刷新</NButton>
         </NSpace>
       </NSpace>

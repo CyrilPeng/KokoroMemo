@@ -404,6 +404,104 @@ async function deletePreset(presetId: string) {
   }
 }
 
+async function exportTemplate() {
+  if (!selectedTemplateId.value) return
+  try {
+    const resp = await apiFetch(`/admin/state/templates/${selectedTemplateId.value}/export`, { headers: authHeaders() })
+    const data = await resp.json()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `template_${selectedTemplateId.value}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success('模板已导出')
+  } catch (e: any) {
+    message.error(e.message || '导出失败')
+  }
+}
+
+function triggerImportTemplate() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const resp = await apiFetch('/admin/state/templates/import', {
+        method: 'POST',
+        headers: { ...authHeaders(true) },
+        body: JSON.stringify(data),
+      })
+      const result = await resp.json()
+      if (result.status === 'ok') {
+        selectedTemplateId.value = result.template_id
+        message.success('模板已导入')
+        await fetchTemplates()
+      } else {
+        message.error(result.message || '导入失败')
+      }
+    } catch (e: any) {
+      message.error(`导入失败：${e.message || e}`)
+    }
+  }
+  input.click()
+}
+
+function triggerImportPreset() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const resp = await apiFetch('/admin/memory-mount-presets/import', {
+        method: 'POST',
+        headers: { ...authHeaders(true) },
+        body: JSON.stringify(data),
+      })
+      const result = await resp.json()
+      if (result.status === 'ok') {
+        message.success('挂载预设已导入')
+        await fetchPresets()
+      } else {
+        message.error(result.message || '导入失败')
+      }
+    } catch (e: any) {
+      message.error(`导入失败：${e.message || e}`)
+    }
+  }
+  input.click()
+}
+
+async function exportAllPresets() {
+  try {
+    const exported: any[] = []
+    for (const preset of presets.value) {
+      const resp = await apiFetch(`/admin/memory-mount-presets/${preset.preset_id}/export`, { headers: authHeaders() })
+      const data = await resp.json()
+      exported.push(data)
+    }
+    const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'mount_presets.json'
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success(`已导出 ${exported.length} 个预设`)
+  } catch (e: any) {
+    message.error(e.message || '导出失败')
+  }
+}
+
 function findField(fieldId: string) {
   for (const tab of currentTemplate.value?.tabs || []) {
     const field = (tab.fields || []).find((item: any) => item.field_id === fieldId)
@@ -510,6 +608,8 @@ onMounted(() => {
               <NSelect v-model:value="selectedTemplateId" :options="templateOptions" placeholder="选择模板" style="width: 260px;" />
               <NButton @click="changeTemplate" :disabled="!configLoaded">切换</NButton>
               <NButton @click="openTemplateModal">新建</NButton>
+              <NButton @click="exportTemplate" :disabled="!selectedTemplateId">导出</NButton>
+              <NButton @click="triggerImportTemplate">导入</NButton>
             </NSpace>
           </NFormItem>
         </NGridItem>
@@ -545,6 +645,8 @@ onMounted(() => {
                 </template>
               </NButton>
               <NButton size="small" dashed @click="saveAsPreset" :disabled="!mountedLibraryIds.length">保存当前为预设</NButton>
+              <NButton size="small" dashed @click="triggerImportPreset">导入预设</NButton>
+              <NButton size="small" dashed @click="exportAllPresets" :disabled="!presets.length">导出全部预设</NButton>
             </NSpace>
           </NFormItem>
         </NGridItem>

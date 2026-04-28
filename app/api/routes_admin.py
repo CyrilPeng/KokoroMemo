@@ -1263,3 +1263,164 @@ async def delete_memory_mount_preset_api(preset_id: str):
     cfg = get_config()
     ok = await delete_mount_preset(cfg.storage.sqlite.memory_db, preset_id)
     return {"status": "ok" if ok else "error", "message": None if ok else "预设不存在"}
+
+
+# --- Import / Export API ---
+
+@router.get("/admin/memory-libraries/{library_id}/export")
+async def export_memory_library(library_id: str):
+    """Export a memory library with all its cards as JSON."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import init_cards_db
+    import aiosqlite
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    await init_cards_db(db_path)
+
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        lib_cursor = await db.execute(
+            "SELECT * FROM memory_libraries WHERE library_id = ?", (library_id,)
+        )
+        lib_row = await lib_cursor.fetchone()
+        if not lib_row:
+            raise HTTPException(status_code=404, detail="记忆库不存在")
+
+        cards_cursor = await db.execute(
+            """SELECT * FROM memory_cards WHERE library_id = ? AND status != 'deleted'
+               ORDER BY created_at ASC""",
+            (library_id,),
+        )
+        cards = [dict(r) for r in await cards_cursor.fetchall()]
+
+    lib = dict(lib_row)
+    return {
+        "format": "kokoromemo_library_v1",
+        "library": {
+            "library_id": lib["library_id"],
+            "name": lib["name"],
+            "description": lib["description"],
+            "is_builtin": lib["is_builtin"],
+        },
+        "cards": cards,
+    }
+
+
+@router.post("/admin/memory-libraries/import")
+async def import_memory_library(data: dict = Body(...)):
+    """Import a memory library from exported JSON."""
+    from app.core.ids import generate_id
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import create_memory_library, insert_card, insert_card_version
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+
+    library_data = data.get("library", {})
+    new_library_id = await create_memory_library(
+        db_path,
+        name=library_data.get("name") or "导入的记忆库",
+        description=library_data.get("description", ""),
+    )
+
+    imported = 0
+    for card in data.get("cards", []):
+        card_id = generate_id("card_")
+        await insert_card(
+            db_path,
+            card_id=card_id,
+            library_id=new_library_id,
+            user_id=card.get("user_id", "default_user"),
+            character_id=card.get("character_id"),
+            conversation_id=card.get("conversation_id"),
+            scope=card.get("scope", "global"),
+            card_type=card.get("card_type", "preference"),
+            content=card.get("content", ""),
+            title=card.get("title"),
+            summary=card.get("summary"),
+            importance=float(card.get("importance", 0.5)),
+            confidence=float(card.get("confidence", 0.7)),
+            status=card.get("status", "approved"),
+            is_pinned=int(card.get("is_pinned", 0)),
+            evidence_text=card.get("evidence_text"),
+        )
+        imported += 1
+
+    return {"status": "ok", "library_id": new_library_id, "imported_cards": imported}
+
+
+@router.get("/admin/state/templates/{template_id}/export")
+async def export_state_template(template_id: str):
+    """Export a state board template with tabs and fields as JSON."""
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    template = await store.get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="模板不存在")
+
+    return {
+        "format": "kokoromemo_template_v1",
+        "template": _template_to_dict(template),
+    }
+
+
+@router.post("/admin/state/templates/import")
+async def import_state_template(data: dict = Body(...)):
+    """Import a state board template from exported JSON."""
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    template_data = data.get("template", data)
+    # Clear template_id so a new one is generated
+    template_data.pop("template_id", None)
+    template_data["is_builtin"] = False
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    template_id = await store.save_template(_template_from_payload(template_data))
+    return {"status": "ok", "template_id": template_id}
+
+
+@router.get("/admin/memory-mount-presets/{preset_id}/export")
+async def export_mount_preset(preset_id: str):
+    """Export a memory mount preset as JSON."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import get_mount_preset
+
+    cfg = get_config()
+    preset = await get_mount_preset(cfg.storage.sqlite.memory_db, preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail="预设不存在")
+
+    return {
+        "format": "kokoromemo_mount_preset_v1",
+        "preset": {
+            "name": preset["name"],
+            "description": preset["description"],
+            "library_ids_json": preset["library_ids_json"],
+            "write_library_id": preset["write_library_id"],
+        },
+    }
+
+
+@router.post("/admin/memory-mount-presets/import")
+async def import_mount_preset(data: dict = Body(...)):
+    """Import a memory mount preset from exported JSON."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import create_mount_preset
+    import json as json_mod
+
+    preset_data = data.get("preset", data)
+    library_ids = json_mod.loads(preset_data.get("library_ids_json", "[]"))
+
+    cfg = get_config()
+    preset_id = await create_mount_preset(
+        cfg.storage.sqlite.memory_db,
+        name=preset_data.get("name") or "导入的挂载组合",
+        library_ids=library_ids,
+        write_library_id=preset_data.get("write_library_id") or (library_ids[0] if library_ids else "lib_default"),
+        description=preset_data.get("description", ""),
+    )
+    return {"status": "ok", "preset_id": preset_id}

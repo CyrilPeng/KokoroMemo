@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, h, onMounted, ref } from 'vue'
 import {
   NButton,
   NCard,
@@ -14,9 +14,11 @@ import {
   NSelect,
   NSpace,
   NSpin,
-  NTag,
-  NTabs,
+  NSwitch,
   NTabPane,
+  NTabs,
+  NTag,
+  NTooltip,
   useMessage,
 } from 'naive-ui'
 import { apiFetch } from '../api'
@@ -28,36 +30,29 @@ const adminToken = ref('')
 const stateItems = ref<any[]>([])
 const decisions = ref<any[]>([])
 const events = ref<any[]>([])
+const templates = ref<any[]>([])
+const currentTemplate = ref<any | null>(null)
+const selectedTemplateId = ref('')
 const showEditModal = ref(false)
+const showTemplateModal = ref(false)
+const showFillModal = ref(false)
 const editingItem = ref<any | null>(null)
-const editForm = ref({ category: 'scene', item_key: '', item_value: '', priority: 50, confidence: 0.8 })
+const editForm = ref({ field_id: '', item_value: '', priority: 70, confidence: 0.8, user_locked: false })
+const templateJson = ref('')
+const fillForm = ref({ user_message: '', assistant_message: '' })
 
-const categoryOptions = [
-  { label: '当前场景', value: 'scene' },
-  { label: '关键人物', value: 'key_person' },
-  { label: '主线任务', value: 'main_quest' },
-  { label: '支线任务', value: 'side_quest' },
-  { label: '承诺与约定', value: 'promise' },
-  { label: '开放伏笔', value: 'open_loop' },
-  { label: '关系状态', value: 'relationship' },
-  { label: '稳定边界', value: 'boundary' },
-  { label: '偏好', value: 'preference' },
-  { label: '地点', value: 'location' },
-  { label: '物品', value: 'item' },
-  { label: '世界状态', value: 'world_state' },
-  { label: '近期摘要', value: 'recent_summary' },
-  { label: '情绪氛围', value: 'mood' },
-]
-
-const groupedItems = computed(() => {
-  const groups: Record<string, any[]> = {}
+const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? '（内置）' : ''}`, value: item.template_id })))
+const fieldOptions = computed(() => (currentTemplate.value?.tabs || []).flatMap((tab: any) =>
+  (tab.fields || []).map((field: any) => ({ label: `${tab.label} / ${field.label}`, value: field.field_id })),
+))
+const itemByField = computed(() => {
+  const data: Record<string, any> = {}
   for (const item of stateItems.value) {
-    const label = categoryOptions.find((c) => c.value === item.category)?.label || item.category
-    groups[label] = groups[label] || []
-    groups[label].push(item)
+    if (item.field_id && item.status === 'active') data[item.field_id] = item
   }
-  return groups
+  return data
 })
+const legacyItems = computed(() => stateItems.value.filter((item) => !item.field_id))
 
 function ensureConversationId() {
   if (!conversationId.value.trim()) {
@@ -67,48 +62,80 @@ function ensureConversationId() {
   return true
 }
 
+async function fetchTemplates() {
+  const resp = await apiFetch('/admin/state/templates', { headers: authHeaders() })
+  templates.value = (await resp.json()).items || []
+}
+
 async function fetchAll() {
   if (!ensureConversationId()) return
   loading.value = true
   try {
-    const [stateResp, decisionResp, eventResp] = await Promise.all([
-      apiFetch(`/admin/conversations/${conversationId.value}/state?limit=300`, { headers: authHeaders() }),
+    await fetchTemplates()
+    const [templateResp, stateResp, decisionResp, eventResp] = await Promise.all([
+      apiFetch(`/admin/conversations/${conversationId.value}/state/template`, { headers: authHeaders() }),
+      apiFetch(`/admin/conversations/${conversationId.value}/state?limit=500`, { headers: authHeaders() }),
       apiFetch(`/admin/conversations/${conversationId.value}/retrieval-decisions?limit=100`, { headers: authHeaders() }),
       apiFetch(`/admin/conversations/${conversationId.value}/state/events?limit=100`, { headers: authHeaders() }),
     ])
+    currentTemplate.value = await templateResp.json()
+    selectedTemplateId.value = currentTemplate.value?.template_id || ''
     stateItems.value = (await stateResp.json()).items || []
     decisions.value = (await decisionResp.json()).items || []
     events.value = (await eventResp.json()).items || []
+    saveLocalInputs()
   } catch (e: any) {
     message.error(`加载失败：${e.message || e}`)
   }
   loading.value = false
 }
 
-function openCreateModal() {
+async function changeTemplate() {
+  if (!ensureConversationId() || !selectedTemplateId.value) return
+  await apiFetch(`/admin/conversations/${conversationId.value}/state/template`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({ template_id: selectedTemplateId.value }),
+  })
+  message.success('状态板模板已切换')
+  fetchAll()
+}
+
+function openCreateModal(field?: any) {
   editingItem.value = null
-  editForm.value = { category: 'scene', item_key: '', item_value: '', priority: 50, confidence: 0.8 }
+  editForm.value = { field_id: field?.field_id || '', item_value: '', priority: 70, confidence: 0.8, user_locked: false }
   showEditModal.value = true
 }
 
-function openEditModal(row: any) {
+function openEditModal(row: any, field?: any) {
   editingItem.value = row
   editForm.value = {
-    category: row.category,
-    item_key: row.item_key,
-    item_value: row.item_value || row.content,
-    priority: row.priority,
-    confidence: row.confidence,
+    field_id: row.field_id || field?.field_id || '',
+    item_value: row.item_value || row.content || '',
+    priority: row.priority ?? 70,
+    confidence: row.confidence ?? 0.8,
+    user_locked: !!row.user_locked,
   }
   showEditModal.value = true
 }
 
 async function saveItem() {
   if (!ensureConversationId()) return
-  const body = JSON.stringify(editForm.value)
-  const url = editingItem.value
-    ? `/admin/state/${editingItem.value.item_id}`
-    : `/admin/conversations/${conversationId.value}/state`
+  const field = findField(editForm.value.field_id)
+  const body = JSON.stringify({
+    template_id: currentTemplate.value?.template_id,
+    tab_id: field?.tab_id,
+    field_id: field?.field_id,
+    field_key: field?.field_key,
+    category: categoryForField(field?.field_key),
+    item_key: field?.field_key,
+    title: field?.label,
+    item_value: editForm.value.item_value,
+    priority: editForm.value.priority,
+    confidence: editForm.value.confidence,
+    user_locked: editForm.value.user_locked,
+  })
+  const url = editingItem.value ? `/admin/state/${editingItem.value.item_id}` : `/admin/conversations/${conversationId.value}/state`
   const method = editingItem.value ? 'PATCH' : 'POST'
   try {
     const resp = await apiFetch(url, { method, headers: authHeaders(true), body })
@@ -123,11 +150,7 @@ async function saveItem() {
 }
 
 async function resolveItem(row: any) {
-  await apiFetch(`/admin/state/${row.item_id}/resolve`, {
-    method: 'POST',
-    headers: authHeaders(true),
-    body: JSON.stringify({ reason: 'GUI 标记完成' }),
-  })
+  await apiFetch(`/admin/state/${row.item_id}/resolve`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ reason: 'GUI 标记完成' }) })
   message.success('已标记完成')
   fetchAll()
 }
@@ -140,50 +163,71 @@ async function deleteItem(row: any) {
 
 async function rebuildFromCards() {
   if (!ensureConversationId()) return
-  const resp = await apiFetch(`/admin/conversations/${conversationId.value}/state/rebuild`, {
-    method: 'POST',
-    headers: authHeaders(true),
-    body: JSON.stringify({}),
-  })
+  const resp = await apiFetch(`/admin/conversations/${conversationId.value}/state/rebuild`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify({}) })
   const data = await resp.json()
-  message.success(`已投影 ${data.projected || 0} 条长期边界/偏好`)
+  message.success(`已投影 ${data.projected || 0} 条长期卡片`)
   fetchAll()
 }
 
-const stateColumns = [
-  { title: '类别', key: 'category', width: 110 },
-  { title: '键', key: 'item_key', width: 160 },
-  { title: '内容', key: 'item_value', ellipsis: { tooltip: true } },
-  { title: '状态', key: 'status', width: 90, render: (row: any) => row.status === 'active' ? '活跃' : row.status },
-  { title: '优先级', key: 'priority', width: 80 },
-  { title: '置信度', key: 'confidence', width: 90, render: (row: any) => Number(row.confidence).toFixed(2) },
-  { title: '更新时间', key: 'updated_at', width: 160 },
-  {
-    title: '操作', key: 'actions', width: 220,
-    render: (row: any) => [
-      hButton('编辑', () => openEditModal(row)),
-      hButton('完成', () => resolveItem(row)),
-      hButton('删除', () => deleteItem(row)),
+function openTemplateModal() {
+  templateJson.value = JSON.stringify({
+    name: '自定义状态板',
+    description: '按你的玩法自定义标签页和字段',
+    tabs: [
+      { tab_key: 'main', label: '主要状态', fields: [{ field_key: 'current_goal', label: '当前目标', description: 'AI 需要维护的当前目标', ai_writable: true, include_in_prompt: true }] },
     ],
-  },
-]
+  }, null, 2)
+  showTemplateModal.value = true
+}
 
-const decisionColumns = [
-  { title: '时间', key: 'created_at', width: 160 },
-  { title: '请求', key: 'request_id', width: 160 },
-  { title: '是否召回', key: 'should_retrieve', width: 90, render: (row: any) => row.should_retrieve ? '是' : '否' },
-  { title: '原因', key: 'reason', width: 160 },
-  { title: '用户输入', key: 'latest_user_text', ellipsis: { tooltip: true } },
-  { title: '状态置信度', key: 'avg_state_confidence', width: 110, render: (row: any) => row.avg_state_confidence == null ? '-' : Number(row.avg_state_confidence).toFixed(2) },
-]
+async function saveTemplate() {
+  try {
+    const payload = JSON.parse(templateJson.value)
+    const resp = await apiFetch('/admin/state/templates', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(payload) })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || '保存失败')
+    showTemplateModal.value = false
+    message.success('模板已保存')
+    await fetchTemplates()
+    selectedTemplateId.value = data.template_id
+  } catch (e: any) {
+    message.error(`模板保存失败：${e.message || e}`)
+  }
+}
 
-const eventColumns = [
-  { title: '时间', key: 'created_at', width: 160 },
-  { title: '事件', key: 'event_type', width: 160 },
-  { title: '条目', key: 'item_id', width: 180 },
-  { title: '旧值', key: 'old_value', ellipsis: { tooltip: true } },
-  { title: '新值', key: 'new_value', ellipsis: { tooltip: true } },
-]
+async function runStateFiller() {
+  if (!ensureConversationId()) return
+  const resp = await apiFetch(`/admin/conversations/${conversationId.value}/state/fill`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify(fillForm.value),
+  })
+  const data = await resp.json()
+  if (data.status !== 'ok') {
+    message.error(data.message || '填表失败')
+    return
+  }
+  showFillModal.value = false
+  message.success(`AI 填表完成：写入 ${data.applied || 0} 项，跳过 ${data.skipped || 0} 项`)
+  fetchAll()
+}
+
+function findField(fieldId: string) {
+  for (const tab of currentTemplate.value?.tabs || []) {
+    const field = (tab.fields || []).find((item: any) => item.field_id === fieldId)
+    if (field) return field
+  }
+  return null
+}
+
+function categoryForField(fieldKey?: string) {
+  const map: Record<string, string> = { user_addressing: 'preference', current_mood: 'mood', current_task: 'main_quest', stable_boundary: 'boundary', current_location: 'location', main_quest: 'main_quest', world_state: 'world_state' }
+  return map[fieldKey || ''] || 'scene'
+}
+
+function fieldRows(tab: any) {
+  return (tab.fields || []).map((field: any) => ({ field, item: itemByField.value[field.field_id] || null }))
+}
 
 function hButton(label: string, onClick: () => void) {
   return h('button', { class: 'km-link-button', onClick }, label)
@@ -201,12 +245,46 @@ function saveLocalInputs() {
   localStorage.setItem('kokoromemo.adminToken', adminToken.value)
 }
 
-import { h } from 'vue'
+const boardColumns = [
+  { title: '字段', key: 'label', width: 160, render: (row: any) => h('div', [h('div', row.field.label), h('div', { class: 'km-muted' }, row.field.field_key)]) },
+  { title: '当前值', key: 'value', ellipsis: { tooltip: true }, render: (row: any) => row.item?.item_value || row.item?.content || row.field.default_value || '—' },
+  { title: '置信度', key: 'confidence', width: 90, render: (row: any) => row.item ? Number(row.item.confidence).toFixed(2) : '—' },
+  { title: '来源', key: 'source', width: 120, render: (row: any) => row.item?.source || '—' },
+  { title: '更新时间', key: 'updated_at', width: 170, render: (row: any) => row.item?.updated_at || '—' },
+  { title: '锁定', key: 'locked', width: 80, render: (row: any) => row.item?.user_locked ? h(NTag, { size: 'small', type: 'warning' }, { default: () => '锁定' }) : '—' },
+  { title: '操作', key: 'actions', width: 180, render: (row: any) => row.item ? [hButton('编辑', () => openEditModal(row.item, row.field)), hButton('完成', () => resolveItem(row.item)), hButton('删除', () => deleteItem(row.item))] : hButton('填写', () => openCreateModal(row.field)) },
+]
+
+const legacyColumns = [
+  { title: '类别', key: 'category', width: 110 },
+  { title: '键', key: 'item_key', width: 160 },
+  { title: '内容', key: 'item_value', ellipsis: { tooltip: true } },
+  { title: '来源', key: 'source', width: 120 },
+  { title: '操作', key: 'actions', width: 180, render: (row: any) => [hButton('编辑', () => openEditModal(row)), hButton('完成', () => resolveItem(row)), hButton('删除', () => deleteItem(row))] },
+]
+
+const decisionColumns = [
+  { title: '时间', key: 'created_at', width: 170 },
+  { title: '模式', key: 'mode', width: 90 },
+  { title: '检索', key: 'should_retrieve', width: 80, render: (row: any) => row.should_retrieve ? '是' : '否' },
+  { title: '原因', key: 'reason', ellipsis: { tooltip: true } },
+  { title: '最新用户输入', key: 'latest_user_text', ellipsis: { tooltip: true } },
+]
+
+const eventColumns = [
+  { title: '时间', key: 'created_at', width: 170 },
+  { title: '事件', key: 'event_type', width: 160 },
+  { title: '条目', key: 'item_id', width: 180 },
+  { title: '旧值', key: 'old_value', ellipsis: { tooltip: true } },
+  { title: '新值', key: 'new_value', ellipsis: { tooltip: true } },
+]
+
 onMounted(() => {
   const saved = localStorage.getItem('kokoromemo.lastConversationId')
   const savedToken = localStorage.getItem('kokoromemo.adminToken')
   if (saved) conversationId.value = saved
   if (savedToken) adminToken.value = savedToken
+  fetchTemplates().catch(() => {})
 })
 </script>
 
@@ -214,59 +292,73 @@ onMounted(() => {
   <div>
     <div style="margin-bottom: 28px;">
       <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">会话状态板</h1>
-      <p style="color: #71717a; font-size: 14px;">查看当前剧情热状态，并调试 Retrieval Gate 决策。</p>
+      <p style="color: #71717a; font-size: 14px;">按模板维护多标签热状态，并调试 Retrieval Gate 决策。</p>
     </div>
 
     <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
-      <NSpace align="center">
-        <NInput v-model:value="conversationId" placeholder="conversation_id" style="width: 360px;" @blur="saveLocalInputs" />
-        <NInput v-model:value="adminToken" type="password" placeholder="ADMIN_TOKEN（未配置可留空）" style="width: 240px;" @blur="saveLocalInputs" />
+      <NSpace align="center" wrap>
+        <NInput v-model:value="conversationId" placeholder="conversation_id" style="width: 320px;" @blur="saveLocalInputs" />
+        <NInput v-model:value="adminToken" type="password" placeholder="ADMIN_TOKEN（未配置可留空）" style="width: 220px;" @blur="saveLocalInputs" />
+        <NSelect v-model:value="selectedTemplateId" :options="templateOptions" placeholder="状态板模板" style="width: 260px;" />
         <NButton type="primary" @click="fetchAll">加载</NButton>
-        <NButton @click="openCreateModal">新增状态项</NButton>
-        <NButton @click="rebuildFromCards">从长期卡片投影</NButton>
+        <NButton @click="changeTemplate">应用模板</NButton>
+        <NButton @click="openTemplateModal">新建模板</NButton>
+        <NButton @click="showFillModal = true">手动 AI 填表</NButton>
+        <NButton @click="rebuildFromCards">从长期记忆投影</NButton>
+        <NTooltip trigger="hover">
+          <template #trigger><span class="help-icon">?</span></template>
+          模板定义标签页和字段；AI 填表只会更新可写字段。锁定字段不会被 AI 覆盖。
+        </NTooltip>
       </NSpace>
     </NCard>
 
     <NSpin :show="loading">
       <NTabs type="line" animated>
         <NTabPane name="board" tab="状态板">
-          <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive style="margin-bottom: 16px;">
-            <NGridItem v-for="(items, label) in groupedItems" :key="label" span="2 m:1">
-              <NCard style="background: #18181b; border: 1px solid #27272a;">
+          <NTabs v-if="currentTemplate" type="card" animated>
+            <NTabPane v-for="tab in currentTemplate.tabs" :key="tab.tab_id" :name="tab.tab_id" :tab="tab.label">
+              <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 12px;">
                 <template #header>
-                  <NSpace align="center"><span>{{ label }}</span><NTag size="small">{{ items.length }}</NTag></NSpace>
+                  <NSpace align="center"><span>{{ tab.label }}</span><NTag size="small">{{ tab.fields?.length || 0 }} 字段</NTag></NSpace>
                 </template>
-                <div v-for="item in items" :key="item.item_id" style="padding: 8px 0; border-bottom: 1px solid #27272a;">
-                  <div style="color: #e4e4e7; font-size: 14px;">{{ item.item_value }}</div>
-                  <div style="color: #71717a; font-size: 12px; margin-top: 4px;">{{ item.item_key }} · P{{ item.priority }} · {{ Number(item.confidence).toFixed(2) }}</div>
-                </div>
+                <p style="color: #71717a; margin-top: 0;">{{ tab.description || '无描述' }}</p>
+                <NDataTable :columns="boardColumns" :data="fieldRows(tab)" :pagination="false" />
               </NCard>
-            </NGridItem>
-          </NGrid>
-          <NDataTable :columns="stateColumns" :data="stateItems" :pagination="{ pageSize: 12 }" />
+            </NTabPane>
+          </NTabs>
+          <NCard v-if="legacyItems.length" title="旧类别状态项" style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
+            <NDataTable :columns="legacyColumns" :data="legacyItems" :pagination="{ pageSize: 8 }" />
+          </NCard>
         </NTabPane>
-        <NTabPane name="gate" tab="Gate 调试">
-          <NDataTable :columns="decisionColumns" :data="decisions" :pagination="{ pageSize: 12 }" />
-        </NTabPane>
-        <NTabPane name="events" tab="变更事件">
-          <NDataTable :columns="eventColumns" :data="events" :pagination="{ pageSize: 12 }" />
-        </NTabPane>
+        <NTabPane name="gate" tab="Gate 调试"><NDataTable :columns="decisionColumns" :data="decisions" :pagination="{ pageSize: 12 }" /></NTabPane>
+        <NTabPane name="events" tab="变更事件"><NDataTable :columns="eventColumns" :data="events" :pagination="{ pageSize: 12 }" /></NTabPane>
       </NTabs>
     </NSpin>
 
-    <NModal v-model:show="showEditModal" preset="card" title="状态项" style="width: 560px; background: #18181b;">
+    <NModal v-model:show="showEditModal" preset="card" title="状态项" style="width: 620px; background: #18181b;">
       <NForm label-placement="top">
-        <NFormItem label="类别"><NSelect v-model:value="editForm.category" :options="categoryOptions" /></NFormItem>
-        <NFormItem label="键"><NInput v-model:value="editForm.item_key" placeholder="例如 current_location" /></NFormItem>
+        <NFormItem label="字段"><NSelect v-model:value="editForm.field_id" :options="fieldOptions" filterable /></NFormItem>
         <NFormItem label="内容"><NInput v-model:value="editForm.item_value" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
-        <NGrid :cols="2" :x-gap="12">
+        <NGrid :cols="3" :x-gap="12">
           <NGridItem><NFormItem label="优先级"><NInputNumber v-model:value="editForm.priority" :min="0" :max="100" style="width: 100%;" /></NFormItem></NGridItem>
           <NGridItem><NFormItem label="置信度"><NInputNumber v-model:value="editForm.confidence" :min="0" :max="1" :step="0.05" style="width: 100%;" /></NFormItem></NGridItem>
+          <NGridItem><NFormItem label="锁定"><NSwitch v-model:value="editForm.user_locked" /></NFormItem></NGridItem>
         </NGrid>
       </NForm>
-      <template #footer>
-        <NSpace justify="end"><NButton @click="showEditModal = false">取消</NButton><NButton type="primary" @click="saveItem">保存</NButton></NSpace>
-      </template>
+      <template #footer><NSpace justify="end"><NButton @click="showEditModal = false">取消</NButton><NButton type="primary" @click="saveItem">保存</NButton></NSpace></template>
+    </NModal>
+
+    <NModal v-model:show="showTemplateModal" preset="card" title="新建状态板模板（JSON）" style="width: 760px; background: #18181b;">
+      <NInput v-model:value="templateJson" type="textarea" :autosize="{ minRows: 18, maxRows: 28 }" />
+      <template #footer><NSpace justify="end"><NButton @click="showTemplateModal = false">取消</NButton><NButton type="primary" @click="saveTemplate">保存模板</NButton></NSpace></template>
+    </NModal>
+
+    <NModal v-model:show="showFillModal" preset="card" title="手动运行 AI 填表" style="width: 680px; background: #18181b;">
+      <NForm label-placement="top">
+        <NFormItem label="用户发言"><NInput v-model:value="fillForm.user_message" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
+        <NFormItem label="助手回复"><NInput v-model:value="fillForm.assistant_message" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showFillModal = false">取消</NButton><NButton type="primary" @click="runStateFiller">运行</NButton></NSpace></template>
     </NModal>
   </div>
 </template>
@@ -278,5 +370,29 @@ onMounted(() => {
   background: transparent;
   color: #a78bfa;
   cursor: pointer;
+}
+.km-muted {
+  color: #71717a;
+  font-size: 12px;
+  margin-top: 2px;
+}
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #3f3f46;
+  color: #a1a1aa;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: help;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.help-icon:hover {
+  background: #52525b;
+  color: #e4e4e7;
 }
 </style>

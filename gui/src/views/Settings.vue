@@ -14,12 +14,14 @@ const llmModels = ref<{label: string, value: string}[]>([])
 const embeddingModels = ref<{label: string, value: string}[]>([])
 const rerankModels = ref<{label: string, value: string}[]>([])
 const judgeModels = ref<{label: string, value: string}[]>([])
+const stateFillerModels = ref<{label: string, value: string}[]>([])
 const fetchingLlm = ref(false)
 const fetchingEmbedding = ref(false)
 const fetchingRerank = ref(false)
 const fetchingJudge = ref(false)
+const fetchingStateFiller = ref(false)
 
-async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | 'embedding' | 'rerank' | 'judge') {
+async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | 'embedding' | 'rerank' | 'judge' | 'state_filler') {
   if (!baseUrl) {
     message.warning('请先填写 Base URL')
     return
@@ -28,7 +30,7 @@ async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | '
     message.warning('请先填写 API Key，否则无法从远端获取模型列表')
     return
   }
-  const flagRef = target === 'llm' ? fetchingLlm : target === 'embedding' ? fetchingEmbedding : target === 'rerank' ? fetchingRerank : fetchingJudge
+  const flagRef = target === 'llm' ? fetchingLlm : target === 'embedding' ? fetchingEmbedding : target === 'rerank' ? fetchingRerank : target === 'judge' ? fetchingJudge : fetchingStateFiller
   flagRef.value = true
   try {
     const resp = await apiFetch('/admin/fetch-models', {
@@ -42,7 +44,8 @@ async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | '
       if (target === 'llm') llmModels.value = options
       else if (target === 'embedding') embeddingModels.value = options
       else if (target === 'rerank') rerankModels.value = options
-      else judgeModels.value = options
+      else if (target === 'judge') judgeModels.value = options
+      else stateFillerModels.value = options
       message.success(`获取到 ${data.models.length} 个模型`)
     } else {
       message.error(data.message || '未获取到模型列表')
@@ -86,6 +89,16 @@ const config = ref({
   judge_mode: 'model_only',
   judge_user_rules: '',
   judge_prompt: '',
+  state_filler_enabled: true,
+  state_filler_mode: 'model_template',
+  state_filler_provider: 'openai_compatible',
+  state_filler_base_url: '',
+  state_filler_api_key: '',
+  state_filler_model: '',
+  state_filler_timeout_seconds: 30,
+  state_filler_temperature: 0,
+  state_filler_min_confidence: 0.55,
+  state_filler_prompt: '',
 })
 
 const forwardModeOptions = [
@@ -180,6 +193,16 @@ async function loadConfig() {
       config.value.judge_mode = normalizeJudgeMode(data.memory?.judge?.mode || 'model_only')
       config.value.judge_user_rules = (data.memory?.judge?.user_rules || []).join('\n')
       config.value.judge_prompt = data.memory?.judge?.prompt || ''
+      config.value.state_filler_enabled = data.memory?.state_updater?.enabled ?? true
+      config.value.state_filler_mode = data.memory?.state_updater?.mode || 'model_template'
+      config.value.state_filler_provider = data.memory?.state_updater?.provider || 'openai_compatible'
+      config.value.state_filler_base_url = data.memory?.state_updater?.base_url || ''
+      config.value.state_filler_api_key = data.memory?.state_updater?.api_key || ''
+      config.value.state_filler_model = data.memory?.state_updater?.model || ''
+      config.value.state_filler_timeout_seconds = data.memory?.state_updater?.timeout_seconds || 30
+      config.value.state_filler_temperature = data.memory?.state_updater?.temperature ?? 0
+      config.value.state_filler_min_confidence = data.memory?.state_updater?.min_confidence ?? 0.55
+      config.value.state_filler_prompt = data.memory?.state_updater?.prompt || ''
     }
   } catch (e) {
     // use defaults
@@ -228,6 +251,20 @@ async function saveConfig() {
           mode: config.value.judge_mode,
           user_rules: config.value.judge_user_rules.split('\n').map((line: string) => line.trim()).filter(Boolean),
           prompt: config.value.judge_prompt,
+        },
+        state_updater: {
+          enabled: config.value.state_filler_enabled,
+          mode: config.value.state_filler_mode,
+          update_after_each_turn: true,
+          update_every_n_turns: 1,
+          min_confidence: config.value.state_filler_min_confidence,
+          provider: config.value.state_filler_provider,
+          base_url: config.value.state_filler_base_url,
+          api_key: config.value.state_filler_api_key,
+          model: config.value.state_filler_model,
+          timeout_seconds: config.value.state_filler_timeout_seconds,
+          temperature: config.value.state_filler_temperature,
+          prompt: config.value.state_filler_prompt,
         },
       },
     }
@@ -451,6 +488,71 @@ onMounted(loadConfig)
               </template>
               <NInputNumber v-model:value="config.embedding_dimension" :min="1" :max="8192" style="width: 200px;" placeholder="4096" />
             </NFormItem>
+          </template>
+          <NDivider style="margin: 8px 0;" />
+          <NFormItem>
+            <template #label>
+              状态板填表模型
+              <NTooltip trigger="hover">
+                <template #trigger><span class="help-icon">?</span></template>
+                用便宜快速的模型维护“会话状态板”的多标签字段。关闭后不会自动更新状态板，但仍可手动编辑。
+              </NTooltip>
+            </template>
+            <NSwitch v-model:value="config.state_filler_enabled" />
+          </NFormItem>
+          <template v-if="config.state_filler_enabled">
+            <NFormItem label="填表模式">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <NSelect v-model:value="config.state_filler_mode" :options="[
+                  { label: '模板字段模型填表（推荐）', value: 'model_template' },
+                  { label: '旧规则填表（兼容）', value: 'rule_only' },
+                ]" style="width: 260px;" />
+                <NTooltip trigger="hover">
+                  <template #trigger><span class="help-icon">?</span></template>
+                  推荐使用模板字段模型填表：AI 只会填写用户定义的字段，并跳过锁定字段。
+                </NTooltip>
+              </div>
+            </NFormItem>
+            <template v-if="config.state_filler_mode !== 'rule_only'">
+              <NFormItem label="Provider">
+                <NSelect v-model:value="config.state_filler_provider" :options="providerOptions" style="width: 280px;" />
+              </NFormItem>
+              <NFormItem label="Base URL">
+                <NInput v-model:value="config.state_filler_base_url" placeholder="留空则复用记忆判断模型或对话大模型 Base URL" />
+              </NFormItem>
+              <NFormItem label="API Key">
+                <NInput v-model:value="config.state_filler_api_key" type="password" show-password-on="click" placeholder="留空则复用记忆判断模型或对话大模型 Key" />
+              </NFormItem>
+              <NFormItem label="模型名称">
+                <div style="display: flex; gap: 8px; flex: 1;">
+                  <NSelect
+                    v-if="stateFillerModels.length > 0"
+                    v-model:value="config.state_filler_model"
+                    :options="stateFillerModels"
+                    filterable
+                    tag
+                    placeholder="例如便宜快速的小模型"
+                    style="flex: 1;"
+                  />
+                  <NInput v-else v-model:value="config.state_filler_model" placeholder="留空则复用记忆判断模型或对话大模型" style="flex: 1;" />
+                  <NButton size="small" :loading="fetchingStateFiller" @click="fetchModelList(config.state_filler_base_url || config.judge_base_url || config.llm_base_url, config.state_filler_api_key || config.judge_api_key || config.llm_api_key, 'state_filler')">
+                    拉取
+                  </NButton>
+                </div>
+              </NFormItem>
+              <NFormItem label="最小置信度">
+                <NInputNumber v-model:value="config.state_filler_min_confidence" :min="0" :max="1" :step="0.05" style="width: 200px;" />
+              </NFormItem>
+              <NFormItem label="超时时间">
+                <NInputNumber v-model:value="config.state_filler_timeout_seconds" :min="5" :max="120" style="width: 200px;" />
+              </NFormItem>
+              <NFormItem label="Temperature">
+                <NInputNumber v-model:value="config.state_filler_temperature" :min="0" :max="1" :step="0.05" style="width: 200px;" />
+              </NFormItem>
+              <NFormItem label="自定义 Prompt">
+                <NInput v-model:value="config.state_filler_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" placeholder="留空使用内置状态板填表 Prompt" />
+              </NFormItem>
+            </template>
           </template>
         </NForm>
       </NCard>

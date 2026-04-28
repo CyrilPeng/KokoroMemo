@@ -58,20 +58,30 @@ jobs:
   build-tauri:
     needs: build-backend
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
             backend-artifact: backend-windows-latest
             binary-name: kokoromemo-server-x86_64-pc-windows-msvc.exe
-            sidecar-name: kokoromemo-server-x86_64-pc-windows-msvc.exe
+            rust-target: x86_64-pc-windows-msvc
+            system: Windows
+            arch: x64
+            asset-kind: portable
           - os: ubuntu-22.04
             backend-artifact: backend-ubuntu-22.04
             binary-name: kokoromemo-server-x86_64-unknown-linux-gnu
-            sidecar-name: kokoromemo-server-x86_64-unknown-linux-gnu
+            rust-target: x86_64-unknown-linux-gnu
+            system: Linux
+            arch: x64
+            asset-kind: appimage
           - os: macos-latest
             backend-artifact: backend-macos-latest
             binary-name: kokoromemo-server-aarch64-apple-darwin
-            sidecar-name: kokoromemo-server-aarch64-apple-darwin
+            rust-target: aarch64-apple-darwin
+            system: macOS
+            arch: arm64
+            asset-kind: dmg
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -83,6 +93,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -96,33 +108,137 @@ jobs:
           name: ${{ matrix.backend-artifact }}
           path: gui/src-tauri/binaries/
 
-      - name: Make binary executable (Unix)
+      - name: Prepare embedded backend (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $backendSource = 'gui/src-tauri/binaries/${{ matrix.binary-name }}'
+          New-Item -ItemType Directory -Force gui/src-tauri/embedded-backend | Out-Null
+          Copy-Item $backendSource gui/src-tauri/embedded-backend/kokoromemo-server.exe -Force
+          Remove-Item $backendSource -Force
+
+      - name: Make backend executable (Unix)
         if: runner.os != 'Windows'
         run: chmod +x gui/src-tauri/binaries/${{ matrix.binary-name }}
 
       - name: Install frontend deps
         working-directory: gui
-        run: npm install
+        run: npm ci
 
-      - name: Use tag commit message as release body
-        id: release_body
+      - name: Build Windows single-exe app and MSI
+        if: runner.os == 'Windows'
+        working-directory: gui
+        run: npm run tauri build -- --target ${{ matrix.rust-target }} --bundles msi --ci --config src-tauri/tauri.windows.conf.json
+
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
+        working-directory: gui
+        run: npm run tauri build -- --target ${{ matrix.rust-target }} --bundles appimage --ci
+
+      - name: Build macOS DMG
+        if: runner.os == 'macOS'
+        working-directory: gui
+        run: npm run tauri build -- --target ${{ matrix.rust-target }} --bundles dmg --ci
+
+      - name: Package Windows Portable.zip and MSI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $assetDir = Join-Path $PWD 'release-assets'
+          $folderName = "KokoroMemo-$version-Windows-Portable"
+          $folderPath = Join-Path $assetDir $folderName
+          New-Item -ItemType Directory -Force $folderPath | Out-Null
+
+          $mainExe = "gui/src-tauri/target/${{ matrix.rust-target }}/release/kokoromemo-gui.exe"
+          if (!(Test-Path $mainExe)) {
+            $mainExe = 'gui/src-tauri/target/release/kokoromemo-gui.exe'
+          }
+          Copy-Item $mainExe (Join-Path $folderPath 'KokoroMemo.exe') -Force
+
+          $portableFiles = @(Get-ChildItem $folderPath -File -Recurse)
+          if ($portableFiles.Count -ne 1 -or $portableFiles[0].Name -ne 'KokoroMemo.exe') {
+            throw "Windows Portable.zip must contain only KokoroMemo.exe"
+          }
+
+          Compress-Archive -Path $folderPath -DestinationPath (Join-Path $assetDir "KokoroMemo-$version-Windows-Portable.zip") -Force
+
+          $msiDir = "gui/src-tauri/target/${{ matrix.rust-target }}/release/bundle/msi"
+          if (!(Test-Path $msiDir)) {
+            $msiDir = 'gui/src-tauri/target/release/bundle/msi'
+          }
+          $msi = Get-ChildItem $msiDir -Filter '*.msi' | Select-Object -First 1
+          if (!$msi) {
+            throw "No MSI asset found under $msiDir"
+          }
+          Copy-Item $msi.FullName (Join-Path $assetDir "KokoroMemo-$version-Windows-${{ matrix.arch }}.msi") -Force
+
+      - name: Rename Unix bundle asset
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          asset_dir="release-assets"
+          mkdir -p "$asset_dir"
+
+          bundle_dir="gui/src-tauri/target/${{ matrix.rust-target }}/release/bundle"
+          if [[ ! -d "$bundle_dir" ]]; then
+            bundle_dir="gui/src-tauri/target/release/bundle"
+          fi
+
+          if [[ "${{ matrix.asset-kind }}" == "appimage" ]]; then
+            source_asset="$(find "$bundle_dir" -name '*.AppImage' -type f | head -n 1)"
+            target_asset="$asset_dir/KokoroMemo-$version-${{ matrix.system }}-${{ matrix.arch }}.AppImage"
+          else
+            source_asset="$(find "$bundle_dir" -name '*.dmg' -type f | head -n 1)"
+            target_asset="$asset_dir/KokoroMemo-$version-${{ matrix.system }}-${{ matrix.arch }}.dmg"
+          fi
+
+          if [[ -z "$source_asset" ]]; then
+            echo "No bundle asset found under $bundle_dir" >&2
+            exit 1
+          fi
+          cp "$source_asset" "$target_asset"
+
+      - name: Upload release asset artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.system }}-${{ matrix.arch }}
+          path: release-assets/*
+
+  publish-release:
+    needs: build-tauri
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Prepare release notes
         shell: bash
         run: |
           tag_commit="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
-          {
-            echo 'body<<EOF'
-            git log -1 --pretty=%B "$tag_commit"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+          git log -1 --pretty=%B "$tag_commit" > release-notes.md
 
-      - name: Build Tauri
-        uses: tauri-apps/tauri-action@v0
+      - name: Publish GitHub release
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: gui
-          tagName: ${{ github.ref_name }}
-          releaseName: 'KokoroMemo ${{ github.ref_name }}'
-          releaseBody: ${{ steps.release_body.outputs.body }}
-          releaseDraft: false
-          prerelease: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          title="KokoroMemo $version"
+          ls -la release-assets
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "$title" --notes-file release-notes.md --latest
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* --title "$title" --notes-file release-notes.md --latest
+          fi

@@ -14,10 +14,35 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent, WindowEvent,
 };
-use tauri_plugin_shell::{process::CommandChild, ShellExt};
+#[cfg(not(all(windows, kokoromemo_embedded_backend)))]
+use tauri_plugin_shell::process::CommandChild;
+#[cfg(not(all(windows, kokoromemo_embedded_backend)))]
+use tauri_plugin_shell::ShellExt;
+
+enum BackendChild {
+    #[cfg(not(all(windows, kokoromemo_embedded_backend)))]
+    Sidecar(CommandChild),
+    #[cfg(all(windows, kokoromemo_embedded_backend))]
+    Embedded(std::process::Child),
+}
+
+impl BackendChild {
+    fn kill(self) {
+        match self {
+            #[cfg(not(all(windows, kokoromemo_embedded_backend)))]
+            Self::Sidecar(child) => {
+                let _ = child.kill();
+            }
+            #[cfg(all(windows, kokoromemo_embedded_backend))]
+            Self::Embedded(mut child) => {
+                let _ = child.kill();
+            }
+        }
+    }
+}
 
 struct AppState {
-    backend_child: Mutex<Option<CommandChild>>,
+    backend_child: Mutex<Option<BackendChild>>,
     close_to_tray: AtomicBool,
     quitting: AtomicBool,
 }
@@ -64,48 +89,102 @@ fn backend_work_dir(app: &tauri::AppHandle) -> PathBuf {
     dir
 }
 
+#[cfg(all(windows, kokoromemo_embedded_backend))]
+const EMBEDDED_BACKEND: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/embedded-backend/kokoromemo-server.exe"
+));
+
+#[cfg(all(windows, kokoromemo_embedded_backend))]
+fn embedded_backend_path(app: &tauri::AppHandle) -> std::io::Result<PathBuf> {
+    let runtime_dir = backend_work_dir(app).join("runtime");
+    fs::create_dir_all(&runtime_dir)?;
+    let backend_path = runtime_dir.join("kokoromemo-server.exe");
+    let should_write = fs::metadata(&backend_path)
+        .map(|meta| meta.len() != EMBEDDED_BACKEND.len() as u64)
+        .unwrap_or(true);
+    if should_write {
+        fs::write(&backend_path, EMBEDDED_BACKEND)?;
+    }
+    Ok(backend_path)
+}
+
+#[cfg(all(windows, kokoromemo_embedded_backend))]
+fn spawn_embedded_backend(app: &tauri::AppHandle, work_dir: &PathBuf) -> std::io::Result<std::process::Child> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let backend_path = embedded_backend_path(app)?;
+    std::process::Command::new(backend_path)
+        .current_dir(work_dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+}
+
 fn spawn_backend(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         let work_dir = backend_work_dir(&app);
-        let command = match app.shell().sidecar("kokoromemo-server") {
-            Ok(command) => command.current_dir(&work_dir),
-            Err(error) => {
-                #[cfg(debug_assertions)]
-                {
-                    eprintln!("sidecar backend not found, falling back to python: {error}");
-                    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                    let project_root = manifest_dir
-                        .parent()
-                        .and_then(|path| path.parent())
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|| work_dir.clone());
-                    app.shell()
-                        .command("python")
-                        .args(["-m", "app.main"])
-                        .current_dir(project_root)
-                }
-                #[cfg(not(debug_assertions))]
-                {
-                    eprintln!("failed to resolve backend sidecar: {error}");
-                    return;
-                }
-            }
-        };
 
-        match command.spawn() {
-            Ok((mut rx, child)) => {
-                eprintln!("KokoroMemo backend started, pid={}", child.pid());
-                if let Some(state) = app.try_state::<AppState>() {
-                    *state.backend_child.lock().expect("backend child lock poisoned") = Some(child);
+        #[cfg(all(windows, kokoromemo_embedded_backend))]
+        {
+            match spawn_embedded_backend(&app, &work_dir) {
+                Ok(child) => {
+                    eprintln!("KokoroMemo embedded backend started, pid={}", child.id());
+                    if let Some(state) = app.try_state::<AppState>() {
+                        *state.backend_child.lock().expect("backend child lock poisoned") =
+                            Some(BackendChild::Embedded(child));
+                    }
                 }
-                while let Some(event) = rx.recv().await {
-                    eprintln!("backend: {event:?}");
-                }
-                if let Some(state) = app.try_state::<AppState>() {
-                    let _ = state.backend_child.lock().expect("backend child lock poisoned").take();
-                }
+                Err(error) => eprintln!("failed to start embedded KokoroMemo backend: {error}"),
             }
-            Err(error) => eprintln!("failed to start KokoroMemo backend: {error}"),
+        }
+
+        #[cfg(not(all(windows, kokoromemo_embedded_backend)))]
+        {
+            let command = match app.shell().sidecar("kokoromemo-server") {
+                Ok(command) => command.current_dir(&work_dir),
+                Err(error) => {
+                    #[cfg(debug_assertions)]
+                    {
+                        eprintln!("sidecar backend not found, falling back to python: {error}");
+                        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                        let project_root = manifest_dir
+                            .parent()
+                            .and_then(|path| path.parent())
+                            .map(PathBuf::from)
+                            .unwrap_or_else(|| work_dir.clone());
+                        app.shell()
+                            .command("python")
+                            .args(["-m", "app.main"])
+                            .current_dir(project_root)
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        eprintln!("failed to resolve backend sidecar: {error}");
+                        return;
+                    }
+                }
+            };
+
+            match command.spawn() {
+                Ok((mut rx, child)) => {
+                    eprintln!("KokoroMemo backend started, pid={}", child.pid());
+                    if let Some(state) = app.try_state::<AppState>() {
+                        *state.backend_child.lock().expect("backend child lock poisoned") =
+                            Some(BackendChild::Sidecar(child));
+                    }
+                    while let Some(event) = rx.recv().await {
+                        eprintln!("backend: {event:?}");
+                    }
+                    if let Some(state) = app.try_state::<AppState>() {
+                        let _ = state.backend_child.lock().expect("backend child lock poisoned").take();
+                    }
+                }
+                Err(error) => eprintln!("failed to start KokoroMemo backend: {error}"),
+            }
         }
     });
 }
@@ -118,7 +197,7 @@ fn kill_backend(app: &tauri::AppHandle) {
             .expect("backend child lock poisoned")
             .take()
         {
-            let _ = child.kill();
+            child.kill();
         }
     }
 }

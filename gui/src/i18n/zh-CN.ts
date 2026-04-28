@@ -28,7 +28,7 @@ export default {
     builtin: '内置',
     unnamed: '未命名',
     none: '无',
-    version: 'v0.2.0 · 本地长期记忆',
+    version: 'v0.2.1 · 本地长期记忆',
   },
   nav: {
     dashboard: '仪表盘',

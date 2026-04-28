@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     logger.info("KokoroMemo shutting down")
 
 
-app = FastAPI(title="KokoroMemo", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="KokoroMemo", version="0.2.1", lifespan=lifespan)
 
 
 def create_app() -> FastAPI:

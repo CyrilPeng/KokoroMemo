@@ -28,7 +28,7 @@ export default {
     builtin: 'Built-in',
     unnamed: 'Unnamed',
     none: 'None',
-    version: 'v0.2.0 · Local Long-term Memory',
+    version: 'v0.2.1 · Local Long-term Memory',
   },
   nav: {
     dashboard: 'Dashboard',

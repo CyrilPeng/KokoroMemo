@@ -11,6 +11,7 @@ dist/
 # Rust / Tauri
 gui/src-tauri/target/
 gui/src-tauri/Cargo.lock
+gui/src-tauri/embedded-backend/
 
 # Node
 gui/node_modules/

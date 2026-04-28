@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton } from 'naive-ui'
+import { apiFetch, getServerUrl } from '../api'
 
 const health = ref<any>(null)
 const loading = ref(true)
-const serverUrl = 'http://127.0.0.1:14514'
+const serverUrl = ref(getServerUrl())
 
 async function fetchHealth() {
   loading.value = true
   try {
-    const resp = await fetch(`${serverUrl}/health`)
+    serverUrl.value = getServerUrl()
+    const resp = await apiFetch('/health')
     health.value = await resp.json()
   } catch (e) {
     health.value = null

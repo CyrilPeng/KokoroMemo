@@ -4,9 +4,10 @@ import {
   NCard, NForm, NFormItem, NInput, NSwitch, NInputNumber,
   NButton, NSpace, NDivider, NAlert, NSelect, NTag, NTooltip, useMessage,
 } from 'naive-ui'
+import { apiFetch, getServerUrl, setServerUrl } from '../api'
 
 const message = useMessage()
-const serverUrl = 'http://127.0.0.1:14514'
+const backendUrl = ref(getServerUrl())
 const loading = ref(true)
 
 const llmModels = ref<{label: string, value: string}[]>([])
@@ -28,7 +29,7 @@ async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | '
   const flagRef = target === 'llm' ? fetchingLlm : target === 'embedding' ? fetchingEmbedding : fetchingRerank
   flagRef.value = true
   try {
-    const resp = await fetch(`${serverUrl}/admin/fetch-models`, {
+    const resp = await apiFetch('/admin/fetch-models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
@@ -123,7 +124,7 @@ async function pickFolder() {
 async function loadConfig() {
   loading.value = true
   try {
-    const resp = await fetch(`${serverUrl}/admin/config`)
+    const resp = await apiFetch('/admin/config')
     if (resp.ok) {
       const data = await resp.json()
       config.value.server_port = data.server?.port || 14514
@@ -157,6 +158,7 @@ async function loadConfig() {
 
 async function saveConfig() {
   try {
+    setServerUrl(backendUrl.value)
     const payload: any = {
       server: { port: config.value.server_port },
       storage: { root_dir: config.value.storage_root_dir },
@@ -191,7 +193,7 @@ async function saveConfig() {
       payload.llm.api_key = config.value.llm_api_key
     }
 
-    const resp = await fetch(`${serverUrl}/admin/config`, {
+    const resp = await apiFetch('/admin/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -209,7 +211,7 @@ async function saveConfig() {
 
 async function rebuildIndex() {
   try {
-    const resp = await fetch(`${serverUrl}/admin/rebuild-vector-index`, { method: 'POST' })
+    const resp = await apiFetch('/admin/rebuild-vector-index', { method: 'POST' })
     const data = await resp.json()
     if (data.status === 'ok') {
       message.success(`索引重建完成：${data.rebuilt} 条记忆已索引`)
@@ -235,6 +237,16 @@ onMounted(loadConfig)
       <!-- 服务配置 -->
       <NCard title="服务配置" style="background: #18181b; border: 1px solid #27272a;">
         <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+          <NFormItem>
+            <template #label>
+              GUI 后端地址
+              <NTooltip trigger="hover">
+                <template #trigger><span class="help-icon">?</span></template>
+                GUI 用这个地址访问 KokoroMemo 后端。如果你改了后端端口，请同步改成对应地址。
+              </NTooltip>
+            </template>
+            <NInput v-model:value="backendUrl" placeholder="http://127.0.0.1:14514" style="width: 320px;" />
+          </NFormItem>
           <NFormItem>
             <template #label>
               本地监听端口

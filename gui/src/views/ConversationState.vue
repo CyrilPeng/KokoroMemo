@@ -19,8 +19,8 @@ import {
   NTabPane,
   useMessage,
 } from 'naive-ui'
+import { apiFetch } from '../api'
 
-const serverUrl = 'http://127.0.0.1:14514'
 const message = useMessage()
 const loading = ref(false)
 const conversationId = ref('')
@@ -72,9 +72,9 @@ async function fetchAll() {
   loading.value = true
   try {
     const [stateResp, decisionResp, eventResp] = await Promise.all([
-      fetch(`${serverUrl}/admin/conversations/${conversationId.value}/state?limit=300`, { headers: authHeaders() }),
-      fetch(`${serverUrl}/admin/conversations/${conversationId.value}/retrieval-decisions?limit=100`, { headers: authHeaders() }),
-      fetch(`${serverUrl}/admin/conversations/${conversationId.value}/state/events?limit=100`, { headers: authHeaders() }),
+      apiFetch(`/admin/conversations/${conversationId.value}/state?limit=300`, { headers: authHeaders() }),
+      apiFetch(`/admin/conversations/${conversationId.value}/retrieval-decisions?limit=100`, { headers: authHeaders() }),
+      apiFetch(`/admin/conversations/${conversationId.value}/state/events?limit=100`, { headers: authHeaders() }),
     ])
     stateItems.value = (await stateResp.json()).items || []
     decisions.value = (await decisionResp.json()).items || []
@@ -107,11 +107,11 @@ async function saveItem() {
   if (!ensureConversationId()) return
   const body = JSON.stringify(editForm.value)
   const url = editingItem.value
-    ? `${serverUrl}/admin/state/${editingItem.value.item_id}`
-    : `${serverUrl}/admin/conversations/${conversationId.value}/state`
+    ? `/admin/state/${editingItem.value.item_id}`
+    : `/admin/conversations/${conversationId.value}/state`
   const method = editingItem.value ? 'PATCH' : 'POST'
   try {
-    const resp = await fetch(url, { method, headers: authHeaders(true), body })
+    const resp = await apiFetch(url, { method, headers: authHeaders(true), body })
     const data = await resp.json()
     if (data.status !== 'ok') throw new Error(data.message || '保存失败')
     showEditModal.value = false
@@ -123,7 +123,7 @@ async function saveItem() {
 }
 
 async function resolveItem(row: any) {
-  await fetch(`${serverUrl}/admin/state/${row.item_id}/resolve`, {
+  await apiFetch(`/admin/state/${row.item_id}/resolve`, {
     method: 'POST',
     headers: authHeaders(true),
     body: JSON.stringify({ reason: 'GUI 标记完成' }),
@@ -133,14 +133,14 @@ async function resolveItem(row: any) {
 }
 
 async function deleteItem(row: any) {
-  await fetch(`${serverUrl}/admin/state/${row.item_id}`, { method: 'DELETE', headers: authHeaders() })
+  await apiFetch(`/admin/state/${row.item_id}`, { method: 'DELETE', headers: authHeaders() })
   message.success('已删除')
   fetchAll()
 }
 
 async function rebuildFromCards() {
   if (!ensureConversationId()) return
-  const resp = await fetch(`${serverUrl}/admin/conversations/${conversationId.value}/state/rebuild`, {
+  const resp = await apiFetch(`/admin/conversations/${conversationId.value}/state/rebuild`, {
     method: 'POST',
     headers: authHeaders(true),
     body: JSON.stringify({}),

@@ -5,6 +5,7 @@ import {
   NPagination, NPopconfirm, NModal, NForm, NFormItem, NInput,
   NSlider, useMessage,
 } from 'naive-ui'
+import { apiFetch } from '../api'
 
 const message = useMessage()
 const memories = ref<any[]>([])
@@ -13,8 +14,6 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 20
 const scopeFilter = ref<string | null>(null)
-const serverUrl = 'http://127.0.0.1:14514'
-
 // Edit modal state
 const showEditModal = ref(false)
 const editingCard = ref<any>(null)
@@ -125,7 +124,7 @@ async function saveEdit() {
   if (!editingCard.value) return
   const cardId = editingCard.value.card_id
   try {
-    const resp = await fetch(`${serverUrl}/admin/memories/${cardId}`, {
+    const resp = await apiFetch(`/admin/memories/${cardId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editForm.value),
@@ -146,12 +145,12 @@ async function saveEdit() {
 async function fetchMemories() {
   loading.value = true
   const offset = (page.value - 1) * pageSize
-  let url = `${serverUrl}/admin/memories?limit=${pageSize}&offset=${offset}`
+  let url = `/admin/memories?limit=${pageSize}&offset=${offset}`
   if (scopeFilter.value) {
     url += `&scope=${scopeFilter.value}`
   }
   try {
-    const resp = await fetch(url)
+    const resp = await apiFetch(url)
     if (resp.ok) {
       const data = await resp.json()
       memories.value = data.memories || []
@@ -177,7 +176,7 @@ function handleScopeChange(val: string) {
 
 async function deleteCard(cardId: string) {
   try {
-    const resp = await fetch(`${serverUrl}/admin/memories/${cardId}`, { method: 'DELETE' })
+    const resp = await apiFetch(`/admin/memories/${cardId}`, { method: 'DELETE' })
     const data = await resp.json()
     if (data.status === 'ok') {
       message.success('已删除')

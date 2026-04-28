@@ -63,9 +63,12 @@ def create_app() -> FastAPI:
         allowed_origins = ["*"] if cfg.server.allow_remote_access else [
             "http://127.0.0.1:14515",
             "http://localhost:14515",
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
             f"http://127.0.0.1:{cfg.server.webui_port}",
             f"http://localhost:{cfg.server.webui_port}",
             "tauri://localhost",
+            "http://tauri.localhost",
         ]
         app.add_middleware(
             CORSMiddleware,

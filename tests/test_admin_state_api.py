@@ -51,3 +51,21 @@ async def test_admin_state_api_requires_token_when_configured():
             assert listed.json()["items"][0]["item_key"] == "current_scene"
     finally:
         cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_cors_allows_vite_dev_origin():
+    cfg = AppConfig()
+    cfg.server.admin_token = ""
+    set_config(cfg)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.headers["access-control-allow-origin"] == "http://localhost:5173"

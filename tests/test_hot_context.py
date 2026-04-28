@@ -55,6 +55,69 @@ async def test_state_schema_initializes_tables():
 
 
 @pytest.mark.asyncio
+async def test_old_state_schema_migrates_field_columns_before_indexes():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        with sqlite3.connect(memory_db) as conn:
+            conn.executescript("""
+            CREATE TABLE conversation_state_items (
+              item_id TEXT PRIMARY KEY,
+              user_id TEXT,
+              character_id TEXT,
+              conversation_id TEXT NOT NULL,
+              world_id TEXT,
+              category TEXT NOT NULL,
+              item_key TEXT,
+              title TEXT,
+              content TEXT NOT NULL,
+              item_value TEXT,
+              status TEXT NOT NULL DEFAULT 'active',
+              priority INTEGER NOT NULL DEFAULT 50,
+              confidence REAL NOT NULL DEFAULT 0.8,
+              source TEXT NOT NULL DEFAULT 'manual',
+              metadata_json TEXT,
+              ttl_turns INTEGER,
+              created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+              updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+              last_seen_at TEXT,
+              expires_at TEXT
+            );
+            INSERT INTO conversation_state_items (item_id, conversation_id, category, content)
+            VALUES ('old_state', 'conv1', 'scene', '旧状态');
+            CREATE TABLE conversation_state_events (
+              event_id TEXT PRIMARY KEY,
+              item_id TEXT,
+              conversation_id TEXT NOT NULL,
+              event_type TEXT NOT NULL,
+              payload_json TEXT,
+              created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            );
+            CREATE TABLE retrieval_decisions (
+              decision_id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL,
+              mode TEXT NOT NULL DEFAULT 'auto',
+              should_retrieve INTEGER NOT NULL,
+              reason TEXT,
+              reasons_json TEXT,
+              latest_user_text TEXT,
+              state_item_count INTEGER NOT NULL DEFAULT 0,
+              avg_state_confidence REAL,
+              turn_index INTEGER,
+              created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            );
+            """)
+        await init_state_db(str(memory_db))
+        with sqlite3.connect(memory_db) as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(conversation_state_items)")}
+            indexes = {row[1] for row in conn.execute("PRAGMA index_list(conversation_state_items)")}
+        assert "field_id" in columns
+        assert "idx_state_items_unique_field" in indexes
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_state_store_upsert_list_resolve_and_decision():
     test_dir = make_test_dir()
     memory_db = test_dir / "memory.sqlite"

@@ -71,10 +71,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_state_items_unique_key
 ON conversation_state_items(conversation_id, category, item_key)
 WHERE status = 'active' AND item_key IS NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_state_items_unique_field
-ON conversation_state_items(conversation_id, field_id)
-WHERE status = 'active' AND field_id IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS state_board_templates (
   template_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -212,6 +208,7 @@ async def init_state_db(db_path: str) -> None:
         await _ensure_columns(db, "conversation_state_items", _STATE_ITEM_COLUMNS)
         await _ensure_columns(db, "conversation_state_events", _STATE_EVENT_COLUMNS)
         await _ensure_columns(db, "retrieval_decisions", _RETRIEVAL_DECISION_COLUMNS)
+        await _ensure_state_indexes(db)
         await db.execute(
             "UPDATE conversation_state_items SET item_value = content WHERE item_value IS NULL"
         )
@@ -225,6 +222,14 @@ async def _ensure_columns(db: aiosqlite.Connection, table: str, columns: dict[st
     for name, definition in columns.items():
         if name not in existing:
             await db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
+async def _ensure_state_indexes(db: aiosqlite.Connection) -> None:
+    await db.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_state_items_unique_field
+           ON conversation_state_items(conversation_id, field_id)
+           WHERE status = 'active' AND field_id IS NOT NULL"""
+    )
 
 
 def _json_loads(value: str | None, fallback: Any) -> Any:

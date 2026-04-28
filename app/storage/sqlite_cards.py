@@ -46,10 +46,7 @@ CREATE TABLE IF NOT EXISTS memory_cards (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cards_scope
-ON memory_cards(library_id, user_id, character_id, scope, status);
-
-CREATE INDEX IF NOT EXISTS idx_cards_library
-ON memory_cards(library_id, status, updated_at);
+ON memory_cards(user_id, character_id, scope, status);
 
 CREATE INDEX IF NOT EXISTS idx_cards_status
 ON memory_cards(status, card_type);
@@ -227,6 +224,7 @@ async def init_cards_db(db_path: str) -> None:
         await _ensure_columns(db, "memory_cards", _MEMORY_CARD_COLUMNS)
         await _ensure_columns(db, "memory_inbox", _MEMORY_INBOX_COLUMNS)
         await _ensure_columns(db, "memory_summaries", _MEMORY_SUMMARY_COLUMNS)
+        await _ensure_library_indexes(db)
         await _ensure_default_library(db)
         await db.commit()
 
@@ -237,6 +235,17 @@ async def _ensure_columns(db: aiosqlite.Connection, table: str, columns: dict[st
     for name, definition in columns.items():
         if name not in existing:
             await db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
+async def _ensure_library_indexes(db: aiosqlite.Connection) -> None:
+    await db.execute(
+        """CREATE INDEX IF NOT EXISTS idx_cards_library_scope
+           ON memory_cards(library_id, user_id, character_id, scope, status)"""
+    )
+    await db.execute(
+        """CREATE INDEX IF NOT EXISTS idx_cards_library
+           ON memory_cards(library_id, status, updated_at)"""
+    )
 
 
 async def _ensure_default_library(db: aiosqlite.Connection) -> None:

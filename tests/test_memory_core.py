@@ -121,6 +121,44 @@ async def test_memory_library_mounts_and_preset_copy():
         cleanup_test_dir(test_dir)
 
 
+@pytest.mark.asyncio
+async def test_old_cards_schema_migrates_library_columns_before_indexes():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        with sqlite3.connect(memory_db) as conn:
+            conn.executescript("""
+            CREATE TABLE memory_cards (
+              card_id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              character_id TEXT,
+              conversation_id TEXT,
+              scope TEXT NOT NULL,
+              card_type TEXT NOT NULL,
+              content TEXT NOT NULL,
+              importance REAL NOT NULL DEFAULT 0.5,
+              confidence REAL NOT NULL DEFAULT 0.7,
+              status TEXT NOT NULL DEFAULT 'approved',
+              is_pinned INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+              updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+              access_count INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO memory_cards (card_id, user_id, scope, card_type, content)
+            VALUES ('old_card', 'u1', 'global', 'preference', '旧卡片');
+            """)
+        await init_cards_db(str(memory_db))
+        with sqlite3.connect(memory_db) as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(memory_cards)")}
+            library_id = conn.execute("SELECT library_id FROM memory_cards WHERE card_id = 'old_card'").fetchone()[0]
+            indexes = {row[1] for row in conn.execute("PRAGMA index_list(memory_cards)")}
+        assert "library_id" in columns
+        assert library_id == DEFAULT_MEMORY_LIBRARY_ID
+        assert "idx_cards_library" in indexes
+    finally:
+        cleanup_test_dir(test_dir)
+
+
 def test_preference_defaults_to_pending_review():
     assert auto_review("preference", importance=0.8, confidence=0.9, risk_level="low") == "pending"
 

@@ -251,6 +251,7 @@ BUILTIN_STATE_TEMPLATES = [
                     ("character_addressing", "角色对用户称呼", "角色正在使用或被要求使用的称呼。"),
                     ("current_mood", "当前心情状态", "角色或对话的即时情绪氛围。"),
                     ("current_task", "当前任务", "本轮对话正在推进的短期目标。"),
+                    ("roleplay_persona", "角色扮演身份", "用户要求角色保持的身份、物种、职业或扮演设定。"),
                     ("speech_habit", "口癖", "角色当前需要保持的口癖或表达习惯。"),
                     ("relationship_state", "关系状态", "用户与角色关系的当前阶段。"),
                 ],

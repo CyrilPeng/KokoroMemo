@@ -150,6 +150,19 @@ async def test_builtin_template_renders_field_tabs():
         cleanup_test_dir(test_dir)
 
 
+@pytest.mark.asyncio
+async def test_builtin_template_has_roleplay_and_speech_fields():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        template = await SQLiteStateStore(str(memory_db)).get_conversation_template("conv1")
+        field_keys = {field.field_key for tab in template.tabs for field in tab.fields}
+        assert "roleplay_persona" in field_keys
+        assert "speech_habit" in field_keys
+    finally:
+        cleanup_test_dir(test_dir)
+
+
 class FakeStateFillerProvider:
     def __init__(self, content: str):
         self.content = content
@@ -179,6 +192,29 @@ async def test_state_filler_updates_template_field(monkeypatch):
         items = await SQLiteStateStore(str(memory_db)).list_active_items("conv1")
         assert items[0].field_key == "user_addressing"
         assert items[0].content == "用户希望被称为主人"
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_state_filler_updates_catgirl_speech_rule(monkeypatch):
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        provider = FakeStateFillerProvider('{"updates":[{"field_key":"roleplay_persona","value":"角色当前扮演猫娘。","confidence":0.92},{"field_key":"speech_habit","value":"每句话末尾加上“喵~”。","confidence":0.93}]}')
+        monkeypatch.setattr("app.memory.state_filler.create_llm_provider", lambda **kwargs: provider)
+        result = await fill_conversation_state(
+            db_path=str(memory_db),
+            conversation_id="conv1",
+            user_message="从现在开始，你是一只猫娘，你的每句话末尾都要加上`喵~`",
+            assistant_message="好的喵~",
+            config=StateFillerConfigView(provider="openai_compatible", base_url="http://fake", api_key="key", model="cheap-model"),
+        )
+        items = await SQLiteStateStore(str(memory_db)).list_active_items("conv1")
+        by_key = {item.field_key: item.content for item in items}
+        assert result.applied == 2
+        assert by_key["roleplay_persona"] == "角色当前扮演猫娘。"
+        assert by_key["speech_habit"] == "每句话末尾加上“喵~”。"
     finally:
         cleanup_test_dir(test_dir)
 

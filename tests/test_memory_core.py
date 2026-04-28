@@ -135,6 +135,16 @@ def test_model_suggested_auto_approve_can_approve_low_risk_preference():
     ) == "approve"
 
 
+def test_roleplay_speech_style_can_auto_approve():
+    assert auto_review(
+        "preference",
+        importance=0.9,
+        confidence=0.9,
+        risk_level="low",
+        tags=["roleplay_rule", "speech_style"],
+    ) == "approve"
+
+
 @pytest.mark.asyncio
 async def test_vector_retrieval_filters_deprecated_cards():
     test_dir = make_test_dir()
@@ -249,6 +259,31 @@ async def test_llm_memory_judge_extracts_addressing(monkeypatch):
     assert memories[0].content == "用户希望被称呼为“主人”。"
     assert "addressing" in memories[0].tags
     assert "suggested_action:auto_approve" in memories[0].tags
+
+
+@pytest.mark.asyncio
+async def test_llm_memory_judge_extracts_catgirl_speech_rule(monkeypatch):
+    captured = {}
+
+    class FakeProvider:
+        async def chat(self, body, timeout):
+            captured["system"] = body["messages"][0]["content"]
+            return {
+                "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"speech_style","content":"用户要求角色以猫娘身份互动，并在每句话末尾加上“喵~”。","importance":0.9,"confidence":0.9,"risk_level":"low","tags":["roleplay_rule","speech_style"]}]}'}}]
+            }
+
+    monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
+    memories = await judge_memories_with_llm(
+        "从现在开始，你是一只猫娘，你的每句话末尾都要加上`喵~`",
+        "好的喵~",
+        "c1",
+        MemoryJudgeConfigView("openai_compatible", "http://judge", "key", "cheap-model"),
+    )
+    assert "猫娘" in captured["system"]
+    assert len(memories) == 1
+    assert memories[0].memory_type == "preference"
+    assert "猫娘" in memories[0].content
+    assert "speech_style" in memories[0].tags
 
 
 @pytest.mark.asyncio

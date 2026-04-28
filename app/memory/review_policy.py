@@ -39,6 +39,10 @@ def auto_review(
     if "suggested_action:auto_approve" in tags and importance >= 0.7 and confidence >= 0.8 and risk_level != "high":
         return "approve"
 
+    low_risk_roleplay_tags = {"roleplay_rule", "speech_style", "persona_rule", "speech_habit"}
+    if low_risk_roleplay_tags.intersection(tags) and importance >= 0.7 and confidence >= 0.8 and risk_level == "low":
+        return "approve"
+
     # Types that always need review in AIRP scenarios.
     if card_type in ("boundary", "preference", "relationship", "world_state", "character_state"):
         return "pending"

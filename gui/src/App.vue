@@ -15,6 +15,7 @@ import type { MenuOption, GlobalThemeOverrides } from 'naive-ui'
 import {
   HomeOutline,
   BulbOutline,
+  ReaderOutline,
   SettingsOutline,
 } from '@vicons/ionicons5'
 
@@ -28,6 +29,7 @@ function renderIcon(icon: any) {
 const menuOptions: MenuOption[] = [
   { label: '仪表盘', key: '/dashboard', icon: renderIcon(HomeOutline) },
   { label: '记忆管理', key: '/memories', icon: renderIcon(BulbOutline) },
+  { label: '会话状态板', key: '/state', icon: renderIcon(ReaderOutline) },
   { label: '设置', key: '/settings', icon: renderIcon(SettingsOutline) },
 ]
 

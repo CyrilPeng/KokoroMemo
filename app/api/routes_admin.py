@@ -6,9 +6,21 @@ from pathlib import Path
 
 import httpx
 import yaml
-from fastapi import APIRouter, Query, Body
+from fastapi import APIRouter, Query, Body, Request, HTTPException
 
 router = APIRouter()
+
+
+def _require_admin(request: Request) -> None:
+    """Require Bearer token only when ADMIN_TOKEN/admin_token is configured."""
+    from app.core.state import get_config
+
+    token = get_config().server.get_admin_token()
+    if not token:
+        return
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {token}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @router.get("/health")
@@ -502,6 +514,181 @@ async def retry_vector_sync_jobs(limit: int = Query(default=50, le=200)):
     if not ep or not store:
         return {"status": "error", "message": "Embedding or LanceDB not configured"}
     return await retry_card_vector_sync_jobs(cfg.storage.sqlite.memory_db, ep, store, limit=limit)
+
+
+# --- Conversation State API ---
+
+def _state_item_to_dict(item) -> dict:
+    return {
+        "item_id": item.item_id,
+        "user_id": item.user_id,
+        "character_id": item.character_id,
+        "world_id": item.world_id,
+        "conversation_id": item.conversation_id,
+        "category": item.category,
+        "item_key": item.item_key,
+        "item_value": item.content,
+        "content": item.content,
+        "title": item.title,
+        "status": item.status,
+        "priority": item.priority,
+        "confidence": item.confidence,
+        "source": item.source,
+        "source_turn_ids": item.source_turn_ids,
+        "source_message_ids": item.source_message_ids,
+        "linked_card_ids": item.linked_card_ids,
+        "linked_summary_ids": item.linked_summary_ids,
+        "metadata": item.metadata,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "last_injected_at": item.last_injected_at,
+        "expires_at": item.expires_at,
+    }
+
+
+@router.get("/admin/conversations/{conversation_id}/state")
+async def get_conversation_state(
+    conversation_id: str,
+    request: Request,
+    status: str | None = Query(default=None),
+    limit: int = Query(default=200, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    """List hot-state items for a conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    cfg = get_config()
+    store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+    items, total = await store.list_items(conversation_id, status=status, limit=limit, offset=offset)
+    return {"items": [_state_item_to_dict(item) for item in items], "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/admin/conversations/{conversation_id}/state/events")
+async def get_conversation_state_events(
+    conversation_id: str,
+    request: Request,
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    """List hot-state change events."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    events, total = await store.list_state_events(conversation_id, limit=limit, offset=offset)
+    return {"items": events, "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/admin/conversations/{conversation_id}/retrieval-decisions")
+async def get_retrieval_decisions(
+    conversation_id: str,
+    request: Request,
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    """List Retrieval Gate decisions for debugging."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    decisions, total = await store.list_retrieval_decisions(conversation_id, limit=limit, offset=offset)
+    return {"items": decisions, "total": total, "limit": limit, "offset": offset}
+
+
+@router.post("/admin/conversations/{conversation_id}/state")
+async def create_conversation_state_item(conversation_id: str, request: Request, data: dict = Body(...)):
+    """Manually create or upsert a hot-state item."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.memory.state_schema import ConversationStateItem
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    item_id = await store.upsert_item(ConversationStateItem(
+        item_id=data.get("item_id"),
+        user_id=data.get("user_id"),
+        character_id=data.get("character_id"),
+        world_id=data.get("world_id"),
+        conversation_id=conversation_id,
+        category=data.get("category", "scene"),
+        item_key=data.get("item_key"),
+        title=data.get("title"),
+        content=data.get("item_value") or data.get("content", ""),
+        status=data.get("status", "active"),
+        priority=int(data.get("priority", 50)),
+        confidence=float(data.get("confidence", 0.8)),
+        source="manual",
+        linked_card_ids=data.get("linked_card_ids", []),
+        linked_summary_ids=data.get("linked_summary_ids", []),
+        metadata=data.get("metadata", {}),
+        expires_at=data.get("expires_at"),
+    ))
+    return {"status": "ok", "item_id": item_id}
+
+
+@router.patch("/admin/state/{item_id}")
+async def update_conversation_state_item(item_id: str, request: Request, data: dict = Body(...)):
+    """Edit a hot-state item."""
+    _require_admin(request)
+    import json as json_mod
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    updates = dict(data)
+    if "linked_card_ids" in updates:
+        updates["linked_card_ids_json"] = json_mod.dumps(updates.pop("linked_card_ids"), ensure_ascii=False)
+    if "linked_summary_ids" in updates:
+        updates["linked_summary_ids_json"] = json_mod.dumps(updates.pop("linked_summary_ids"), ensure_ascii=False)
+    if "metadata" in updates:
+        updates["metadata_json"] = json_mod.dumps(updates.pop("metadata"), ensure_ascii=False)
+    if "item_value" in updates and "content" not in updates:
+        updates["content"] = updates["item_value"]
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    ok = await store.update_item(item_id, updates)
+    return {"status": "ok" if ok else "error", "message": None if ok else "State item not found or no fields updated"}
+
+
+@router.post("/admin/state/{item_id}/resolve")
+async def resolve_conversation_state_item(item_id: str, request: Request, data: dict = Body(default={})):
+    """Mark a hot-state item as resolved."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    await SQLiteStateStore(get_config().storage.sqlite.memory_db).resolve_item(item_id, data.get("reason"))
+    return {"status": "ok"}
+
+
+@router.delete("/admin/state/{item_id}")
+async def delete_conversation_state_item(item_id: str, request: Request):
+    """Soft-delete a hot-state item."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    await SQLiteStateStore(get_config().storage.sqlite.memory_db).delete_item(item_id, "manual_delete")
+    return {"status": "ok"}
+
+
+@router.post("/admin/conversations/{conversation_id}/state/rebuild")
+async def rebuild_conversation_state(conversation_id: str, request: Request, data: dict = Body(default={})):
+    """Rebuild hot-state by projecting approved boundary/preference cards."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.memory.state_projector import project_cards_to_state
+
+    cfg = get_config()
+    result = await project_cards_to_state(
+        cfg.storage.sqlite.memory_db,
+        conversation_id=conversation_id,
+        user_id=data.get("user_id"),
+        character_id=data.get("character_id"),
+    )
+    return {"status": "ok", **result}
 
 
 @router.post("/admin/inbox/{inbox_id}/reject")

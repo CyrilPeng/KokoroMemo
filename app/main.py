@@ -7,6 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import load_config
@@ -46,6 +47,16 @@ def create_app() -> FastAPI:
 
     app.include_router(admin_router)
     app.include_router(openai_router)
+
+    @app.middleware("http")
+    async def admin_auth_middleware(request, call_next):
+        if request.url.path.startswith("/admin"):
+            from app.core.state import get_config
+
+            token = get_config().server.get_admin_token()
+            if token and request.headers.get("authorization", "") != f"Bearer {token}":
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return await call_next(request)
 
     cfg = load_config()
     if cfg.compatibility.cors_enabled:

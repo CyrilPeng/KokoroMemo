@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { h } from 'vue'
+import { computed, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   NConfigProvider,
   NLayout,
@@ -21,17 +22,18 @@ import {
 
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 
 function renderIcon(icon: any) {
   return () => h(NIcon, null, { default: () => h(icon) })
 }
 
-const menuOptions: MenuOption[] = [
-  { label: '仪表盘', key: '/dashboard', icon: renderIcon(HomeOutline) },
-  { label: '记忆管理', key: '/memories', icon: renderIcon(BulbOutline) },
-  { label: '会话状态板', key: '/state', icon: renderIcon(ReaderOutline) },
-  { label: '设置', key: '/settings', icon: renderIcon(SettingsOutline) },
-]
+const menuOptions = computed<MenuOption[]>(() => [
+  { label: t('nav.dashboard'), key: '/dashboard', icon: renderIcon(HomeOutline) },
+  { label: t('nav.memories'), key: '/memories', icon: renderIcon(BulbOutline) },
+  { label: t('nav.state'), key: '/state', icon: renderIcon(ReaderOutline) },
+  { label: t('nav.settings'), key: '/settings', icon: renderIcon(SettingsOutline) },
+])
 
 function handleMenuUpdate(key: string) {
   router.push(key)
@@ -86,7 +88,7 @@ const themeOverrides: GlobalThemeOverrides = {
             :indent="24"
           />
           <div style="position: absolute; bottom: 16px; left: 24px; right: 24px; font-size: 12px; color: #52525b;">
-            v0.1.0 · 本地长期记忆
+            {{ $t('common.version') }}
           </div>
         </NLayoutSider>
         <NLayoutContent :native-scrollbar="false" content-style="padding: 32px;">

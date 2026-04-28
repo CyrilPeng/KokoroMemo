@@ -24,8 +24,10 @@ import {
   NTooltip,
   useMessage,
 } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import { apiFetch } from '../api'
 
+const { t } = useI18n()
 const message = useMessage()
 const loading = ref(false)
 const conversationId = ref('')
@@ -58,9 +60,9 @@ const copyForm = ref({ target_conversation_id: '', copy_mounts: true })
 const showInitWizard = ref(false)
 const wizardForm = ref({ library_ids: ['lib_default'] as string[], write_library_id: 'lib_default', template_id: 'tpl_roleplay_general' })
 
-const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? '（内置）' : ''}`, value: item.template_id })))
+const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? `(${t('common.builtin')})` : ''}`, value: item.template_id })))
 const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
-const mountedLibraryNames = computed(() => memoryMounts.value.map((item) => item.name).join(' + ') || '未挂载')
+const mountedLibraryNames = computed(() => memoryMounts.value.map((item) => item.name).join(' + ') || t('state.noMount'))
 const fieldOptions = computed(() => (currentTemplate.value?.tabs || []).flatMap((tab: any) =>
   (tab.fields || []).map((field: any) => ({ label: `${tab.label} / ${field.label}`, value: field.field_id })),
 ))
@@ -75,7 +77,7 @@ const legacyItems = computed(() => stateItems.value.filter((item) => !item.field
 
 function ensureConversationId() {
   if (!conversationId.value.trim()) {
-    message.warning('请输入 conversation_id')
+    message.warning(t('state.messages.inputId'))
     return false
   }
   return true
@@ -133,7 +135,7 @@ async function fetchAll() {
     await fetchConfig()
     saveLocalInputs()
   } catch (e: any) {
-    message.error(`加载失败：${e.message || e}`)
+    message.error(t('state.messages.loadFailed', { error: e.message || e }))
   }
   loading.value = false
 }
@@ -141,7 +143,7 @@ async function fetchAll() {
 async function saveFullConfig() {
   if (!ensureConversationId()) return
   if (!mountedLibraryIds.value.length) {
-    message.warning('请至少挂载一个长期记忆库')
+    message.warning(t('state.messages.mountRequired'))
     return
   }
   if (!mountedLibraryIds.value.includes(writeLibraryId.value)) {
@@ -158,8 +160,8 @@ async function saveFullConfig() {
       }),
     })
     const data = await resp.json()
-    if (data.status !== 'ok') throw new Error(data.message || '保存失败')
-    message.success('会话配置已保存')
+    if (data.status !== 'ok') throw new Error(data.message || t('common.saveFailed'))
+    message.success(t('state.messages.configSaved'))
     isNewSession.value = false
     await fetchAll()
   } catch (e: any) {
@@ -181,7 +183,7 @@ async function changeTemplate() {
     headers: authHeaders(true),
     body: JSON.stringify({ template_id: selectedTemplateId.value }),
   })
-  message.success('状态板模板已切换')
+  message.success(t('state.messages.templateSwitched'))
   fetchAll()
 }
 
@@ -224,9 +226,9 @@ async function saveItem() {
   try {
     const resp = await apiFetch(url, { method, headers: authHeaders(true), body })
     const data = await resp.json()
-    if (data.status !== 'ok') throw new Error(data.message || '保存失败')
+    if (data.status !== 'ok') throw new Error(data.message || t('common.saveFailed'))
     showEditModal.value = false
-    message.success('状态项已保存')
+    message.success(t('state.messages.stateItemSaved'))
     fetchAll()
   } catch (e: any) {
     message.error(e.message || String(e))
@@ -234,14 +236,14 @@ async function saveItem() {
 }
 
 async function resolveItem(row: any) {
-  await apiFetch(`/admin/state/${row.item_id}/resolve`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ reason: 'GUI 标记完成' }) })
-  message.success('已标记完成')
+  await apiFetch(`/admin/state/${row.item_id}/resolve`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ reason: t('state.messages.done') }) })
+  message.success(t('state.messages.markedDone'))
   fetchAll()
 }
 
 async function deleteItem(row: any) {
   await apiFetch(`/admin/state/${row.item_id}`, { method: 'DELETE', headers: authHeaders() })
-  message.success('已删除')
+  message.success(t('state.messages.itemDeleted'))
   fetchAll()
 }
 
@@ -249,7 +251,7 @@ async function rebuildFromCards() {
   if (!ensureConversationId()) return
   const resp = await apiFetch(`/admin/conversations/${conversationId.value}/state/rebuild`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify({}) })
   const data = await resp.json()
-  message.success(`已投影 ${data.projected || 0} 条长期卡片`)
+  message.success(t('state.messages.projected', { count: data.projected || 0 }))
   fetchAll()
 }
 
@@ -261,8 +263,8 @@ async function clearState() {
       headers: authHeaders(true),
     })
     const data = await resp.json()
-    if (data.status !== 'ok') throw new Error(data.message || '清空失败')
-    message.success(`已清空 ${data.cleared || 0} 个状态项`)
+    if (data.status !== 'ok') throw new Error(data.message || t('state.messages.clearFailed'))
+    message.success(t('state.messages.cleared', { count: data.cleared || 0 }))
     fetchAll()
   } catch (e: any) {
     message.error(e.message || String(e))
@@ -277,8 +279,8 @@ async function resetState() {
       headers: authHeaders(true),
     })
     const data = await resp.json()
-    if (data.status !== 'ok') throw new Error(data.message || '重置失败')
-    message.success(`已重置状态板（清空 ${data.cleared || 0} 项，保留模板绑定）`)
+    if (data.status !== 'ok') throw new Error(data.message || t('state.messages.resetFailed'))
+    message.success(t('state.messages.resetDone', { count: data.cleared || 0 }))
     fetchAll()
   } catch (e: any) {
     message.error(e.message || String(e))
@@ -293,7 +295,7 @@ function openCopyModal() {
 async function confirmCopy() {
   if (!ensureConversationId()) return
   if (!copyForm.value.target_conversation_id.trim()) {
-    message.warning('请输入目标 conversation_id')
+    message.warning(t('state.messages.inputTargetId'))
     return
   }
   try {
@@ -303,9 +305,9 @@ async function confirmCopy() {
       body: JSON.stringify(copyForm.value),
     })
     const data = await resp.json()
-    if (data.status !== 'ok') throw new Error(data.message || '复制失败')
+    if (data.status !== 'ok') throw new Error(data.message || t('state.messages.copyFailed'))
     showCopyModal.value = false
-    message.success(`已复制 ${data.copied_items || 0} 个状态项${data.copied_mounts ? ` 和 ${data.copied_mounts} 个挂载配置` : ''}`)
+    message.success(t('state.messages.copied', { items: data.copied_items || 0, mounts: data.copied_mounts ? ` and ${data.copied_mounts} mounts` : '' }))
   } catch (e: any) {
     message.error(e.message || String(e))
   }
@@ -330,7 +332,7 @@ function handleWizardLibrariesChange(value: string[]) {
 async function confirmInitWizard() {
   if (!ensureConversationId()) return
   if (!wizardForm.value.library_ids.length) {
-    message.warning('请至少选择一个记忆库')
+    message.warning(t('state.messages.selectLibrary'))
     return
   }
   try {
@@ -344,9 +346,9 @@ async function confirmInitWizard() {
       }),
     })
     const data = await resp.json()
-    if (data.status !== 'ok') throw new Error(data.message || '初始化失败')
+    if (data.status !== 'ok') throw new Error(data.message || t('state.messages.initFailed'))
     showInitWizard.value = false
-    message.success('会话已初始化')
+    message.success(t('state.messages.sessionInit'))
     await fetchAll()
   } catch (e: any) {
     message.error(e.message || String(e))
@@ -355,10 +357,10 @@ async function confirmInitWizard() {
 
 function openTemplateModal() {
   templateJson.value = JSON.stringify({
-    name: '自定义状态板',
-    description: '按你的玩法自定义标签页和字段',
+    name: t('state.messages.defaultTemplate'),
+    description: t('state.messages.defaultTemplateDesc'),
     tabs: [
-      { tab_key: 'main', label: '主要状态', fields: [{ field_key: 'current_goal', label: '当前目标', description: 'AI 需要维护的当前目标', ai_writable: true, include_in_prompt: true }] },
+      { tab_key: 'main', label: t('state.messages.defaultTabLabel'), fields: [{ field_key: 'current_goal', label: t('state.messages.defaultFieldLabel'), description: t('state.messages.defaultFieldDesc'), ai_writable: true, include_in_prompt: true }] },
     ],
   }, null, 2)
   showTemplateModal.value = true
@@ -369,13 +371,13 @@ async function saveTemplate() {
     const payload = JSON.parse(templateJson.value)
     const resp = await apiFetch('/admin/state/templates', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(payload) })
     const data = await resp.json()
-    if (data.status !== 'ok') throw new Error(data.message || '保存失败')
+    if (data.status !== 'ok') throw new Error(data.message || t('common.saveFailed'))
     showTemplateModal.value = false
-    message.success('模板已保存')
+    message.success(t('state.messages.templateSaved'))
     await fetchTemplates()
     selectedTemplateId.value = data.template_id
   } catch (e: any) {
-    message.error(`模板保存失败：${e.message || e}`)
+    message.error(t('state.messages.templateSaveFailed', { error: e.message || e }))
   }
 }
 
@@ -388,11 +390,11 @@ async function runStateFiller() {
   })
   const data = await resp.json()
   if (data.status !== 'ok') {
-    message.error(data.message || '填表失败')
+    message.error(data.message || t('state.messages.fillFailed'))
     return
   }
   showFillModal.value = false
-  message.success(`AI 填表完成：写入 ${data.applied || 0} 项，跳过 ${data.skipped || 0} 项`)
+  message.success(t('state.messages.fillDone', { applied: data.applied || 0, skipped: data.skipped || 0 }))
   fetchAll()
 }
 
@@ -402,16 +404,16 @@ function applyPreset(preset: any) {
     if (libraryIds.length) {
       mountedLibraryIds.value = libraryIds
       writeLibraryId.value = preset.write_library_id || libraryIds[0]
-      message.success(`已应用预设：${preset.name}`)
+      message.success(t('state.messages.presetApplied', { name: preset.name }))
     }
   } catch {
-    message.error('预设数据解析失败')
+    message.error(t('state.messages.presetParseFailed'))
   }
 }
 
 async function saveAsPreset() {
   if (!mountedLibraryIds.value.length) {
-    message.warning('请先选择挂载的记忆库')
+    message.warning(t('state.messages.presetSelectFirst'))
     return
   }
   showPresetModal.value = true
@@ -423,17 +425,17 @@ async function confirmSavePreset() {
       method: 'POST',
       headers: authHeaders(true),
       body: JSON.stringify({
-        name: presetForm.value.name || '未命名挂载组合',
+        name: presetForm.value.name || t('state.messages.unnamedPreset'),
         description: presetForm.value.description,
         library_ids: mountedLibraryIds.value,
         write_library_id: writeLibraryId.value,
       }),
     })
     const data = await resp.json()
-    if (data.status !== 'ok') throw new Error(data.message || '保存失败')
+    if (data.status !== 'ok') throw new Error(data.message || t('common.saveFailed'))
     showPresetModal.value = false
     presetForm.value = { name: '', description: '' }
-    message.success('挂载组合预设已保存')
+    message.success(t('state.messages.presetSaved'))
     await fetchPresets()
   } catch (e: any) {
     message.error(e.message || String(e))
@@ -444,7 +446,7 @@ async function deletePreset(presetId: string) {
   const resp = await apiFetch(`/admin/memory-mount-presets/${presetId}`, { method: 'DELETE', headers: authHeaders() })
   const data = await resp.json()
   if (data.status === 'ok') {
-    message.success('预设已删除')
+    message.success(t('state.messages.presetDeleted'))
     await fetchPresets()
   }
 }
@@ -470,9 +472,9 @@ async function exportSinglePreset(presetId: string) {
     a.download = `mount_preset_${presetId}.json`
     a.click()
     URL.revokeObjectURL(url)
-    message.success('预设已导出')
+    message.success(t('state.messages.presetExported'))
   } catch (e: any) {
-    message.error(e.message || '导出失败')
+    message.error(e.message || t('common.exportFailed'))
   }
 }
 
@@ -488,9 +490,9 @@ async function exportTemplate() {
     a.download = `template_${selectedTemplateId.value}.json`
     a.click()
     URL.revokeObjectURL(url)
-    message.success('模板已导出')
+    message.success(t('state.messages.templateExported'))
   } catch (e: any) {
-    message.error(e.message || '导出失败')
+    message.error(e.message || t('common.exportFailed'))
   }
 }
 
@@ -512,13 +514,13 @@ function triggerImportTemplate() {
       const result = await resp.json()
       if (result.status === 'ok') {
         selectedTemplateId.value = result.template_id
-        message.success('模板已导入')
+        message.success(t('state.messages.templateImported'))
         await fetchTemplates()
       } else {
-        message.error(result.message || '导入失败')
+        message.error(result.message || t('common.importFailed'))
       }
     } catch (e: any) {
-      message.error(`导入失败：${e.message || e}`)
+      message.error(`${t('common.importFailed')}: ${e.message || e}`)
     }
   }
   input.click()
@@ -541,13 +543,13 @@ function triggerImportPreset() {
       })
       const result = await resp.json()
       if (result.status === 'ok') {
-        message.success('挂载预设已导入')
+        message.success(t('state.messages.presetImported'))
         await fetchPresets()
       } else {
-        message.error(result.message || '导入失败')
+        message.error(result.message || t('common.importFailed'))
       }
     } catch (e: any) {
-      message.error(`导入失败：${e.message || e}`)
+      message.error(`${t('common.importFailed')}: ${e.message || e}`)
     }
   }
   input.click()
@@ -568,9 +570,9 @@ async function exportAllPresets() {
     a.download = 'mount_presets.json'
     a.click()
     URL.revokeObjectURL(url)
-    message.success(`已导出 ${exported.length} 个预设`)
+    message.success(t('state.messages.presetsExported', { count: exported.length }))
   } catch (e: any) {
-    message.error(e.message || '导出失败')
+    message.error(e.message || t('common.exportFailed'))
   }
 }
 
@@ -608,37 +610,37 @@ function saveLocalInputs() {
 }
 
 const boardColumns = [
-  { title: '字段', key: 'label', width: 160, render: (row: any) => h('div', [h('div', row.field.label), h('div', { class: 'km-muted' }, row.field.field_key)]) },
-  { title: '当前值', key: 'value', ellipsis: { tooltip: true }, render: (row: any) => row.item?.item_value || row.item?.content || row.field.default_value || '—' },
-  { title: '置信度', key: 'confidence', width: 90, render: (row: any) => row.item ? Number(row.item.confidence).toFixed(2) : '—' },
-  { title: '来源', key: 'source', width: 120, render: (row: any) => row.item?.source || '—' },
-  { title: '更新时间', key: 'updated_at', width: 170, render: (row: any) => row.item?.updated_at || '—' },
-  { title: '锁定', key: 'locked', width: 80, render: (row: any) => row.item?.user_locked ? h(NTag, { size: 'small', type: 'warning' }, { default: () => '锁定' }) : '—' },
-  { title: '操作', key: 'actions', width: 180, render: (row: any) => row.item ? [hButton('编辑', () => openEditModal(row.item, row.field)), hButton('完成', () => resolveItem(row.item)), hButton('删除', () => deleteItem(row.item))] : hButton('填写', () => openCreateModal(row.field)) },
+  { title: t('state.column.field'), key: 'label', width: 160, render: (row: any) => h('div', [h('div', row.field.label), h('div', { class: 'km-muted' }, row.field.field_key)]) },
+  { title: t('state.column.value'), key: 'value', ellipsis: { tooltip: true }, render: (row: any) => row.item?.item_value || row.item?.content || row.field.default_value || '—' },
+  { title: t('state.column.confidence'), key: 'confidence', width: 90, render: (row: any) => row.item ? Number(row.item.confidence).toFixed(2) : '—' },
+  { title: t('state.column.source'), key: 'source', width: 120, render: (row: any) => row.item?.source || '—' },
+  { title: t('state.column.updatedAt'), key: 'updated_at', width: 170, render: (row: any) => row.item?.updated_at || '—' },
+  { title: t('state.column.locked'), key: 'locked', width: 80, render: (row: any) => row.item?.user_locked ? h(NTag, { size: 'small', type: 'warning' }, { default: () => t('state.column.locked') }) : '—' },
+  { title: t('state.column.actions'), key: 'actions', width: 180, render: (row: any) => row.item ? [hButton(t('state.actions.edit'), () => openEditModal(row.item, row.field)), hButton(t('state.actions.done'), () => resolveItem(row.item)), hButton(t('state.actions.delete'), () => deleteItem(row.item))] : hButton(t('state.actions.fill'), () => openCreateModal(row.field)) },
 ]
 
 const legacyColumns = [
-  { title: '类别', key: 'category', width: 110 },
-  { title: '键', key: 'item_key', width: 160 },
-  { title: '内容', key: 'item_value', ellipsis: { tooltip: true } },
-  { title: '来源', key: 'source', width: 120 },
-  { title: '操作', key: 'actions', width: 180, render: (row: any) => [hButton('编辑', () => openEditModal(row)), hButton('完成', () => resolveItem(row)), hButton('删除', () => deleteItem(row))] },
+  { title: t('state.column.category'), key: 'category', width: 110 },
+  { title: t('state.column.key'), key: 'item_key', width: 160 },
+  { title: t('state.column.content'), key: 'item_value', ellipsis: { tooltip: true } },
+  { title: t('state.column.source'), key: 'source', width: 120 },
+  { title: t('state.column.actions'), key: 'actions', width: 180, render: (row: any) => [hButton(t('state.actions.edit'), () => openEditModal(row)), hButton(t('state.actions.done'), () => resolveItem(row)), hButton(t('state.actions.delete'), () => deleteItem(row))] },
 ]
 
 const decisionColumns = [
-  { title: '时间', key: 'created_at', width: 170 },
-  { title: '模式', key: 'mode', width: 90 },
-  { title: '检索', key: 'should_retrieve', width: 80, render: (row: any) => row.should_retrieve ? '是' : '否' },
-  { title: '原因', key: 'reason', ellipsis: { tooltip: true } },
-  { title: '最新用户输入', key: 'latest_user_text', ellipsis: { tooltip: true } },
+  { title: t('state.column.time'), key: 'created_at', width: 170 },
+  { title: t('state.column.mode'), key: 'mode', width: 90 },
+  { title: t('state.column.retrieve'), key: 'should_retrieve', width: 80, render: (row: any) => row.should_retrieve ? t('common.yes') : t('common.no') },
+  { title: t('state.column.reason'), key: 'reason', ellipsis: { tooltip: true } },
+  { title: t('state.column.latestInput'), key: 'latest_user_text', ellipsis: { tooltip: true } },
 ]
 
 const eventColumns = [
-  { title: '时间', key: 'created_at', width: 170 },
-  { title: '事件', key: 'event_type', width: 160 },
-  { title: '条目', key: 'item_id', width: 180 },
-  { title: '旧值', key: 'old_value', ellipsis: { tooltip: true } },
-  { title: '新值', key: 'new_value', ellipsis: { tooltip: true } },
+  { title: t('state.column.time'), key: 'created_at', width: 170 },
+  { title: t('state.column.event'), key: 'event_type', width: 160 },
+  { title: t('state.column.item'), key: 'item_id', width: 180 },
+  { title: t('state.column.oldValue'), key: 'old_value', ellipsis: { tooltip: true } },
+  { title: t('state.column.newValue'), key: 'new_value', ellipsis: { tooltip: true } },
 ]
 
 onMounted(() => {
@@ -653,77 +655,77 @@ onMounted(() => {
 <template>
   <div>
     <div style="margin-bottom: 28px;">
-      <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">会话状态板</h1>
-      <p style="color: #71717a; font-size: 14px;">管理当前会话配置、状态板模板和长期记忆挂载。</p>
+      <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('state.title') }}</h1>
+      <p style="color: #71717a; font-size: 14px;">{{ $t('state.subtitle') }}</p>
     </div>
 
     <!-- 会话配置面板 -->
-    <NCard title="当前会话配置" style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+    <NCard :title="$t('state.configCard')" style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
       <NGrid :cols="4" :x-gap="12" :y-gap="12" responsive="screen" item-responsive>
         <NGridItem span="4 m:2">
-          <NFormItem label="会话 ID" label-placement="top" style="margin-bottom: 0;">
+          <NFormItem :label="$t('state.conversationId')" label-placement="top" style="margin-bottom: 0;">
             <NSpace :wrap="false">
-              <NInput v-model:value="conversationId" placeholder="输入 conversation_id" style="width: 280px;" @blur="saveLocalInputs" />
-              <NButton type="primary" @click="fetchAll">加载</NButton>
+              <NInput v-model:value="conversationId" :placeholder="$t('state.inputConversationId')" style="width: 280px;" @blur="saveLocalInputs" />
+              <NButton type="primary" @click="fetchAll">{{ $t('common.load') }}</NButton>
             </NSpace>
           </NFormItem>
         </NGridItem>
         <NGridItem span="4 m:2">
-          <NFormItem label="管理密钥" label-placement="top" style="margin-bottom: 0;">
-            <NInput v-model:value="adminToken" type="password" placeholder="ADMIN_TOKEN（未配置可留空）" style="width: 220px;" @blur="saveLocalInputs" />
+          <NFormItem :label="$t('state.adminToken')" label-placement="top" style="margin-bottom: 0;">
+            <NInput v-model:value="adminToken" type="password" :placeholder="$t('state.adminTokenPlaceholder')" style="width: 220px;" @blur="saveLocalInputs" />
           </NFormItem>
         </NGridItem>
 
         <NGridItem span="4 m:2">
-          <NFormItem label="状态板模板" label-placement="top" style="margin-bottom: 0;">
+          <NFormItem :label="$t('state.stateTemplate')" label-placement="top" style="margin-bottom: 0;">
             <NSpace :wrap="false">
-              <NSelect v-model:value="selectedTemplateId" :options="templateOptions" placeholder="选择模板" style="width: 260px;" />
-              <NButton @click="changeTemplate" :disabled="!configLoaded">切换</NButton>
-              <NButton @click="openTemplateModal">新建</NButton>
-              <NButton @click="exportTemplate" :disabled="!selectedTemplateId">导出</NButton>
-              <NButton @click="triggerImportTemplate">导入</NButton>
+              <NSelect v-model:value="selectedTemplateId" :options="templateOptions" :placeholder="$t('state.selectTemplate')" style="width: 260px;" />
+              <NButton @click="changeTemplate" :disabled="!configLoaded">{{ $t('state.switch') }}</NButton>
+              <NButton @click="openTemplateModal">{{ $t('state.create') }}</NButton>
+              <NButton @click="exportTemplate" :disabled="!selectedTemplateId">{{ $t('common.export') }}</NButton>
+              <NButton @click="triggerImportTemplate">{{ $t('common.import') }}</NButton>
             </NSpace>
           </NFormItem>
         </NGridItem>
         <NGridItem span="4 m:2">
-          <NFormItem label="写入目标" label-placement="top" style="margin-bottom: 0;">
-            <NSelect v-model:value="writeLibraryId" :options="memoryLibraryOptions.filter((item) => mountedLibraryIds.includes(item.value))" placeholder="自动记忆写入库" style="width: 220px;" />
+          <NFormItem :label="$t('state.writeTarget')" label-placement="top" style="margin-bottom: 0;">
+            <NSelect v-model:value="writeLibraryId" :options="memoryLibraryOptions.filter((item) => mountedLibraryIds.includes(item.value))" :placeholder="$t('state.writeTargetPlaceholder')" style="width: 220px;" />
           </NFormItem>
         </NGridItem>
 
         <NGridItem span="4">
-          <NFormItem label="挂载记忆库" label-placement="top" style="margin-bottom: 0;">
+          <NFormItem :label="$t('state.mountLibraries')" label-placement="top" style="margin-bottom: 0;">
             <NSelect
               :value="mountedLibraryIds"
               multiple
               filterable
               :options="memoryLibraryOptions"
-              placeholder="选择一个或多个长期记忆库"
+              :placeholder="$t('state.mountLibrariesPlaceholder')"
               @update:value="handleMountedLibrariesChange"
             />
           </NFormItem>
         </NGridItem>
 
         <NGridItem span="4">
-          <NFormItem label="挂载组合预设" label-placement="top" style="margin-bottom: 0;">
+          <NFormItem :label="$t('state.mountPresets')" label-placement="top" style="margin-bottom: 0;">
             <NSpace align="center" :wrap="true">
               <NDropdown
                 v-for="preset in presets"
                 :key="preset.preset_id"
                 trigger="click"
                 :options="[
-                  { label: '应用', key: 'apply' },
-                  { label: '导出', key: 'export' },
+                  { label: t('state.presetActions.apply'), key: 'apply' },
+                  { label: t('state.presetActions.export'), key: 'export' },
                   { type: 'divider', key: 'd1' },
-                  { label: '删除', key: 'delete' },
+                  { label: t('state.presetActions.delete'), key: 'delete' },
                 ]"
                 @select="(key: string) => handlePresetAction(key, preset)"
               >
                 <NButton size="small" quaternary type="info">{{ preset.name }}</NButton>
               </NDropdown>
-              <NButton size="small" dashed @click="saveAsPreset" :disabled="!mountedLibraryIds.length">保存当前为预设</NButton>
-              <NButton size="small" dashed @click="triggerImportPreset">导入预设</NButton>
-              <NButton size="small" dashed @click="exportAllPresets" :disabled="!presets.length">导出全部预设</NButton>
+              <NButton size="small" dashed @click="saveAsPreset" :disabled="!mountedLibraryIds.length">{{ $t('state.saveAsPreset') }}</NButton>
+              <NButton size="small" dashed @click="triggerImportPreset">{{ $t('state.importPreset') }}</NButton>
+              <NButton size="small" dashed @click="exportAllPresets" :disabled="!presets.length">{{ $t('state.exportAllPresets') }}</NButton>
             </NSpace>
           </NFormItem>
         </NGridItem>
@@ -733,26 +735,26 @@ onMounted(() => {
       <NDivider style="margin: 12px 0;" />
       <NSpace align="center" justify="space-between" :wrap="true">
         <NSpace align="center" :wrap="true">
-          <NTag v-if="isNewSession" type="warning" size="small">新会话</NTag>
-          <NTag v-else type="success" size="small">已配置</NTag>
+          <NTag v-if="isNewSession" type="warning" size="small">{{ $t('state.newSession') }}</NTag>
+          <NTag v-else type="success" size="small">{{ $t('state.configured') }}</NTag>
           <span style="color: #a1a1aa; font-size: 13px;">
-            模板：<strong style="color: #e4e4e7;">{{ currentTemplate?.name || '未选择' }}</strong>
+            {{ $t('state.templateLabel') }}<strong style="color: #e4e4e7;">{{ currentTemplate?.name || $t('state.noTemplate') }}</strong>
             &nbsp;|&nbsp;
-            挂载：<strong style="color: #e4e4e7;">{{ mountedLibraryNames }}</strong>
+            {{ $t('state.mountLabel') }}<strong style="color: #e4e4e7;">{{ mountedLibraryNames }}</strong>
             &nbsp;|&nbsp;
-            状态项：<strong style="color: #e4e4e7;">{{ stateItemCount }}</strong>
+            {{ $t('state.stateItems') }}<strong style="color: #e4e4e7;">{{ stateItemCount }}</strong>
           </span>
         </NSpace>
         <NSpace>
-          <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">保存配置</NButton>
-          <NButton @click="openCopyModal" :disabled="!stateItemCount">复制到新会话</NButton>
+          <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">{{ $t('state.saveConfig') }}</NButton>
+          <NButton @click="openCopyModal" :disabled="!stateItemCount">{{ $t('state.copyToNew') }}</NButton>
           <NPopconfirm @positive-click="resetState">
-            <template #trigger><NButton :disabled="!stateItemCount">重置为空</NButton></template>
-            确认重置状态板？将清空所有状态项但保留模板绑定。
+            <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.resetToEmpty') }}</NButton></template>
+            {{ $t('state.resetConfirm') }}
           </NPopconfirm>
           <NPopconfirm @positive-click="clearState">
-            <template #trigger><NButton :disabled="!stateItemCount">清空状态板</NButton></template>
-            确认清空当前会话的所有状态项？
+            <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.clearState') }}</NButton></template>
+            {{ $t('state.clearConfirm') }}
           </NPopconfirm>
         </NSpace>
       </NSpace>
@@ -761,11 +763,11 @@ onMounted(() => {
     <!-- 操作按钮栏 -->
     <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
       <NSpace align="center" :wrap="true">
-        <NButton @click="showFillModal = true" :disabled="!configLoaded">手动 AI 填表</NButton>
-        <NButton @click="rebuildFromCards" :disabled="!configLoaded">从长期记忆投影</NButton>
+        <NButton @click="showFillModal = true" :disabled="!configLoaded">{{ $t('state.manualFill') }}</NButton>
+        <NButton @click="rebuildFromCards" :disabled="!configLoaded">{{ $t('state.projectFromMemory') }}</NButton>
         <NTooltip trigger="hover">
           <template #trigger><span class="help-icon">?</span></template>
-          AI 填表只更新可写字段。锁定字段不会被 AI 覆盖。投影将长期记忆中的偏好和边界卡片投射到状态板。
+          {{ $t('state.fillHelp') }}
         </NTooltip>
       </NSpace>
     </NCard>
@@ -774,119 +776,121 @@ onMounted(() => {
     <NCard v-if="configLoaded && isNewSession" style="background: rgba(167, 139, 250, 0.08); border: 1px solid #a78bfa; margin-bottom: 16px;">
       <NSpace align="center" justify="space-between">
         <div>
-          <div style="color: #e4e4e7; font-weight: 600; margin-bottom: 4px;">这是一个新会话</div>
-          <div style="color: #a1a1aa; font-size: 13px;">当前会话尚未配置。点击"初始化向导"可快速选择记忆库、写入目标和状态板模板。</div>
+          <div style="color: #e4e4e7; font-weight: 600; margin-bottom: 4px;">{{ $t('state.isNewSession') }}</div>
+          <div style="color: #a1a1aa; font-size: 13px;">{{ $t('state.newSessionHint') }}</div>
         </div>
         <NSpace>
-          <NButton type="primary" @click="openInitWizard">初始化向导</NButton>
-          <NButton @click="saveFullConfig">使用当前配置</NButton>
+          <NButton type="primary" @click="openInitWizard">{{ $t('state.initWizard') }}</NButton>
+          <NButton @click="saveFullConfig">{{ $t('state.useCurrentConfig') }}</NButton>
         </NSpace>
       </NSpace>
     </NCard>
 
     <NSpin :show="loading">
       <NTabs type="line" animated>
-        <NTabPane name="board" tab="状态板">
+        <NTabPane name="board" :tab="$t('state.tabs.board')">
           <NTabs v-if="currentTemplate" type="card" animated>
             <NTabPane v-for="tab in currentTemplate.tabs" :key="tab.tab_id" :name="tab.tab_id" :tab="tab.label">
               <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 12px;">
                 <template #header>
-                  <NSpace align="center"><span>{{ tab.label }}</span><NTag size="small">{{ tab.fields?.length || 0 }} 字段</NTag></NSpace>
+                  <NSpace align="center"><span>{{ tab.label }}</span><NTag size="small">{{ $t('state.fieldCount', { count: tab.fields?.length || 0 }) }}</NTag></NSpace>
                 </template>
-                <p style="color: #71717a; margin-top: 0;">{{ tab.description || '无描述' }}</p>
+                <p style="color: #71717a; margin-top: 0;">{{ tab.description || $t('state.noDescription') }}</p>
                 <NDataTable :columns="boardColumns" :data="fieldRows(tab)" :pagination="false" />
               </NCard>
             </NTabPane>
           </NTabs>
-          <NCard v-if="legacyItems.length" title="旧类别状态项" style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
+          <NCard v-if="legacyItems.length" :title="$t('state.legacyItems')" style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
             <NDataTable :columns="legacyColumns" :data="legacyItems" :pagination="{ pageSize: 8 }" />
           </NCard>
         </NTabPane>
-        <NTabPane name="gate" tab="Gate 调试"><NDataTable :columns="decisionColumns" :data="decisions" :pagination="{ pageSize: 12 }" /></NTabPane>
-        <NTabPane name="events" tab="变更事件"><NDataTable :columns="eventColumns" :data="events" :pagination="{ pageSize: 12 }" /></NTabPane>
+        <NTabPane name="gate" :tab="$t('state.tabs.gate')"><NDataTable :columns="decisionColumns" :data="decisions" :pagination="{ pageSize: 12 }" /></NTabPane>
+        <NTabPane name="events" :tab="$t('state.tabs.events')"><NDataTable :columns="eventColumns" :data="events" :pagination="{ pageSize: 12 }" /></NTabPane>
       </NTabs>
     </NSpin>
 
     <!-- 编辑状态项 Modal -->
-    <NModal v-model:show="showEditModal" preset="card" title="状态项" style="width: 620px; background: #18181b;">
+    <NModal v-model:show="showEditModal" preset="card" :title="$t('state.editStateItem')" style="width: 620px; background: #18181b;">
       <NForm label-placement="top">
-        <NFormItem label="字段"><NSelect v-model:value="editForm.field_id" :options="fieldOptions" filterable /></NFormItem>
-        <NFormItem label="内容"><NInput v-model:value="editForm.item_value" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
+        <NFormItem :label="$t('state.fieldLabel')"><NSelect v-model:value="editForm.field_id" :options="fieldOptions" filterable /></NFormItem>
+        <NFormItem :label="$t('state.content')"><NInput v-model:value="editForm.item_value" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
         <NGrid :cols="3" :x-gap="12">
-          <NGridItem><NFormItem label="优先级"><NInputNumber v-model:value="editForm.priority" :min="0" :max="100" style="width: 100%;" /></NFormItem></NGridItem>
-          <NGridItem><NFormItem label="置信度"><NInputNumber v-model:value="editForm.confidence" :min="0" :max="1" :step="0.05" style="width: 100%;" /></NFormItem></NGridItem>
-          <NGridItem><NFormItem label="锁定"><NSwitch v-model:value="editForm.user_locked" /></NFormItem></NGridItem>
+          <NGridItem><NFormItem :label="$t('state.priority')"><NInputNumber v-model:value="editForm.priority" :min="0" :max="100" style="width: 100%;" /></NFormItem></NGridItem>
+          <NGridItem><NFormItem :label="$t('state.confidence')"><NInputNumber v-model:value="editForm.confidence" :min="0" :max="1" :step="0.05" style="width: 100%;" /></NFormItem></NGridItem>
+          <NGridItem><NFormItem :label="$t('state.locked')"><NSwitch v-model:value="editForm.user_locked" /></NFormItem></NGridItem>
         </NGrid>
       </NForm>
-      <template #footer><NSpace justify="end"><NButton @click="showEditModal = false">取消</NButton><NButton type="primary" @click="saveItem">保存</NButton></NSpace></template>
+      <template #footer><NSpace justify="end"><NButton @click="showEditModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="saveItem">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
     <!-- 新建模板 Modal -->
-    <NModal v-model:show="showTemplateModal" preset="card" title="新建状态板模板（JSON）" style="width: 760px; background: #18181b;">
+    <NModal v-model:show="showTemplateModal" preset="card" :title="$t('state.createTemplateTitle')" style="width: 760px; background: #18181b;">
       <NInput v-model:value="templateJson" type="textarea" :autosize="{ minRows: 18, maxRows: 28 }" />
-      <template #footer><NSpace justify="end"><NButton @click="showTemplateModal = false">取消</NButton><NButton type="primary" @click="saveTemplate">保存模板</NButton></NSpace></template>
+      <template #footer><NSpace justify="end"><NButton @click="showTemplateModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="saveTemplate">{{ $t('state.saveTemplate') }}</NButton></NSpace></template>
     </NModal>
 
     <!-- AI 填表 Modal -->
-    <NModal v-model:show="showFillModal" preset="card" title="手动运行 AI 填表" style="width: 680px; background: #18181b;">
+    <NModal v-model:show="showFillModal" preset="card" :title="$t('state.fillTitle')" style="width: 680px; background: #18181b;">
       <NForm label-placement="top">
-        <NFormItem label="用户发言"><NInput v-model:value="fillForm.user_message" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
-        <NFormItem label="助手回复"><NInput v-model:value="fillForm.assistant_message" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
+        <NFormItem :label="$t('state.userMessage')"><NInput v-model:value="fillForm.user_message" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
+        <NFormItem :label="$t('state.assistantMessage')"><NInput v-model:value="fillForm.assistant_message" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
       </NForm>
-      <template #footer><NSpace justify="end"><NButton @click="showFillModal = false">取消</NButton><NButton type="primary" @click="runStateFiller">运行</NButton></NSpace></template>
+      <template #footer><NSpace justify="end"><NButton @click="showFillModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="runStateFiller">{{ $t('state.run') }}</NButton></NSpace></template>
     </NModal>
 
     <!-- 保存挂载预设 Modal -->
-    <NModal v-model:show="showPresetModal" preset="card" title="保存挂载组合预设" style="width: 480px; background: #18181b;">
+    <NModal v-model:show="showPresetModal" preset="card" :title="$t('state.savePresetTitle')" style="width: 480px; background: #18181b;">
       <NForm label-placement="top">
-        <NFormItem label="预设名称"><NInput v-model:value="presetForm.name" placeholder="例如：跑团常用、日常聊天" /></NFormItem>
-        <NFormItem label="描述（可选）"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
+        <NFormItem :label="$t('state.presetName')"><NInput v-model:value="presetForm.name" :placeholder="$t('state.presetNamePlaceholder')" /></NFormItem>
+        <NFormItem :label="$t('state.descriptionOptional')"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
       </NForm>
-      <template #footer><NSpace justify="end"><NButton @click="showPresetModal = false">取消</NButton><NButton type="primary" @click="confirmSavePreset">保存</NButton></NSpace></template>
+      <template #footer><NSpace justify="end"><NButton @click="showPresetModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="confirmSavePreset">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
     <!-- 新会话初始化向导 Modal -->
-    <NModal v-model:show="showInitWizard" preset="card" title="新会话初始化" style="width: 560px; background: #18181b;">
+    <NModal v-model:show="showInitWizard" preset="card" :title="$t('state.initWizardTitle')" style="width: 560px; background: #18181b;">
       <div style="color: #a1a1aa; font-size: 13px; margin-bottom: 16px;">
-        为会话 <strong style="color: #e4e4e7;">{{ conversationId }}</strong> 选择初始配置。
+        <i18n-t keypath="state.initWizardDesc" tag="span">
+          <template #id><strong style="color: #e4e4e7;">{{ conversationId }}</strong></template>
+        </i18n-t>
       </div>
       <NForm label-placement="top">
-        <NFormItem label="挂载记忆库">
+        <NFormItem :label="$t('state.mountLibrariesLabel')">
           <NSelect
             :value="wizardForm.library_ids"
             multiple
             filterable
             :options="memoryLibraryOptions"
-            placeholder="选择要挂载的记忆库"
+            :placeholder="$t('state.selectMountLibraries')"
             @update:value="handleWizardLibrariesChange"
           />
         </NFormItem>
-        <NFormItem label="写入目标记忆库">
+        <NFormItem :label="$t('state.writeTargetLibLabel')">
           <NSelect
             v-model:value="wizardForm.write_library_id"
             :options="memoryLibraryOptions.filter((item) => wizardForm.library_ids.includes(item.value))"
-            placeholder="新记忆写入的目标库"
+            :placeholder="$t('state.writeTargetLibPlaceholder')"
           />
         </NFormItem>
-        <NFormItem label="状态板模板">
-          <NSelect v-model:value="wizardForm.template_id" :options="templateOptions" placeholder="选择状态板模板" />
+        <NFormItem :label="$t('state.templateLabel2')">
+          <NSelect v-model:value="wizardForm.template_id" :options="templateOptions" :placeholder="$t('state.selectStateTemplate')" />
         </NFormItem>
       </NForm>
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="showInitWizard = false">取消</NButton>
-          <NButton type="primary" @click="confirmInitWizard">初始化会话</NButton>
+          <NButton @click="showInitWizard = false">{{ $t('common.cancel') }}</NButton>
+          <NButton type="primary" @click="confirmInitWizard">{{ $t('state.initSession') }}</NButton>
         </NSpace>
       </template>
     </NModal>
 
     <!-- 复制到新会话 Modal -->
-    <NModal v-model:show="showCopyModal" preset="card" title="复制状态板到新会话" style="width: 480px; background: #18181b;">
+    <NModal v-model:show="showCopyModal" preset="card" :title="$t('state.copyTitle')" style="width: 480px; background: #18181b;">
       <NForm label-placement="top">
-        <NFormItem label="目标 conversation_id"><NInput v-model:value="copyForm.target_conversation_id" placeholder="输入新会话 ID" /></NFormItem>
-        <NFormItem label="同时复制记忆挂载配置"><NSwitch v-model:value="copyForm.copy_mounts" /></NFormItem>
+        <NFormItem :label="$t('state.targetConversationId')"><NInput v-model:value="copyForm.target_conversation_id" :placeholder="$t('state.inputNewId')" /></NFormItem>
+        <NFormItem :label="$t('state.copyMounts')"><NSwitch v-model:value="copyForm.copy_mounts" /></NFormItem>
       </NForm>
-      <template #footer><NSpace justify="end"><NButton @click="showCopyModal = false">取消</NButton><NButton type="primary" @click="confirmCopy">复制</NButton></NSpace></template>
+      <template #footer><NSpace justify="end"><NButton @click="showCopyModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="confirmCopy">{{ $t('state.copy') }}</NButton></NSpace></template>
     </NModal>
   </div>
 </template>

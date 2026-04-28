@@ -4,9 +4,11 @@ import {
   NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NModal,
   NPagination, NPopconfirm, NSelect, NSlider, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import { apiFetch } from '../api'
 
 const message = useMessage()
+const { t } = useI18n()
 const memories = ref<any[]>([])
 const libraries = ref<any[]>([])
 const loading = ref(true)
@@ -33,60 +35,60 @@ const editForm = ref({
 })
 
 const libraryOptions = computed(() => [
-  { label: '全部记忆库', value: '' },
+  { label: t('memories.allLibraries'), value: '' },
   ...libraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })),
 ])
 const libraryEditOptions = computed(() => libraries.value.map((item) => ({ label: item.name, value: item.library_id })))
 
 const scopeOptions = [
-  { label: '全部', value: '' },
-  { label: '全局', value: 'global' },
-  { label: '角色', value: 'character' },
-  { label: '会话', value: 'conversation' },
+  { label: t('memories.scopeLabels.all'), value: '' },
+  { label: t('memories.scopeLabels.global'), value: 'global' },
+  { label: t('memories.scopeLabels.character'), value: 'character' },
+  { label: t('memories.scopeLabels.conversation'), value: 'conversation' },
 ]
 
 const typeOptions = [
-  { label: '偏好', value: 'preference' },
-  { label: '边界', value: 'boundary' },
-  { label: '关系', value: 'relationship' },
-  { label: '事件', value: 'event' },
-  { label: '承诺', value: 'promise' },
-  { label: '纠正', value: 'correction' },
-  { label: '世界状态', value: 'world_state' },
-  { label: '摘要', value: 'summary' },
+  { label: t('memories.typeLabels.preference'), value: 'preference' },
+  { label: t('memories.typeLabels.boundary'), value: 'boundary' },
+  { label: t('memories.typeLabels.relationship'), value: 'relationship' },
+  { label: t('memories.typeLabels.event'), value: 'event' },
+  { label: t('memories.typeLabels.promise'), value: 'promise' },
+  { label: t('memories.typeLabels.correction'), value: 'correction' },
+  { label: t('memories.typeLabels.world_state'), value: 'world_state' },
+  { label: t('memories.typeLabels.summary'), value: 'summary' },
 ]
 
 const scopeEditOptions = [
-  { label: '全局', value: 'global' },
-  { label: '角色', value: 'character' },
-  { label: '会话', value: 'conversation' },
+  { label: t('memories.scopeLabels.global'), value: 'global' },
+  { label: t('memories.scopeLabels.character'), value: 'character' },
+  { label: t('memories.scopeLabels.conversation'), value: 'conversation' },
 ]
 
 const columns = [
-  { title: '记忆库', key: 'library_id', width: 130, render: (row: any) => libraryName(row.library_id) },
-  { title: '内容', key: 'content', ellipsis: { tooltip: true }, minWidth: 240 },
-  { title: '类型', key: 'memory_type', width: 90, render: (row: any) => typeLabel(row.memory_type) },
-  { title: '作用域', key: 'scope', width: 80, render: (row: any) => ({ global: '全局', character: '角色', conversation: '会话' } as Record<string, string>)[row.scope] || row.scope },
-  { title: '重要性', key: 'importance', width: 80, render: (row: any) => `${(row.importance * 100).toFixed(0)}%` },
-  { title: '创建时间', key: 'created_at', width: 150 },
+  { title: t('memories.column.library'), key: 'library_id', width: 130, render: (row: any) => libraryName(row.library_id) },
+  { title: t('memories.column.content'), key: 'content', ellipsis: { tooltip: true }, minWidth: 240 },
+  { title: t('memories.column.type'), key: 'memory_type', width: 90, render: (row: any) => typeLabel(row.memory_type) },
+  { title: t('memories.column.scope'), key: 'scope', width: 80, render: (row: any) => t(`memories.scopeLabels.${row.scope}`) || row.scope },
+  { title: t('memories.column.importance'), key: 'importance', width: 80, render: (row: any) => `${(row.importance * 100).toFixed(0)}%` },
+  { title: t('memories.column.createdAt'), key: 'created_at', width: 150 },
   {
-    title: '操作', key: 'actions', width: 130,
+    title: t('memories.column.actions'), key: 'actions', width: 130,
     render: (row: any) => h(NSpace, { size: 4 }, { default: () => [
-      h(NButton, { size: 'tiny', type: 'info', quaternary: true, onClick: () => openEditModal(row) }, { default: () => '编辑' }),
+      h(NButton, { size: 'tiny', type: 'info', quaternary: true, onClick: () => openEditModal(row) }, { default: () => t('common.edit') }),
       h(NPopconfirm, { onPositiveClick: () => deleteCard(row.card_id) }, {
-        trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => '删除' }),
-        default: () => '确认删除此记忆？',
+        trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => t('common.delete') }),
+        default: () => t('common.confirm') + t('common.delete') + '?',
       }),
     ] }),
   },
 ]
 
 function libraryName(libraryId: string) {
-  return libraries.value.find((item) => item.library_id === libraryId)?.name || libraryId || '默认记忆库'
+  return libraries.value.find((item) => item.library_id === libraryId)?.name || libraryId || t('memories.defaultLibrary')
 }
 
 function typeLabel(type: string) {
-  const typeMap: Record<string, string> = { preference: '偏好', relationship: '关系', event: '事件', promise: '承诺', boundary: '边界', correction: '纠正', world_state: '世界', summary: '摘要' }
+  const typeMap: Record<string, string> = { preference: t('memories.typeLabels.preference'), relationship: t('memories.typeLabels.relationship'), event: t('memories.typeLabels.event'), promise: t('memories.typeLabels.promise'), boundary: t('memories.typeLabels.boundary'), correction: t('memories.typeLabels.correction'), world_state: t('memories.typeLabels.world_state'), summary: t('memories.typeLabels.summary') }
   return typeMap[type] || type
 }
 
@@ -138,14 +140,14 @@ async function saveEdit() {
     const resp = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: payload })
     const data = await resp.json()
     if (data.status === 'ok') {
-      message.success('已保存')
+      message.success(t('common.saved'))
       showEditModal.value = false
       fetchMemories()
     } else {
-      message.error(data.message || '保存失败')
+      message.error(data.message || t('common.saveFailed'))
     }
   } catch (e) {
-    message.error('请求失败')
+    message.error(t('common.requestFailed'))
   }
 }
 
@@ -169,12 +171,12 @@ async function saveLibrary() {
   const resp = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(libraryForm.value) })
   const data = await resp.json()
   if (data.status !== 'ok') {
-    message.error(data.message || '保存失败')
+    message.error(data.message || t('common.saveFailed'))
     return
   }
   if (data.library_id) selectedLibraryId.value = data.library_id
   showLibraryModal.value = false
-  message.success('记忆库已保存')
+  message.success(t('memories.librarySaved'))
   fetchMemories()
 }
 
@@ -187,12 +189,12 @@ async function savePreset() {
   const resp = await apiFetch('/admin/memory-libraries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(presetForm.value) })
   const data = await resp.json()
   if (data.status !== 'ok') {
-    message.error(data.message || '另存失败')
+    message.error(data.message || t('memories.saveAsFailed'))
     return
   }
   selectedLibraryId.value = data.library_id
   showPresetModal.value = false
-  message.success('已另存为新预设')
+  message.success(t('memories.savedAsPreset'))
   fetchMemories()
 }
 
@@ -202,10 +204,10 @@ async function deleteLibrary() {
   const data = await resp.json()
   if (data.status === 'ok') {
     selectedLibraryId.value = ''
-    message.success('记忆库已删除')
+    message.success(t('memories.libraryDeleted'))
     fetchMemories()
   } else {
-    message.error(data.message || '删除失败')
+    message.error(data.message || t('common.deleteFailed'))
   }
 }
 
@@ -213,10 +215,10 @@ async function deleteCard(cardId: string) {
   const resp = await apiFetch(`/admin/memories/${cardId}`, { method: 'DELETE' })
   const data = await resp.json()
   if (data.status === 'ok') {
-    message.success('已删除')
+    message.success(t('memories.memoryDeleted'))
     fetchMemories()
   } else {
-    message.error(data.message || '删除失败')
+    message.error(data.message || t('common.deleteFailed'))
   }
 }
 
@@ -237,9 +239,9 @@ async function exportLibrary() {
     a.download = `library_${selectedLibraryId.value}.json`
     a.click()
     URL.revokeObjectURL(url)
-    message.success('记忆库已导出')
+    message.success(t('memories.libraryExported'))
   } catch (e: any) {
-    message.error(e.message || '导出失败')
+    message.error(e.message || t('common.exportFailed'))
   }
 }
 
@@ -261,13 +263,13 @@ function triggerImportLibrary() {
       const result = await resp.json()
       if (result.status === 'ok') {
         selectedLibraryId.value = result.library_id
-        message.success(`已导入记忆库（${result.imported_cards || 0} 条记忆）`)
+        message.success(t('memories.libraryImported', { count: result.imported_cards || 0 }))
         fetchMemories()
       } else {
-        message.error(result.message || '导入失败')
+        message.error(result.message || t('common.importFailed'))
       }
     } catch (e: any) {
-      message.error(`导入失败：${e.message || e}`)
+      message.error(t('memories.importFailed', { error: e.message || e }))
     }
   }
   input.click()
@@ -279,32 +281,32 @@ onMounted(fetchMemories)
 <template>
   <div>
     <div style="margin-bottom: 28px;">
-      <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">记忆管理</h1>
-      <p style="color: #71717a; font-size: 14px;">管理长期记忆库。长期记忆类似全局世界书，可按游戏/角色自由切换或组合挂载。</p>
+      <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('memories.title') }}</h1>
+      <p style="color: #71717a; font-size: 14px;">{{ $t('memories.subtitle') }}</p>
     </div>
 
     <NCard style="background: #18181b; border: 1px solid #27272a;">
       <NSpace justify="space-between" align="center" style="margin-bottom: 16px; width: 100%;" wrap>
         <NSpace wrap>
-          <NSelect v-model:value="selectedLibraryId" :options="libraryOptions" placeholder="选择记忆库" style="width: 260px;" size="small" @update:value="handleFilterChange" />
-          <NSelect :options="scopeOptions" placeholder="筛选作用域" style="width: 140px;" :value="scopeFilter || ''" size="small" @update:value="(val) => { scopeFilter = val || null; handleFilterChange() }" />
-          <NTag size="small" round style="color: #71717a;">共 {{ total }} 条记忆</NTag>
+          <NSelect v-model:value="selectedLibraryId" :options="libraryOptions" :placeholder="$t('memories.selectLibrary')" style="width: 260px;" size="small" @update:value="handleFilterChange" />
+          <NSelect :options="scopeOptions" :placeholder="$t('memories.filterScope')" style="width: 140px;" :value="scopeFilter || ''" size="small" @update:value="(val) => { scopeFilter = val || null; handleFilterChange() }" />
+          <NTag size="small" round style="color: #71717a;">{{ $t('memories.totalCount', { count: total }) }}</NTag>
         </NSpace>
         <NSpace wrap>
-          <NButton size="small" @click="openCreateModal">新增词条</NButton>
-          <NButton size="small" @click="openCreateLibrary">新建记忆库</NButton>
-          <NButton size="small" :disabled="!selectedLibraryId" @click="openEditLibrary">编辑记忆库</NButton>
-          <NButton size="small" :disabled="!selectedLibraryId" @click="openPresetModal">另存为预设</NButton>
-          <NPopconfirm @positive-click="deleteLibrary"><template #trigger><NButton size="small" type="error" quaternary :disabled="!selectedLibraryId">删除记忆库</NButton></template>确认删除当前自定义记忆库？默认记忆库不可删除。</NPopconfirm>
-          <NButton size="small" :disabled="!selectedLibraryId" @click="exportLibrary">导出</NButton>
-          <NButton size="small" @click="triggerImportLibrary">导入</NButton>
-          <NButton size="small" @click="fetchMemories" quaternary style="color: #71717a;">刷新</NButton>
+          <NButton size="small" @click="openCreateModal">{{ $t('memories.addEntry') }}</NButton>
+          <NButton size="small" @click="openCreateLibrary">{{ $t('memories.createLibrary') }}</NButton>
+          <NButton size="small" :disabled="!selectedLibraryId" @click="openEditLibrary">{{ $t('memories.editLibrary') }}</NButton>
+          <NButton size="small" :disabled="!selectedLibraryId" @click="openPresetModal">{{ $t('memories.saveAsPreset') }}</NButton>
+          <NPopconfirm @positive-click="deleteLibrary"><template #trigger><NButton size="small" type="error" quaternary :disabled="!selectedLibraryId">{{ $t('memories.deleteLibrary') }}</NButton></template>{{ $t('memories.deleteLibraryConfirm') }}</NPopconfirm>
+          <NButton size="small" :disabled="!selectedLibraryId" @click="exportLibrary">{{ $t('memories.exportLibrary') }}</NButton>
+          <NButton size="small" @click="triggerImportLibrary">{{ $t('memories.importLibrary') }}</NButton>
+          <NButton size="small" @click="fetchMemories" quaternary style="color: #71717a;">{{ $t('common.refresh') }}</NButton>
         </NSpace>
       </NSpace>
 
       <NSpin :show="loading">
         <NDataTable v-if="memories.length > 0" :columns="columns" :data="memories" :bordered="false" size="small" :single-line="false" style="--n-td-color: #18181b; --n-th-color: #1f1f23;" />
-        <NEmpty v-else description="暂无记忆数据" style="padding: 60px 0;"><template #extra><p style="color: #52525b; font-size: 13px;">可新增词条，或在对话中由记忆判断模型自动写入</p></template></NEmpty>
+        <NEmpty v-else :description="$t('memories.noData')" style="padding: 60px 0;"><template #extra><p style="color: #52525b; font-size: 13px;">{{ $t('memories.noDataHint') }}</p></template></NEmpty>
       </NSpin>
 
       <div v-if="total > pageSize" style="display: flex; justify-content: center; margin-top: 16px;">
@@ -312,27 +314,27 @@ onMounted(fetchMemories)
       </div>
     </NCard>
 
-    <NModal v-model:show="showEditModal" preset="card" :title="editingCard ? '编辑记忆' : '新增记忆'" style="width: 560px; background: #18181b;">
+    <NModal v-model:show="showEditModal" preset="card" :title="editingCard ? $t('memories.editMemory') : $t('memories.createMemory')" style="width: 560px; background: #18181b;">
       <NForm label-placement="top" :show-feedback="false" style="gap: 16px; display: flex; flex-direction: column;">
-        <NFormItem label="记忆库"><NSelect v-model:value="editForm.library_id" :options="libraryEditOptions" /></NFormItem>
-        <NFormItem label="记忆内容"><NInput v-model:value="editForm.content" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" placeholder="输入记忆内容" /></NFormItem>
+        <NFormItem :label="$t('memories.library')"><NSelect v-model:value="editForm.library_id" :options="libraryEditOptions" /></NFormItem>
+        <NFormItem :label="$t('memories.memoryContent')"><NInput v-model:value="editForm.content" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('memories.inputContent')" /></NFormItem>
         <div style="display: flex; gap: 12px;">
-          <NFormItem label="类型" style="flex: 1;"><NSelect v-model:value="editForm.card_type" :options="typeOptions" /></NFormItem>
-          <NFormItem label="作用域" style="flex: 1;"><NSelect v-model:value="editForm.scope" :options="scopeEditOptions" /></NFormItem>
+          <NFormItem :label="$t('memories.type')" style="flex: 1;"><NSelect v-model:value="editForm.card_type" :options="typeOptions" /></NFormItem>
+          <NFormItem :label="$t('memories.scope')" style="flex: 1;"><NSelect v-model:value="editForm.scope" :options="scopeEditOptions" /></NFormItem>
         </div>
-        <NFormItem label="重要性"><div style="display: flex; align-items: center; gap: 12px; width: 100%;"><NSlider v-model:value="editForm.importance" :min="0" :max="1" :step="0.05" style="flex: 1;" /><span style="color: #a1a1aa; font-size: 13px; min-width: 40px; text-align: right;">{{ (editForm.importance * 100).toFixed(0) }}%</span></div></NFormItem>
+        <NFormItem :label="$t('memories.importance')"><div style="display: flex; align-items: center; gap: 12px; width: 100%;"><NSlider v-model:value="editForm.importance" :min="0" :max="1" :step="0.05" style="flex: 1;" /><span style="color: #a1a1aa; font-size: 13px; min-width: 40px; text-align: right;">{{ (editForm.importance * 100).toFixed(0) }}%</span></div></NFormItem>
       </NForm>
-      <template #action><NSpace justify="end"><NButton @click="showEditModal = false">取消</NButton><NButton type="primary" @click="saveEdit">保存</NButton></NSpace></template>
+      <template #action><NSpace justify="end"><NButton @click="showEditModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="saveEdit">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
-    <NModal v-model:show="showLibraryModal" preset="card" :title="editingLibrary ? '编辑记忆库' : '新建记忆库'" style="width: 520px; background: #18181b;">
-      <NForm label-placement="top"><NFormItem label="名称"><NInput v-model:value="libraryForm.name" /></NFormItem><NFormItem label="描述"><NInput v-model:value="libraryForm.description" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" /></NFormItem></NForm>
-      <template #action><NSpace justify="end"><NButton @click="showLibraryModal = false">取消</NButton><NButton type="primary" @click="saveLibrary">保存</NButton></NSpace></template>
+    <NModal v-model:show="showLibraryModal" preset="card" :title="editingLibrary ? $t('memories.editLibraryTitle') : $t('memories.createLibraryTitle')" style="width: 520px; background: #18181b;">
+      <NForm label-placement="top"><NFormItem :label="$t('memories.libraryName')"><NInput v-model:value="libraryForm.name" /></NFormItem><NFormItem :label="$t('memories.description')"><NInput v-model:value="libraryForm.description" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" /></NFormItem></NForm>
+      <template #action><NSpace justify="end"><NButton @click="showLibraryModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="saveLibrary">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
-    <NModal v-model:show="showPresetModal" preset="card" title="另存为记忆预设" style="width: 560px; background: #18181b;">
-      <NForm label-placement="top"><NFormItem label="预设名称"><NInput v-model:value="presetForm.name" /></NFormItem><NFormItem label="来源记忆库"><NSelect v-model:value="presetForm.source_library_ids" multiple :options="libraryEditOptions" /></NFormItem><NFormItem label="描述"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" /></NFormItem></NForm>
-      <template #action><NSpace justify="end"><NButton @click="showPresetModal = false">取消</NButton><NButton type="primary" @click="savePreset">另存</NButton></NSpace></template>
+    <NModal v-model:show="showPresetModal" preset="card" :title="$t('memories.saveAsPresetTitle')" style="width: 560px; background: #18181b;">
+      <NForm label-placement="top"><NFormItem :label="$t('memories.presetName')"><NInput v-model:value="presetForm.name" /></NFormItem><NFormItem :label="$t('memories.sourceLibraries')"><NSelect v-model:value="presetForm.source_library_ids" multiple :options="libraryEditOptions" /></NFormItem><NFormItem :label="$t('memories.description')"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" /></NFormItem></NForm>
+      <template #action><NSpace justify="end"><NButton @click="showPresetModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="savePreset">{{ $t('memories.saveAs') }}</NButton></NSpace></template>
     </NModal>
   </div>
 </template>

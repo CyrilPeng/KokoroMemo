@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.memory.query_builder import RetrievalQuery
 from app.providers.embedding_base import EmbeddingProvider
@@ -47,7 +47,8 @@ def _recency_score(created_at: str | None) -> float:
         return 0.5
     try:
         dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        days = (datetime.now(timezone.utc) - dt).total_seconds() / 86400
+        now = datetime.now() if dt.tzinfo is None else datetime.now().astimezone(dt.tzinfo)
+        days = (now - dt).total_seconds() / 86400
     except Exception:
         return 0.5
     if days <= 1:

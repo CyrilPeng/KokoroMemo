@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core.variables import relative_time_label
 from app.memory.card_retriever import retrieve_cards
 from app.memory.card_extractor import extract_and_route
 from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
@@ -14,8 +15,9 @@ from app.memory.graph import insert_edge
 from app.memory.query_builder import RetrievalQuery
 from app.memory.review_policy import auto_review
 from app.providers.embedding_dummy import DummyEmbeddingProvider
+from app.storage.sqlite_app import init_app_db
 from app.storage.sqlite_cards import init_cards_db, insert_card
-from app.storage.sqlite_conversation import init_chat_db
+from app.storage.sqlite_conversation import init_chat_db, save_raw_request
 
 
 class FakeLanceDBStore:
@@ -34,6 +36,35 @@ def make_test_dir() -> Path:
 
 def cleanup_test_dir(path: Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
+
+
+def test_relative_time_accepts_local_sqlite_timestamp():
+    now_text = sqlite3.connect(":memory:").execute("SELECT datetime('now', 'localtime')").fetchone()[0]
+    assert relative_time_label(now_text) == "\u521a\u624d"
+
+
+@pytest.mark.asyncio
+async def test_sqlite_defaults_use_localtime_and_writes_explicit_localtime():
+    test_dir = make_test_dir()
+    app_db = test_dir / "app.sqlite"
+    chat_db = test_dir / "chat.sqlite"
+    try:
+        await init_app_db(str(app_db))
+        await init_chat_db(str(chat_db))
+        await save_raw_request(str(chat_db), "req1", "conv1", "{}")
+
+        for db_path in (app_db, chat_db):
+            with sqlite3.connect(db_path) as conn:
+                schemas = "\n".join(row[0] or "" for row in conn.execute("SELECT sql FROM sqlite_master WHERE type='table'"))
+            assert "datetime('now'))" not in schemas
+            assert "datetime('now', 'localtime')" in schemas
+
+        with sqlite3.connect(chat_db) as conn:
+            created_at = conn.execute("SELECT created_at FROM raw_requests WHERE request_id = 'req1'").fetchone()[0]
+            local_now = conn.execute("SELECT datetime('now', 'localtime')").fetchone()[0]
+        assert created_at[:13] == local_now[:13]
+    finally:
+        cleanup_test_dir(test_dir)
 
 
 @pytest.mark.asyncio

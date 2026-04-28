@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS memories (
   vector_index_name TEXT,
   vector_synced INTEGER NOT NULL DEFAULT 0,
   vector_synced_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   last_accessed_at TEXT,
   access_count INTEGER NOT NULL DEFAULT 0,
   expires_at TEXT,
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS memory_events (
   memory_id TEXT NOT NULL,
   event_type TEXT NOT NULL,
   payload_json TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   FOREIGN KEY(memory_id) REFERENCES memories(memory_id)
 );
 
@@ -63,8 +63,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   payload_json TEXT NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   run_after TEXT
 );
 """
@@ -99,8 +99,8 @@ async def insert_memory(
             """INSERT OR IGNORE INTO memories
                (memory_id, user_id, character_id, conversation_id, scope, memory_type,
                 content, summary, tags_json, importance, confidence,
-                embedding_provider, embedding_model, embedding_dimension)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                embedding_provider, embedding_model, embedding_dimension, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))""",
             (memory_id, user_id, character_id, conversation_id, scope, memory_type,
              content, summary, tags_json, importance, confidence,
              embedding_provider, embedding_model, embedding_dimension),
@@ -111,7 +111,7 @@ async def insert_memory(
 async def mark_vector_synced(db_path: str, memory_id: str) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
-            "UPDATE memories SET vector_synced = 1, vector_synced_at = datetime('now') WHERE memory_id = ?",
+            "UPDATE memories SET vector_synced = 1, vector_synced_at = datetime('now', 'localtime') WHERE memory_id = ?",
             (memory_id,),
         )
         await db.commit()
@@ -131,7 +131,7 @@ async def get_active_memories(db_path: str) -> list[dict]:
 async def update_memory_access(db_path: str, memory_id: str) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
-            "UPDATE memories SET last_accessed_at = datetime('now'), access_count = access_count + 1 WHERE memory_id = ?",
+            "UPDATE memories SET last_accessed_at = datetime('now', 'localtime'), access_count = access_count + 1 WHERE memory_id = ?",
             (memory_id,),
         )
         await db.commit()

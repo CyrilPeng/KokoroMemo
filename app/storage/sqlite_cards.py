@@ -392,7 +392,7 @@ async def get_recent_important_cards(
         query = """SELECT * FROM memory_cards
                    WHERE status = 'approved' AND user_id = ?
                    AND importance >= ?
-                   AND created_at >= datetime('now', ?)"""
+                   AND created_at >= datetime('now', 'localtime', ?)"""
         params: list = [user_id, min_importance, f"-{days} days"]
         if character_id:
             query += " AND (character_id = ? OR character_id IS NULL)"

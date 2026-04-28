@@ -24,10 +24,13 @@ def resolve_variables(
     total_memories: int = 0,
     session_turns: int = 0,
     days_since_last: int = 0,
-    tz_offset_hours: float = 8,  # default CST (UTC+8)
+    tz_offset_hours: float | None = None,
 ) -> str:
     """Replace all {{variable}} placeholders in text."""
-    now = datetime.now(timezone(timedelta(hours=tz_offset_hours)))
+    if tz_offset_hours is None:
+        now = datetime.now().astimezone()
+    else:
+        now = datetime.now(timezone(timedelta(hours=tz_offset_hours)))
 
     variables = {
         "date": now.strftime("%Y-%m-%d"),
@@ -57,7 +60,10 @@ def relative_time_label(created_at: str | None) -> str:
         return ""
     try:
         dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
+        if dt.tzinfo is None:
+            now = datetime.now()
+        else:
+            now = datetime.now().astimezone(dt.tzinfo)
         delta = now - dt
         seconds = delta.total_seconds()
 

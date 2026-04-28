@@ -14,8 +14,8 @@ PRAGMA busy_timeout = 5000;
 CREATE TABLE IF NOT EXISTS users (
   user_id TEXT PRIMARY KEY,
   display_name TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS characters (
@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS characters (
   user_id TEXT NOT NULL,
   display_name TEXT,
   system_prompt_hash TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
@@ -34,8 +34,8 @@ CREATE TABLE IF NOT EXISTS conversations (
   client_name TEXT,
   title TEXT,
   path TEXT NOT NULL,
-  first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-  last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+  first_seen_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  last_seen_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   status TEXT NOT NULL DEFAULT 'active'
 );
 """
@@ -62,9 +62,9 @@ async def upsert_conversation(
         await db.execute(
             """
             INSERT INTO conversations (conversation_id, user_id, character_id, client_name, path, first_seen_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
             ON CONFLICT(conversation_id) DO UPDATE SET
-              last_seen_at = datetime('now'),
+              last_seen_at = datetime('now', 'localtime'),
               character_id = COALESCE(excluded.character_id, conversations.character_id),
               client_name = COALESCE(excluded.client_name, conversations.client_name)
             """,

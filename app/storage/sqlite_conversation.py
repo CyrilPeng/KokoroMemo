@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS turns (
   character_id TEXT,
   request_id TEXT NOT NULL,
   turn_index INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS messages (
   content TEXT,
   raw_json TEXT,
   token_estimate INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   FOREIGN KEY(turn_id) REFERENCES turns(turn_id)
 );
 
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS raw_requests (
   conversation_id TEXT NOT NULL,
   body_json TEXT NOT NULL,
   headers_json TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS raw_responses (
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS raw_responses (
   stream_text TEXT,
   finish_reason TEXT,
   error_json TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS injected_memory_logs (
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS injected_memory_logs (
   conversation_id TEXT NOT NULL,
   injected_text TEXT NOT NULL,
   card_ids_json TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 """
 
@@ -77,7 +77,7 @@ async def save_raw_request(
 ) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO raw_requests (request_id, conversation_id, body_json, headers_json) VALUES (?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO raw_requests (request_id, conversation_id, body_json, headers_json, created_at) VALUES (?, ?, ?, ?, datetime('now', 'localtime'))",
             (request_id, conversation_id, body_json, headers_json),
         )
         await db.commit()
@@ -95,8 +95,8 @@ async def save_raw_response(
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """INSERT OR IGNORE INTO raw_responses
-               (response_id, request_id, conversation_id, body_json, stream_text, finish_reason)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (response_id, request_id, conversation_id, body_json, stream_text, finish_reason, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))""",
             (response_id, request_id, conversation_id, body_json, stream_text, finish_reason),
         )
         await db.commit()
@@ -114,8 +114,8 @@ async def save_injected_memory_log(
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """INSERT INTO injected_memory_logs
-               (injection_id, request_id, conversation_id, injected_text, card_ids_json)
-               VALUES (?, ?, ?, ?, ?)""",
+               (injection_id, request_id, conversation_id, injected_text, card_ids_json, created_at)
+               VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))""",
             (injection_id, request_id, conversation_id, injected_text, card_ids_json),
         )
         await db.commit()
@@ -134,14 +134,14 @@ async def save_turn_and_messages(
     """Save a turn and its messages."""
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO turns (turn_id, conversation_id, user_id, character_id, request_id, turn_index) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO turns (turn_id, conversation_id, user_id, character_id, request_id, turn_index, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))",
             (turn_id, conversation_id, user_id, character_id, request_id, turn_index),
         )
         for msg in messages:
             from app.core.ids import generate_id
             msg_id = generate_id("msg_")
             await db.execute(
-                "INSERT OR IGNORE INTO messages (message_id, turn_id, conversation_id, role, name, content, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO messages (message_id, turn_id, conversation_id, role, name, content, raw_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))",
                 (
                     msg_id,
                     turn_id,

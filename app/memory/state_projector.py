@@ -17,6 +17,12 @@ async def project_cards_to_state(
     """Project approved boundary/preference cards into active state items."""
     store = SQLiteStateStore(db_path)
     await store.init_schema()
+    template = await store.get_conversation_template(conversation_id)
+    fields_by_key = {
+        field.field_key: (tab, field)
+        for tab in (template.tabs if template else [])
+        for field in tab.fields
+    }
     where = ["status = 'approved'", "card_type IN ('boundary', 'preference')"]
     params: list = []
     if user_id:
@@ -41,14 +47,22 @@ async def project_cards_to_state(
     projected = 0
     for row in rows:
         category = row["card_type"]
+        field_key = _field_key_for_card_type(category)
+        tab = field = None
+        if field_key and field_key in fields_by_key:
+            tab, field = fields_by_key[field_key]
         await store.upsert_item(ConversationStateItem(
             item_id=None,
+            template_id=template.template_id if template and field else None,
+            tab_id=tab.tab_id if tab else None,
+            field_id=field.field_id if field else None,
+            field_key=field.field_key if field else None,
             user_id=row["user_id"],
             character_id=row["character_id"],
             conversation_id=conversation_id,
             category=category,
             item_key=f"card_{row['card_id']}",
-            title="长期边界" if category == "boundary" else "长期偏好",
+            title=(field.label if field else ("长期边界" if category == "boundary" else "长期偏好")),
             content=row["content"],
             confidence=row["confidence"],
             priority=100 if row["is_pinned"] else 75,
@@ -63,3 +77,16 @@ async def project_cards_to_state(
         payload={"projected": projected, "user_id": user_id, "character_id": character_id},
     )
     return {"projected": projected}
+
+
+def _field_key_for_card_type(card_type: str) -> str | None:
+    mapping = {
+        "boundary": "stable_boundary",
+        "preference": "user_preference",
+        "relationship": "relationship_state",
+        "promise": "unfinished_promise",
+        "world_state": "world_state",
+        "character_state": "current_mood",
+        "summary": "recent_summary",
+    }
+    return mapping.get(card_type)

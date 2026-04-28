@@ -8,6 +8,7 @@ from app.memory.state_schema import (
     STATE_CATEGORY_LABELS,
     STATE_CATEGORIES,
     ConversationStateItem,
+    StateBoardTemplate,
     StateRenderOptions,
 )
 
@@ -15,10 +16,19 @@ from app.memory.state_schema import (
 HOT_CONTEXT_HEADER = "【KokoroMemo 会话状态板】"
 
 
-def render_state_board(items: list[ConversationStateItem], options: StateRenderOptions) -> str:
+def render_state_board(
+    items: list[ConversationStateItem],
+    options: StateRenderOptions,
+    template: StateBoardTemplate | None = None,
+) -> str:
     """Render active state items grouped by category within a character budget."""
     if not items or options.max_chars <= 0:
         return ""
+
+    if template and template.tabs:
+        rendered = _render_template_board(items, options, template)
+        if rendered:
+            return rendered
 
     include_sections = options.include_sections or {category: True for category in STATE_CATEGORIES}
     section_order = options.section_order or list(STATE_CATEGORIES)
@@ -52,6 +62,41 @@ def render_state_board(items: list[ConversationStateItem], options: StateRenderO
             prefix = f"{item.title}：" if item.title else ""
             section_lines.append(f"- {prefix}{item.content}")
         candidate_lines = lines + section_lines
+        candidate_text = "\n".join(candidate_lines)
+        if len(candidate_text) > options.max_chars:
+            break
+        lines = candidate_lines
+
+    if len(lines) <= 2:
+        return ""
+    return "\n".join(lines)[: options.max_chars]
+
+
+def _render_template_board(
+    items: list[ConversationStateItem],
+    options: StateRenderOptions,
+    template: StateBoardTemplate,
+) -> str:
+    by_field = {item.field_id: item for item in items if item.status == "active" and item.field_id and item.content.strip()}
+    if not by_field:
+        return ""
+
+    lines = [
+        HOT_CONTEXT_HEADER,
+        f"当前状态板模板：{template.name}。以下内容用于保持当前剧情、任务和互动连续性：",
+    ]
+    for tab in sorted(template.tabs, key=lambda item: (item.sort_order, item.label)):
+        section_lines: list[str] = []
+        for field in sorted(tab.fields, key=lambda item: (item.sort_order, item.label)):
+            if not field.include_in_prompt:
+                continue
+            item = by_field.get(field.field_id)
+            if not item:
+                continue
+            section_lines.append(f"- {field.label}：{item.content}")
+        if not section_lines:
+            continue
+        candidate_lines = lines + [f"【{tab.label}】"] + section_lines
         candidate_text = "\n".join(candidate_lines)
         if len(candidate_text) > options.max_chars:
             break

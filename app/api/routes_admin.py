@@ -534,6 +534,10 @@ async def retry_vector_sync_jobs(limit: int = Query(default=50, le=200)):
 def _state_item_to_dict(item) -> dict:
     return {
         "item_id": item.item_id,
+        "template_id": item.template_id,
+        "tab_id": item.tab_id,
+        "field_id": item.field_id,
+        "field_key": item.field_key,
         "user_id": item.user_id,
         "character_id": item.character_id,
         "world_id": item.world_id,
@@ -545,6 +549,7 @@ def _state_item_to_dict(item) -> dict:
         "title": item.title,
         "status": item.status,
         "priority": item.priority,
+        "user_locked": item.user_locked,
         "confidence": item.confidence,
         "source": item.source,
         "source_turn_ids": item.source_turn_ids,
@@ -557,6 +562,165 @@ def _state_item_to_dict(item) -> dict:
         "last_injected_at": item.last_injected_at,
         "expires_at": item.expires_at,
     }
+
+
+def _field_to_dict(field) -> dict:
+    return {
+        "field_id": field.field_id,
+        "template_id": field.template_id,
+        "tab_id": field.tab_id,
+        "field_key": field.field_key,
+        "label": field.label,
+        "field_type": field.field_type,
+        "description": field.description,
+        "ai_writable": field.ai_writable,
+        "include_in_prompt": field.include_in_prompt,
+        "sort_order": field.sort_order,
+        "default_value": field.default_value,
+        "options": field.options,
+        "status": field.status,
+    }
+
+
+def _tab_to_dict(tab) -> dict:
+    return {
+        "tab_id": tab.tab_id,
+        "template_id": tab.template_id,
+        "tab_key": tab.tab_key,
+        "label": tab.label,
+        "description": tab.description,
+        "sort_order": tab.sort_order,
+        "fields": [_field_to_dict(field) for field in tab.fields],
+    }
+
+
+def _template_to_dict(template, include_tabs: bool = True) -> dict:
+    data = {
+        "template_id": template.template_id,
+        "name": template.name,
+        "description": template.description,
+        "is_builtin": template.is_builtin,
+        "status": template.status,
+    }
+    if include_tabs:
+        data["tabs"] = [_tab_to_dict(tab) for tab in template.tabs]
+    return data
+
+
+def _template_from_payload(data: dict):
+    from app.memory.state_schema import StateBoardField, StateBoardTab, StateBoardTemplate
+
+    template = StateBoardTemplate(
+        template_id=data.get("template_id"),
+        name=data.get("name", "未命名模板"),
+        description=data.get("description", ""),
+        is_builtin=bool(data.get("is_builtin", False)),
+        status=data.get("status", "active"),
+    )
+    for tab_data in data.get("tabs", []):
+        tab = StateBoardTab(
+            tab_id=tab_data.get("tab_id"),
+            template_id=template.template_id or "",
+            tab_key=tab_data.get("tab_key") or tab_data.get("label") or "tab",
+            label=tab_data.get("label") or tab_data.get("tab_key") or "标签页",
+            description=tab_data.get("description", ""),
+            sort_order=int(tab_data.get("sort_order", 0)),
+        )
+        for field_data in tab_data.get("fields", []):
+            tab.fields.append(StateBoardField(
+                field_id=field_data.get("field_id"),
+                template_id=template.template_id or "",
+                tab_id=tab.tab_id or "",
+                field_key=field_data.get("field_key") or field_data.get("label") or "field",
+                label=field_data.get("label") or field_data.get("field_key") or "字段",
+                field_type=field_data.get("field_type", "multiline"),
+                description=field_data.get("description", ""),
+                ai_writable=bool(field_data.get("ai_writable", True)),
+                include_in_prompt=bool(field_data.get("include_in_prompt", True)),
+                sort_order=int(field_data.get("sort_order", 0)),
+                default_value=field_data.get("default_value", ""),
+                options=field_data.get("options", {}),
+                status=field_data.get("status", "active"),
+            ))
+        template.tabs.append(tab)
+    return template
+
+
+@router.get("/admin/state/templates")
+async def list_state_templates(request: Request):
+    """List available state board templates."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    templates = await store.list_templates()
+    return {"items": [_template_to_dict(template, include_tabs=False) for template in templates]}
+
+
+@router.get("/admin/state/templates/{template_id}")
+async def get_state_template(template_id: str, request: Request):
+    """Get a full state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    template = await SQLiteStateStore(get_config().storage.sqlite.memory_db).get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return _template_to_dict(template)
+
+
+@router.post("/admin/state/templates")
+async def create_state_template(request: Request, data: dict = Body(...)):
+    """Create or update a custom state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    template_id = await SQLiteStateStore(get_config().storage.sqlite.memory_db).save_template(_template_from_payload(data))
+    return {"status": "ok", "template_id": template_id}
+
+
+@router.delete("/admin/state/templates/{template_id}")
+async def delete_state_template(template_id: str, request: Request):
+    """Soft-delete a custom state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    ok = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_template_status(template_id, "deleted")
+    return {"status": "ok" if ok else "error", "message": None if ok else "内置模板不能删除或模板不存在"}
+
+
+@router.get("/admin/conversations/{conversation_id}/state/template")
+async def get_conversation_state_template(conversation_id: str, request: Request):
+    """Get the template selected for a conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    template = await SQLiteStateStore(get_config().storage.sqlite.memory_db).get_conversation_template(conversation_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return _template_to_dict(template)
+
+
+@router.post("/admin/conversations/{conversation_id}/state/template")
+async def set_conversation_state_template(conversation_id: str, request: Request, data: dict = Body(...)):
+    """Select a state board template for a conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    template_id = data.get("template_id")
+    if not template_id:
+        raise HTTPException(status_code=400, detail="template_id is required")
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    if not await store.get_template(template_id):
+        raise HTTPException(status_code=404, detail="Template not found")
+    await store.set_conversation_template(conversation_id, template_id)
+    return {"status": "ok", "template_id": template_id}
 
 
 @router.get("/admin/conversations/{conversation_id}/state")
@@ -623,6 +787,10 @@ async def create_conversation_state_item(conversation_id: str, request: Request,
     store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
     item_id = await store.upsert_item(ConversationStateItem(
         item_id=data.get("item_id"),
+        template_id=data.get("template_id"),
+        tab_id=data.get("tab_id"),
+        field_id=data.get("field_id"),
+        field_key=data.get("field_key"),
         user_id=data.get("user_id"),
         character_id=data.get("character_id"),
         world_id=data.get("world_id"),
@@ -633,6 +801,7 @@ async def create_conversation_state_item(conversation_id: str, request: Request,
         content=data.get("item_value") or data.get("content", ""),
         status=data.get("status", "active"),
         priority=int(data.get("priority", 50)),
+        user_locked=bool(data.get("user_locked", False)),
         confidence=float(data.get("confidence", 0.8)),
         source="manual",
         linked_card_ids=data.get("linked_card_ids", []),
@@ -658,6 +827,8 @@ async def update_conversation_state_item(item_id: str, request: Request, data: d
         updates["linked_summary_ids_json"] = json_mod.dumps(updates.pop("linked_summary_ids"), ensure_ascii=False)
     if "metadata" in updates:
         updates["metadata_json"] = json_mod.dumps(updates.pop("metadata"), ensure_ascii=False)
+    if "user_locked" in updates:
+        updates["user_locked"] = 1 if updates["user_locked"] else 0
     if "item_value" in updates and "content" not in updates:
         updates["content"] = updates["item_value"]
     store = SQLiteStateStore(get_config().storage.sqlite.memory_db)

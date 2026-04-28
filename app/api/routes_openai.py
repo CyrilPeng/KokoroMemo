@@ -91,6 +91,7 @@ async def chat_completions(request: Request):
         try:
             state_store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
             state_items = await state_store.list_active_items(ctx.conversation_id)
+            state_template = await state_store.get_conversation_template(ctx.conversation_id)
             state_text = render_state_board(
                 state_items,
                 StateRenderOptions(
@@ -99,6 +100,7 @@ async def chat_completions(request: Request):
                     section_order=cfg.memory.hot_context.section_order,
                     max_items_per_section=cfg.memory.hot_context.max_items_per_section,
                 ),
+                state_template,
             )
             if state_text:
                 injected_messages = inject_state_board(injected_messages, state_text)

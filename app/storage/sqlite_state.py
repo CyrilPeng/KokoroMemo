@@ -9,7 +9,12 @@ from typing import Any
 import aiosqlite
 
 from app.core.ids import generate_id
-from app.memory.state_schema import ConversationStateItem
+from app.memory.state_schema import (
+    ConversationStateItem,
+    StateBoardField,
+    StateBoardTab,
+    StateBoardTemplate,
+)
 
 
 _STATE_SCHEMA = """
@@ -24,6 +29,10 @@ CREATE TABLE IF NOT EXISTS conversation_state_items (
   character_id TEXT,
   conversation_id TEXT NOT NULL,
   world_id TEXT,
+  template_id TEXT,
+  tab_id TEXT,
+  field_id TEXT,
+  field_key TEXT,
   category TEXT NOT NULL,
   item_key TEXT,
   title TEXT,
@@ -31,6 +40,7 @@ CREATE TABLE IF NOT EXISTS conversation_state_items (
   item_value TEXT,
   status TEXT NOT NULL DEFAULT 'active',
   priority INTEGER NOT NULL DEFAULT 50,
+  user_locked INTEGER NOT NULL DEFAULT 0,
   confidence REAL NOT NULL DEFAULT 0.8,
   source TEXT NOT NULL DEFAULT 'manual',
   source_turn_id TEXT,
@@ -60,6 +70,66 @@ ON conversation_state_items(conversation_id, updated_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_state_items_unique_key
 ON conversation_state_items(conversation_id, category, item_key)
 WHERE status = 'active' AND item_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_state_items_unique_field
+ON conversation_state_items(conversation_id, field_id)
+WHERE status = 'active' AND field_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS state_board_templates (
+  template_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  is_builtin INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS state_board_tabs (
+  tab_id TEXT PRIMARY KEY,
+  template_id TEXT NOT NULL,
+  tab_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  description TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(template_id) REFERENCES state_board_templates(template_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_state_tabs_key
+ON state_board_tabs(template_id, tab_key);
+
+CREATE TABLE IF NOT EXISTS state_board_fields (
+  field_id TEXT PRIMARY KEY,
+  template_id TEXT NOT NULL,
+  tab_id TEXT NOT NULL,
+  field_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  field_type TEXT NOT NULL DEFAULT 'multiline',
+  description TEXT,
+  ai_writable INTEGER NOT NULL DEFAULT 1,
+  include_in_prompt INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  default_value TEXT,
+  options_json TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(template_id) REFERENCES state_board_templates(template_id),
+  FOREIGN KEY(tab_id) REFERENCES state_board_tabs(tab_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_state_fields_key
+ON state_board_fields(template_id, field_key);
+
+CREATE TABLE IF NOT EXISTS conversation_state_boards (
+  conversation_id TEXT PRIMARY KEY,
+  template_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(template_id) REFERENCES state_board_templates(template_id)
+);
 
 CREATE TABLE IF NOT EXISTS conversation_state_events (
   event_id TEXT PRIMARY KEY,
@@ -104,6 +174,10 @@ ON retrieval_decisions(conversation_id, created_at);
 
 _STATE_ITEM_COLUMNS = {
     "world_id": "TEXT",
+    "template_id": "TEXT",
+    "tab_id": "TEXT",
+    "field_id": "TEXT",
+    "field_key": "TEXT",
     "item_key": "TEXT",
     "item_value": "TEXT",
     "source_turn_ids_json": "TEXT",
@@ -111,6 +185,7 @@ _STATE_ITEM_COLUMNS = {
     "linked_card_ids_json": "TEXT",
     "linked_summary_ids_json": "TEXT",
     "created_by": "TEXT NOT NULL DEFAULT 'state_updater'",
+    "user_locked": "INTEGER NOT NULL DEFAULT 0",
     "last_injected_at": "TEXT",
     "expires_at": "TEXT",
 }
@@ -140,6 +215,7 @@ async def init_state_db(db_path: str) -> None:
         await db.execute(
             "UPDATE conversation_state_items SET item_value = content WHERE item_value IS NULL"
         )
+        await _ensure_builtin_templates(db)
         await db.commit()
 
 
@@ -160,10 +236,137 @@ def _json_loads(value: str | None, fallback: Any) -> Any:
         return fallback
 
 
+BUILTIN_STATE_TEMPLATES = [
+    {
+        "template_id": "tpl_roleplay_general",
+        "name": "通用角色扮演",
+        "description": "适合日常 RP、陪伴聊天和角色互动的多标签状态板。",
+        "tabs": [
+            {
+                "tab_key": "interaction",
+                "label": "互动状态",
+                "description": "记录当前称呼、语气、关系和短期互动目标。",
+                "fields": [
+                    ("user_addressing", "用户称呼", "当前应如何称呼用户。"),
+                    ("character_addressing", "角色对用户称呼", "角色正在使用或被要求使用的称呼。"),
+                    ("current_mood", "当前心情状态", "角色或对话的即时情绪氛围。"),
+                    ("current_task", "当前任务", "本轮对话正在推进的短期目标。"),
+                    ("speech_habit", "口癖", "角色当前需要保持的口癖或表达习惯。"),
+                    ("relationship_state", "关系状态", "用户与角色关系的当前阶段。"),
+                ],
+            },
+            {
+                "tab_key": "constraints",
+                "label": "偏好边界",
+                "description": "记录需要在当前会话持续遵守的偏好与边界。",
+                "fields": [
+                    ("user_preference", "用户偏好", "用户在当前互动中明确表达的偏好。"),
+                    ("stable_boundary", "稳定边界", "不能违反的长期或会话内边界。"),
+                    ("unfinished_promise", "未完成承诺", "角色或系统已经承诺但尚未完成的事。"),
+                ],
+            },
+            {
+                "tab_key": "scene",
+                "label": "场景",
+                "description": "当前地点、时间、事件和近期摘要。",
+                "fields": [
+                    ("current_scene", "当前场景", "当前对话或剧情所在场景。"),
+                    ("current_location", "当前地点", "明确的地点或空间。"),
+                    ("recent_summary", "近期摘要", "最近几轮对话的简短连续性摘要。"),
+                ],
+            },
+        ],
+    },
+    {
+        "template_id": "tpl_trpg_story",
+        "name": "跑团 / 剧情推进",
+        "description": "适合跑团、长篇剧情和多角色叙事的状态板。",
+        "tabs": [
+            {
+                "tab_key": "cast",
+                "label": "角色",
+                "description": "主角、配角、NPC 与阵营关系。",
+                "fields": [
+                    ("protagonist", "主角", "当前主角及关键状态。"),
+                    ("supporting_characters", "配角", "重要配角及当前状态。"),
+                    ("npcs", "NPC", "已登场或即将影响剧情的 NPC。"),
+                    ("faction_relations", "阵营关系", "组织、阵营、家族等关系变化。"),
+                ],
+            },
+            {
+                "tab_key": "quests",
+                "label": "任务",
+                "description": "主线、支线、线索和未解决伏笔。",
+                "fields": [
+                    ("main_quest", "当前主线任务", "当前最重要的剧情目标。"),
+                    ("side_quests", "支线任务", "可选或并行推进的任务。"),
+                    ("open_clues", "未解决线索", "已经出现但尚未解释或解决的线索。"),
+                    ("open_loops", "未解决伏笔", "后续需要回收的剧情伏笔。"),
+                ],
+            },
+            {
+                "tab_key": "world",
+                "label": "世界",
+                "description": "地点、物品和世界状态。",
+                "fields": [
+                    ("current_location", "当前地点", "角色当前所在地点。"),
+                    ("important_items", "重要物品", "关键道具、证据或资源。"),
+                    ("world_state", "世界状态", "世界规则、局势或环境变化。"),
+                    ("recent_summary", "近期摘要", "当前剧情的简短摘要。"),
+                ],
+            },
+        ],
+    },
+]
+
+
+async def _ensure_builtin_templates(db: aiosqlite.Connection) -> None:
+    for template in BUILTIN_STATE_TEMPLATES:
+        await db.execute(
+            """INSERT INTO state_board_templates (template_id, name, description, is_builtin, status)
+               VALUES (?, ?, ?, 1, 'active')
+               ON CONFLICT(template_id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                is_builtin = 1,
+                status = 'active',
+                updated_at = datetime('now', 'localtime')""",
+            (template["template_id"], template["name"], template["description"]),
+        )
+        for tab_index, tab in enumerate(template["tabs"]):
+            tab_id = f"{template['template_id']}__{tab['tab_key']}"
+            await db.execute(
+                """INSERT INTO state_board_tabs (tab_id, template_id, tab_key, label, description, sort_order)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(tab_id) DO UPDATE SET
+                    label = excluded.label,
+                    description = excluded.description,
+                    sort_order = excluded.sort_order,
+                    updated_at = datetime('now', 'localtime')""",
+                (tab_id, template["template_id"], tab["tab_key"], tab["label"], tab["description"], tab_index),
+            )
+            for field_index, (field_key, label, description) in enumerate(tab["fields"]):
+                field_id = f"{template['template_id']}__{field_key}"
+                await db.execute(
+                    """INSERT INTO state_board_fields
+                       (field_id, template_id, tab_id, field_key, label, description, sort_order, ai_writable, include_in_prompt, status)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, 'active')
+                       ON CONFLICT(field_id) DO UPDATE SET
+                        tab_id = excluded.tab_id,
+                        label = excluded.label,
+                        description = excluded.description,
+                        sort_order = excluded.sort_order,
+                        updated_at = datetime('now', 'localtime')""",
+                    (field_id, template["template_id"], tab_id, field_key, label, description, field_index),
+                )
 def _row_to_item(row: aiosqlite.Row) -> ConversationStateItem:
     return ConversationStateItem(
         item_id=row["item_id"],
         conversation_id=row["conversation_id"],
+        template_id=row["template_id"],
+        tab_id=row["tab_id"],
+        field_id=row["field_id"],
+        field_key=row["field_key"],
         user_id=row["user_id"],
         character_id=row["character_id"],
         world_id=row["world_id"],
@@ -175,6 +378,7 @@ def _row_to_item(row: aiosqlite.Row) -> ConversationStateItem:
         source=row["source"],
         status=row["status"],
         priority=int(row["priority"]),
+        user_locked=bool(row["user_locked"]),
         ttl_turns=row["ttl_turns"],
         source_turn_id=row["source_turn_id"],
         source_turn_ids=_json_loads(row["source_turn_ids_json"], []),
@@ -190,6 +394,45 @@ def _row_to_item(row: aiosqlite.Row) -> ConversationStateItem:
     )
 
 
+def _row_to_field(row: aiosqlite.Row) -> StateBoardField:
+    return StateBoardField(
+        field_id=row["field_id"],
+        template_id=row["template_id"],
+        tab_id=row["tab_id"],
+        field_key=row["field_key"],
+        label=row["label"],
+        field_type=row["field_type"],
+        description=row["description"] or "",
+        ai_writable=bool(row["ai_writable"]),
+        include_in_prompt=bool(row["include_in_prompt"]),
+        sort_order=int(row["sort_order"]),
+        default_value=row["default_value"] or "",
+        options=_json_loads(row["options_json"], {}),
+        status=row["status"],
+    )
+
+
+def _row_to_tab(row: aiosqlite.Row) -> StateBoardTab:
+    return StateBoardTab(
+        tab_id=row["tab_id"],
+        template_id=row["template_id"],
+        tab_key=row["tab_key"],
+        label=row["label"],
+        description=row["description"] or "",
+        sort_order=int(row["sort_order"]),
+    )
+
+
+def _row_to_template(row: aiosqlite.Row) -> StateBoardTemplate:
+    return StateBoardTemplate(
+        template_id=row["template_id"],
+        name=row["name"],
+        description=row["description"] or "",
+        is_builtin=bool(row["is_builtin"]),
+        status=row["status"],
+    )
+
+
 class SQLiteStateStore:
     """Small async repository for conversation hot-state."""
 
@@ -198,6 +441,138 @@ class SQLiteStateStore:
 
     async def init_schema(self) -> None:
         await init_state_db(self.db_path)
+
+    async def list_templates(self, include_inactive: bool = False) -> list[StateBoardTemplate]:
+        await self.init_schema()
+        where = "" if include_inactive else "WHERE status = 'active'"
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                f"SELECT * FROM state_board_templates {where} ORDER BY is_builtin DESC, name ASC"
+            )
+            return [_row_to_template(row) for row in await cursor.fetchall()]
+
+    async def get_template(self, template_id: str) -> StateBoardTemplate | None:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM state_board_templates WHERE template_id = ?", (template_id,))
+            template_row = await cursor.fetchone()
+            if not template_row:
+                return None
+            template = _row_to_template(template_row)
+            tabs_cursor = await db.execute(
+                "SELECT * FROM state_board_tabs WHERE template_id = ? ORDER BY sort_order ASC, label ASC",
+                (template_id,),
+            )
+            tabs = [_row_to_tab(row) for row in await tabs_cursor.fetchall()]
+            fields_cursor = await db.execute(
+                "SELECT * FROM state_board_fields WHERE template_id = ? AND status = 'active' ORDER BY sort_order ASC, label ASC",
+                (template_id,),
+            )
+            fields_by_tab: dict[str, list[StateBoardField]] = {}
+            for row in await fields_cursor.fetchall():
+                field = _row_to_field(row)
+                fields_by_tab.setdefault(field.tab_id, []).append(field)
+            for tab in tabs:
+                tab.fields = fields_by_tab.get(tab.tab_id or "", [])
+            template.tabs = tabs
+            return template
+
+    async def get_conversation_template(self, conversation_id: str) -> StateBoardTemplate | None:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT template_id FROM conversation_state_boards WHERE conversation_id = ?",
+                (conversation_id,),
+            )
+            row = await cursor.fetchone()
+        template_id = row[0] if row else "tpl_roleplay_general"
+        return await self.get_template(template_id)
+
+    async def set_conversation_template(self, conversation_id: str, template_id: str) -> None:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO conversation_state_boards (conversation_id, template_id)
+                   VALUES (?, ?)
+                   ON CONFLICT(conversation_id) DO UPDATE SET
+                    template_id = excluded.template_id,
+                    updated_at = datetime('now', 'localtime')""",
+                (conversation_id, template_id),
+            )
+            await db.commit()
+
+    async def save_template(self, template: StateBoardTemplate) -> str:
+        await self.init_schema()
+        template_id = template.template_id or generate_id("tpl_")
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO state_board_templates (template_id, name, description, is_builtin, status)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(template_id) DO UPDATE SET
+                    name = excluded.name,
+                    description = excluded.description,
+                    status = excluded.status,
+                    updated_at = datetime('now', 'localtime')""",
+                (template_id, template.name, template.description, 1 if template.is_builtin else 0, template.status),
+            )
+            for tab_index, tab in enumerate(template.tabs):
+                tab_id = tab.tab_id or generate_id("tab_")
+                tab.tab_id = tab_id
+                await db.execute(
+                    """INSERT INTO state_board_tabs (tab_id, template_id, tab_key, label, description, sort_order)
+                       VALUES (?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(tab_id) DO UPDATE SET
+                        tab_key = excluded.tab_key,
+                        label = excluded.label,
+                        description = excluded.description,
+                        sort_order = excluded.sort_order,
+                        updated_at = datetime('now', 'localtime')""",
+                    (tab_id, template_id, tab.tab_key, tab.label, tab.description, tab.sort_order or tab_index),
+                )
+                for field_index, field in enumerate(tab.fields):
+                    field_id = field.field_id or generate_id("field_")
+                    field.field_id = field_id
+                    await db.execute(
+                        """INSERT INTO state_board_fields
+                           (field_id, template_id, tab_id, field_key, label, field_type, description,
+                            ai_writable, include_in_prompt, sort_order, default_value, options_json, status)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(field_id) DO UPDATE SET
+                            tab_id = excluded.tab_id,
+                            field_key = excluded.field_key,
+                            label = excluded.label,
+                            field_type = excluded.field_type,
+                            description = excluded.description,
+                            ai_writable = excluded.ai_writable,
+                            include_in_prompt = excluded.include_in_prompt,
+                            sort_order = excluded.sort_order,
+                            default_value = excluded.default_value,
+                            options_json = excluded.options_json,
+                            status = excluded.status,
+                            updated_at = datetime('now', 'localtime')""",
+                        (
+                            field_id, template_id, tab_id, field.field_key, field.label, field.field_type,
+                            field.description, 1 if field.ai_writable else 0,
+                            1 if field.include_in_prompt else 0, field.sort_order or field_index,
+                            field.default_value, json.dumps(field.options or {}, ensure_ascii=False), field.status,
+                        ),
+                    )
+            await db.commit()
+        return template_id
+
+    async def update_template_status(self, template_id: str, status: str) -> bool:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """UPDATE state_board_templates
+                   SET status = ?, updated_at = datetime('now', 'localtime')
+                   WHERE template_id = ? AND is_builtin = 0""",
+                (status, template_id),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
 
     async def list_active_items(
         self,
@@ -272,16 +647,21 @@ class SQLiteStateStore:
 
             await db.execute(
                 """INSERT INTO conversation_state_items
-                   (item_id, user_id, character_id, conversation_id, world_id, category, item_key,
-                    title, content, item_value, status, priority, confidence, source, source_turn_id,
+                   (item_id, user_id, character_id, conversation_id, world_id, template_id, tab_id,
+                    field_id, field_key, category, item_key, title, content, item_value, status,
+                    priority, user_locked, confidence, source, source_turn_id,
                     source_turn_ids_json, source_message_ids_json, linked_card_ids_json,
                     linked_summary_ids_json, ttl_turns, metadata_json, last_seen_at, expires_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), ?)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), ?)
                    ON CONFLICT(item_id) DO UPDATE SET
                     user_id = excluded.user_id,
                     character_id = excluded.character_id,
                     conversation_id = excluded.conversation_id,
                     world_id = excluded.world_id,
+                    template_id = excluded.template_id,
+                    tab_id = excluded.tab_id,
+                    field_id = excluded.field_id,
+                    field_key = excluded.field_key,
                     category = excluded.category,
                     item_key = excluded.item_key,
                     title = excluded.title,
@@ -289,6 +669,7 @@ class SQLiteStateStore:
                     item_value = excluded.item_value,
                     status = excluded.status,
                     priority = excluded.priority,
+                    user_locked = excluded.user_locked,
                     confidence = excluded.confidence,
                     source = excluded.source,
                     source_turn_id = excluded.source_turn_id,
@@ -307,6 +688,10 @@ class SQLiteStateStore:
                     item.character_id,
                     item.conversation_id,
                     item.world_id,
+                    item.template_id,
+                    item.tab_id,
+                    item.field_id,
+                    item.field_key,
                     item.category,
                     item_key,
                     item.title,
@@ -314,6 +699,7 @@ class SQLiteStateStore:
                     item.content,
                     item.status,
                     item.priority,
+                    1 if item.user_locked else 0,
                     item.confidence,
                     item.source,
                     item.source_turn_id,
@@ -352,7 +738,8 @@ class SQLiteStateStore:
     async def update_item(self, item_id: str, updates: dict[str, Any]) -> bool:
         await self.init_schema()
         allowed = {
-            "category", "item_key", "title", "content", "item_value", "status", "priority",
+            "template_id", "tab_id", "field_id", "field_key", "category", "item_key",
+            "title", "content", "item_value", "status", "priority", "user_locked",
             "confidence", "source", "metadata_json", "expires_at", "linked_card_ids_json",
             "linked_summary_ids_json",
         }

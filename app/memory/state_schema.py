@@ -48,6 +48,10 @@ class ConversationStateItem:
     conversation_id: str
     category: str
     content: str
+    template_id: str | None = None
+    tab_id: str | None = None
+    field_id: str | None = None
+    field_key: str | None = None
     user_id: str | None = None
     character_id: str | None = None
     world_id: str | None = None
@@ -57,6 +61,7 @@ class ConversationStateItem:
     source: str = "manual"
     status: str = "active"
     priority: int = 0
+    user_locked: bool = False
     ttl_turns: int | None = None
     source_turn_id: str | None = None
     source_turn_ids: list[str] = field(default_factory=list)
@@ -75,6 +80,10 @@ class ConversationStateItem:
 class StateUpdate:
     category: str
     content: str
+    template_id: str | None = None
+    tab_id: str | None = None
+    field_id: str | None = None
+    field_key: str | None = None
     item_key: str | None = None
     title: str | None = None
     confidence: float = 0.7
@@ -101,3 +110,41 @@ class StateRenderOptions:
     include_sections: dict[str, bool] = field(default_factory=dict)
     section_order: list[str] = field(default_factory=list)
     max_items_per_section: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class StateBoardField:
+    field_id: str | None
+    template_id: str
+    tab_id: str
+    field_key: str
+    label: str
+    field_type: str = "multiline"
+    description: str = ""
+    ai_writable: bool = True
+    include_in_prompt: bool = True
+    sort_order: int = 0
+    default_value: str = ""
+    options: dict[str, Any] = field(default_factory=dict)
+    status: str = "active"
+
+
+@dataclass
+class StateBoardTab:
+    tab_id: str | None
+    template_id: str
+    tab_key: str
+    label: str
+    description: str = ""
+    sort_order: int = 0
+    fields: list[StateBoardField] = field(default_factory=list)
+
+
+@dataclass
+class StateBoardTemplate:
+    template_id: str | None
+    name: str
+    description: str = ""
+    is_builtin: bool = False
+    status: str = "active"
+    tabs: list[StateBoardTab] = field(default_factory=list)

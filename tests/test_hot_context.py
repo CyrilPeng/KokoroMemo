@@ -40,7 +40,15 @@ async def test_state_schema_initializes_tables():
         await init_state_db(str(memory_db))
         with sqlite3.connect(memory_db) as conn:
             tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert {"conversation_state_items", "conversation_state_events", "retrieval_decisions"} <= tables
+        assert {
+            "conversation_state_items",
+            "conversation_state_events",
+            "retrieval_decisions",
+            "state_board_templates",
+            "state_board_tabs",
+            "state_board_fields",
+            "conversation_state_boards",
+        } <= tables
     finally:
         cleanup_test_dir(test_dir)
 
@@ -109,6 +117,36 @@ def test_state_renderer_respects_order_and_budget():
     )
     assert rendered.startswith(HOT_CONTEXT_HEADER)
     assert rendered.index("稳定边界") < rendered.index("当前场景")
+
+
+@pytest.mark.asyncio
+async def test_builtin_template_renders_field_tabs():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        store = SQLiteStateStore(str(memory_db))
+        template = await store.get_conversation_template("conv1")
+        field = template.tabs[0].fields[0]
+        item_id = await store.upsert_item(ConversationStateItem(
+            item_id=None,
+            conversation_id="conv1",
+            template_id=template.template_id,
+            tab_id=template.tabs[0].tab_id,
+            field_id=field.field_id,
+            field_key=field.field_key,
+            category="preference",
+            item_key="user_addressing",
+            title=field.label,
+            content="用户希望被称为主人",
+            confidence=0.92,
+        ))
+        items = await store.list_active_items("conv1")
+        rendered = render_state_board(items, StateRenderOptions(max_chars=500), template)
+        assert item_id
+        assert "通用角色扮演" in rendered
+        assert "用户称呼：用户希望被称为主人" in rendered
+    finally:
+        cleanup_test_dir(test_dir)
 
 
 def test_state_injector_preserves_original_system_prompt():

@@ -109,15 +109,18 @@ const providerModelPlaceholder = computed(() => {
 
 async function pickFolder() {
   try {
-    // Try Tauri dialog API (works in desktop app)
+    const { isTauri } = await import('@tauri-apps/api/core')
+    if (!isTauri()) {
+      message.info('当前是浏览器调试环境，请直接输入路径；桌面版可使用文件夹选择器')
+      return
+    }
     const { open } = await import('@tauri-apps/plugin-dialog')
     const selected = await open({ directory: true, multiple: false, title: '选择数据存储目录' })
     if (selected) {
       config.value.storage_root_dir = selected as string
     }
-  } catch {
-    // Fallback for browser: just focus the input
-    message.info('浏览器环境请直接输入路径，桌面版可使用文件夹选择器')
+  } catch (e: any) {
+    message.error(`无法打开文件夹选择器：${e?.message || e || '请确认 Tauri dialog 权限已启用'}`)
   }
 }
 

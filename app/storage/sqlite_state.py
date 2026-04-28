@@ -818,6 +818,31 @@ class SQLiteStateStore:
             )
             await db.commit()
 
+    async def clear_conversation_state_items(self, conversation_id: str) -> int:
+        """Soft-delete all active state items for a conversation. Returns count of items cleared."""
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """UPDATE conversation_state_items
+                   SET status = 'cleared', updated_at = datetime('now', 'localtime')
+                   WHERE conversation_id = ? AND status = 'active'""",
+                (conversation_id,),
+            )
+            cleared = cursor.rowcount
+            if cleared > 0:
+                await db.execute(
+                    """INSERT INTO conversation_state_events
+                       (event_id, conversation_id, item_id, event_type, payload_json)
+                       VALUES (?, ?, NULL, 'batch_clear', ?)""",
+                    (
+                        generate_id("state_evt_"),
+                        conversation_id,
+                        json.dumps({"cleared_count": cleared}, ensure_ascii=False),
+                    ),
+                )
+            await db.commit()
+        return cleared
+
     async def mark_items_injected(self, item_ids: list[str]) -> None:
         if not item_ids:
             return

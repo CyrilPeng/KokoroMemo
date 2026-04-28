@@ -1085,3 +1085,142 @@ async def reject_inbox_item(inbox_id: str, note: str = Body(default="")):
     await update_inbox_status(db_path, inbox_id, "rejected", review_note=note)
     await insert_review_action(db_path, action="reject", inbox_id=inbox_id, note=note)
     return {"status": "ok"}
+
+
+# --- Conversation Config Summary API ---
+
+@router.get("/admin/conversations/{conversation_id}/config")
+async def get_conversation_config(conversation_id: str, request: Request):
+    """Get aggregated session configuration: template, mounts, state item count, write target."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import get_conversation_mounts
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+
+    mounts = await get_conversation_mounts(db_path, conversation_id)
+    mounted_library_ids = [m["library_id"] for m in mounts]
+    write_library_id = next((m["library_id"] for m in mounts if m.get("is_write_target")), mounted_library_ids[0] if mounted_library_ids else "lib_default")
+
+    store = SQLiteStateStore(db_path)
+    template = await store.get_conversation_template(conversation_id)
+    items, item_count = await store.list_items(conversation_id, status="active", limit=1)
+
+    return {
+        "conversation_id": conversation_id,
+        "mounted_library_ids": mounted_library_ids,
+        "write_library_id": write_library_id,
+        "mounts": mounts,
+        "template_id": template.template_id if template else None,
+        "template_name": template.name if template else None,
+        "state_item_count": item_count,
+        "is_new_session": item_count == 0 and mounted_library_ids == ["lib_default"],
+    }
+
+
+@router.post("/admin/conversations/{conversation_id}/config")
+async def save_conversation_config(conversation_id: str, request: Request, data: dict = Body(...)):
+    """Save all session configuration at once: mounts, write target, template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import set_conversation_mounts
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+
+    library_ids = data.get("library_ids") or data.get("mounted_library_ids") or []
+    write_library_id = data.get("write_library_id")
+    template_id = data.get("template_id")
+
+    if library_ids:
+        await set_conversation_mounts(
+            db_path,
+            conversation_id=conversation_id,
+            library_ids=library_ids,
+            write_library_id=write_library_id,
+            user_id=data.get("user_id"),
+            character_id=data.get("character_id"),
+        )
+
+    if template_id:
+        store = SQLiteStateStore(db_path)
+        if await store.get_template(template_id):
+            await store.set_conversation_template(conversation_id, template_id)
+
+    return {"status": "ok"}
+
+
+# --- State Board Clear API ---
+
+@router.post("/admin/conversations/{conversation_id}/state/clear")
+async def clear_conversation_state(conversation_id: str, request: Request):
+    """Soft-delete all active state items for a conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    cleared = await store.clear_conversation_state_items(conversation_id)
+    return {"status": "ok", "cleared": cleared}
+
+
+# --- Memory Mount Presets API ---
+
+@router.get("/admin/memory-mount-presets")
+async def list_memory_mount_presets_api():
+    """List all active memory mount presets."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import list_mount_presets
+
+    cfg = get_config()
+    items = await list_mount_presets(cfg.storage.sqlite.memory_db)
+    return {"items": items}
+
+
+@router.post("/admin/memory-mount-presets")
+async def create_memory_mount_preset_api(data: dict = Body(...)):
+    """Create a new memory mount preset."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import create_mount_preset
+
+    cfg = get_config()
+    preset_id = await create_mount_preset(
+        cfg.storage.sqlite.memory_db,
+        name=data.get("name") or "未命名挂载组合",
+        library_ids=data.get("library_ids") or [],
+        write_library_id=data.get("write_library_id") or "",
+        description=data.get("description", ""),
+    )
+    return {"status": "ok", "preset_id": preset_id}
+
+
+@router.put("/admin/memory-mount-presets/{preset_id}")
+async def update_memory_mount_preset_api(preset_id: str, data: dict = Body(...)):
+    """Update a memory mount preset."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import update_mount_preset
+
+    cfg = get_config()
+    ok = await update_mount_preset(
+        cfg.storage.sqlite.memory_db,
+        preset_id=preset_id,
+        name=data.get("name"),
+        description=data.get("description"),
+        library_ids=data.get("library_ids"),
+        write_library_id=data.get("write_library_id"),
+    )
+    return {"status": "ok" if ok else "error", "message": None if ok else "预设不存在"}
+
+
+@router.delete("/admin/memory-mount-presets/{preset_id}")
+async def delete_memory_mount_preset_api(preset_id: str):
+    """Delete a memory mount preset."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import delete_mount_preset
+
+    cfg = get_config()
+    ok = await delete_mount_preset(cfg.storage.sqlite.memory_db, preset_id)
+    return {"status": "ok" if ok else "error", "message": None if ok else "预设不存在"}

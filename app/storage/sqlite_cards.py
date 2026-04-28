@@ -200,6 +200,17 @@ CREATE TABLE IF NOT EXISTS conversation_memory_mounts (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_mount_unique
 ON conversation_memory_mounts(conversation_id, library_id)
 WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS memory_mount_presets (
+  preset_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  library_ids_json TEXT NOT NULL,
+  write_library_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 """
 
 
@@ -726,3 +737,105 @@ async def get_inbox_item(db_path: str, inbox_id: str) -> dict | None:
         cursor = await db.execute("SELECT * FROM memory_inbox WHERE inbox_id = ?", (inbox_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
+
+
+# --- memory_mount_presets ---
+
+async def list_mount_presets(db_path: str, include_deleted: bool = False) -> list[dict]:
+    await init_cards_db(db_path)
+    where = "" if include_deleted else "WHERE status = 'active'"
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            f"SELECT * FROM memory_mount_presets {where} ORDER BY updated_at DESC"
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_mount_preset(db_path: str, preset_id: str) -> dict | None:
+    await init_cards_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM memory_mount_presets WHERE preset_id = ?", (preset_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def create_mount_preset(
+    db_path: str,
+    name: str,
+    library_ids: list[str],
+    write_library_id: str,
+    description: str = "",
+    preset_id: str | None = None,
+) -> str:
+    await init_cards_db(db_path)
+    preset_id = preset_id or generate_id("preset_")
+    library_ids_json = json.dumps(library_ids, ensure_ascii=False)
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """INSERT INTO memory_mount_presets
+               (preset_id, name, description, library_ids_json, write_library_id, status)
+               VALUES (?, ?, ?, ?, ?, 'active')
+               ON CONFLICT(preset_id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                library_ids_json = excluded.library_ids_json,
+                write_library_id = excluded.write_library_id,
+                status = 'active',
+                updated_at = datetime('now', 'localtime')""",
+            (preset_id, name, description, library_ids_json, write_library_id),
+        )
+        await db.commit()
+    return preset_id
+
+
+async def update_mount_preset(
+    db_path: str,
+    preset_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    library_ids: list[str] | None = None,
+    write_library_id: str | None = None,
+) -> bool:
+    await init_cards_db(db_path)
+    fields: list[str] = []
+    params: list = []
+    if name is not None:
+        fields.append("name = ?")
+        params.append(name)
+    if description is not None:
+        fields.append("description = ?")
+        params.append(description)
+    if library_ids is not None:
+        fields.append("library_ids_json = ?")
+        params.append(json.dumps(library_ids, ensure_ascii=False))
+    if write_library_id is not None:
+        fields.append("write_library_id = ?")
+        params.append(write_library_id)
+    if not fields:
+        return False
+    fields.append("updated_at = datetime('now', 'localtime')")
+    params.append(preset_id)
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            f"UPDATE memory_mount_presets SET {', '.join(fields)} WHERE preset_id = ?",
+            params,
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def delete_mount_preset(db_path: str, preset_id: str) -> bool:
+    await init_cards_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            """UPDATE memory_mount_presets
+               SET status = 'deleted', updated_at = datetime('now', 'localtime')
+               WHERE preset_id = ?""",
+            (preset_id,),
+        )
+        await db.commit()
+        return cursor.rowcount > 0

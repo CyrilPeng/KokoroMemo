@@ -31,8 +31,12 @@ const stateItems = ref<any[]>([])
 const decisions = ref<any[]>([])
 const events = ref<any[]>([])
 const templates = ref<any[]>([])
+const memoryLibraries = ref<any[]>([])
+const memoryMounts = ref<any[]>([])
 const currentTemplate = ref<any | null>(null)
 const selectedTemplateId = ref('')
+const mountedLibraryIds = ref<string[]>([])
+const writeLibraryId = ref('')
 const showEditModal = ref(false)
 const showTemplateModal = ref(false)
 const showFillModal = ref(false)
@@ -42,6 +46,8 @@ const templateJson = ref('')
 const fillForm = ref({ user_message: '', assistant_message: '' })
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? '（内置）' : ''}`, value: item.template_id })))
+const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
+const mountedLibraryNames = computed(() => memoryMounts.value.map((item) => item.name).join(' + ') || '未挂载')
 const fieldOptions = computed(() => (currentTemplate.value?.tabs || []).flatMap((tab: any) =>
   (tab.fields || []).map((field: any) => ({ label: `${tab.label} / ${field.label}`, value: field.field_id })),
 ))
@@ -67,18 +73,35 @@ async function fetchTemplates() {
   templates.value = (await resp.json()).items || []
 }
 
+async function fetchMemoryLibraries() {
+  const resp = await apiFetch('/admin/memory-libraries', { headers: authHeaders() })
+  memoryLibraries.value = (await resp.json()).items || []
+}
+
+async function fetchMemoryMounts() {
+  if (!conversationId.value.trim()) return
+  const resp = await apiFetch(`/admin/conversations/${conversationId.value}/memory-mounts`, { headers: authHeaders() })
+  memoryMounts.value = (await resp.json()).items || []
+  mountedLibraryIds.value = memoryMounts.value.map((item) => item.library_id)
+  writeLibraryId.value = memoryMounts.value.find((item) => item.is_write_target)?.library_id || mountedLibraryIds.value[0] || ''
+}
+
 async function fetchAll() {
   if (!ensureConversationId()) return
   loading.value = true
   try {
-    await fetchTemplates()
-    const [templateResp, stateResp, decisionResp, eventResp] = await Promise.all([
+    await Promise.all([fetchTemplates(), fetchMemoryLibraries()])
+    const [templateResp, mountResp, stateResp, decisionResp, eventResp] = await Promise.all([
       apiFetch(`/admin/conversations/${conversationId.value}/state/template`, { headers: authHeaders() }),
+      apiFetch(`/admin/conversations/${conversationId.value}/memory-mounts`, { headers: authHeaders() }),
       apiFetch(`/admin/conversations/${conversationId.value}/state?limit=500`, { headers: authHeaders() }),
       apiFetch(`/admin/conversations/${conversationId.value}/retrieval-decisions?limit=100`, { headers: authHeaders() }),
       apiFetch(`/admin/conversations/${conversationId.value}/state/events?limit=100`, { headers: authHeaders() }),
     ])
     currentTemplate.value = await templateResp.json()
+    memoryMounts.value = (await mountResp.json()).items || []
+    mountedLibraryIds.value = memoryMounts.value.map((item) => item.library_id)
+    writeLibraryId.value = memoryMounts.value.find((item) => item.is_write_target)?.library_id || mountedLibraryIds.value[0] || ''
     selectedTemplateId.value = currentTemplate.value?.template_id || ''
     stateItems.value = (await stateResp.json()).items || []
     decisions.value = (await decisionResp.json()).items || []
@@ -88,6 +111,37 @@ async function fetchAll() {
     message.error(`加载失败：${e.message || e}`)
   }
   loading.value = false
+}
+
+async function saveMemoryMounts() {
+  if (!ensureConversationId()) return
+  if (!mountedLibraryIds.value.length) {
+    message.warning('请至少挂载一个长期记忆库')
+    return
+  }
+  if (!mountedLibraryIds.value.includes(writeLibraryId.value)) {
+    writeLibraryId.value = mountedLibraryIds.value[0]
+  }
+  try {
+    const resp = await apiFetch(`/admin/conversations/${conversationId.value}/memory-mounts`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({ library_ids: mountedLibraryIds.value, write_library_id: writeLibraryId.value }),
+    })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || '保存失败')
+    message.success('长期记忆挂载已保存')
+    fetchMemoryMounts()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
+function handleMountedLibrariesChange(value: string[]) {
+  mountedLibraryIds.value = value
+  if (!value.includes(writeLibraryId.value)) {
+    writeLibraryId.value = value[0] || ''
+  }
 }
 
 async function changeTemplate() {
@@ -284,7 +338,7 @@ onMounted(() => {
   const savedToken = localStorage.getItem('kokoromemo.adminToken')
   if (saved) conversationId.value = saved
   if (savedToken) adminToken.value = savedToken
-  fetchTemplates().catch(() => {})
+  Promise.all([fetchTemplates(), fetchMemoryLibraries()]).catch(() => {})
 })
 </script>
 
@@ -310,6 +364,41 @@ onMounted(() => {
           模板定义标签页和字段；AI 填表只会更新可写字段。锁定字段不会被 AI 覆盖。
         </NTooltip>
       </NSpace>
+    </NCard>
+
+    <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+      <template #header>
+        <NSpace align="center">
+          <span>长期记忆挂载</span>
+          <NTag size="small" type="info">{{ mountedLibraryNames }}</NTag>
+          <NTooltip trigger="hover">
+            <template #trigger><span class="help-icon">?</span></template>
+            长期记忆类似全局世界书：当前会话只会从挂载的记忆库召回，新生成的长期记忆会写入“写入目标”。
+          </NTooltip>
+        </NSpace>
+      </template>
+      <NGrid :cols="3" :x-gap="12" :y-gap="12" responsive="screen" item-responsive>
+        <NGridItem span="3 m:2">
+          <NFormItem label="挂载记忆库" label-placement="top" style="margin-bottom: 0;">
+            <NSelect
+              :value="mountedLibraryIds"
+              multiple
+              filterable
+              :options="memoryLibraryOptions"
+              placeholder="选择一个或多个长期记忆库"
+              @update:value="handleMountedLibrariesChange"
+            />
+          </NFormItem>
+        </NGridItem>
+        <NGridItem span="3 m:1">
+          <NFormItem label="写入目标" label-placement="top" style="margin-bottom: 0;">
+            <NSpace align="center" :wrap="false">
+              <NSelect v-model:value="writeLibraryId" :options="memoryLibraryOptions.filter((item) => mountedLibraryIds.includes(item.value))" placeholder="自动记忆写入库" style="min-width: 220px;" />
+              <NButton type="primary" @click="saveMemoryMounts">保存挂载</NButton>
+            </NSpace>
+          </NFormItem>
+        </NGridItem>
+      </NGrid>
     </NCard>
 
     <NSpin :show="loading">

@@ -20,6 +20,7 @@ from app.providers.embedding_base import EmbeddingProvider
 from app.storage.lancedb_store import LanceDBStore
 from app.memory.graph import get_active_edges_for_cards
 from app.storage.sqlite_cards import get_cards_by_ids, get_pinned_cards, get_recent_important_cards
+from app.storage.sqlite_cards import get_mounted_library_ids
 
 logger = logging.getLogger("kokoromemo.card_retriever")
 
@@ -90,10 +91,13 @@ async def retrieve_cards(
     sf = query.scope_filter
     user_id = sf["user_id"]
     character_id = sf.get("character_id")
+    conversation_id = sf.get("conversation_id")
+    mounted_library_ids = await get_mounted_library_ids(cards_db_path, conversation_id) if conversation_id else None
+    mounted_library_set = set(mounted_library_ids or [])
 
     # --- Route 1: Pinned / boundary cards ---
     try:
-        pinned = await get_pinned_cards(cards_db_path, user_id, character_id)
+        pinned = await get_pinned_cards(cards_db_path, user_id, character_id, mounted_library_ids)
         for card in pinned:
             cid = card["card_id"]
             if cid in seen_ids:
@@ -119,11 +123,15 @@ async def retrieve_cards(
 
         # Build scope filter
         clauses = ["status = 'active'", f"user_id = '{user_id}'"]
+        if mounted_library_ids:
+            escaped_ids = [library_id.replace("'", "''") for library_id in mounted_library_ids]
+            library_filter = ", ".join(f"'{library_id}'" for library_id in escaped_ids)
+            clauses.append(f"library_id IN ({library_filter})")
         scope_clauses = ["scope = 'global'"]
         if character_id:
             scope_clauses.append(f"(scope = 'character' AND character_id = '{character_id}')")
-        if sf.get("conversation_id"):
-            scope_clauses.append(f"(scope = 'conversation' AND conversation_id = '{sf['conversation_id']}')")
+        if conversation_id:
+            scope_clauses.append(f"(scope = 'conversation' AND conversation_id = '{conversation_id}')")
         clauses.append(f"({' OR '.join(scope_clauses)})")
         where = " AND ".join(clauses)
 
@@ -136,6 +144,8 @@ async def retrieve_cards(
             cid = row.get("memory_id", "")
             card = sqlite_cards.get(cid)
             if cid in seen_ids or not card or card.get("status") != "approved":
+                continue
+            if mounted_library_set and card.get("library_id") not in mounted_library_set:
                 continue
             seen_ids.add(cid)
 
@@ -169,7 +179,7 @@ async def retrieve_cards(
 
     # --- Route 3: Recent important cards ---
     try:
-        recent = await get_recent_important_cards(cards_db_path, user_id, character_id)
+        recent = await get_recent_important_cards(cards_db_path, user_id, character_id, library_ids=mounted_library_ids)
         for card in recent:
             cid = card["card_id"]
             if cid in seen_ids:
@@ -225,6 +235,8 @@ async def retrieve_cards(
             graph_cards = await get_cards_by_ids(cards_db_path, list(expand_ids))
             for card in graph_cards.values():
                 if card.get("status") != "approved":
+                    continue
+                if mounted_library_set and card.get("library_id") not in mounted_library_set:
                     continue
                 cid = card["card_id"]
                 seen_ids.add(cid)

@@ -172,6 +172,35 @@ async def test_graph_expands_constrains_card():
 
 
 @pytest.mark.asyncio
+async def test_retrieval_only_uses_mounted_memory_libraries():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        lib_a = await create_memory_library(str(memory_db), "游戏 A")
+        lib_b = await create_memory_library(str(memory_db), "游戏 B")
+        await insert_card(
+            str(memory_db), "card_a", "u1", "c1", "conv1",
+            "character", "preference", "A 设定", status="approved", library_id=lib_a,
+        )
+        await insert_card(
+            str(memory_db), "card_b", "u1", "c1", "conv1",
+            "character", "preference", "B 设定", status="approved", library_id=lib_b,
+        )
+        await set_conversation_mounts(str(memory_db), "conv1", [lib_a], write_library_id=lib_a)
+
+        query = RetrievalQuery("设定", "设定", "user: 设定", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
+        store = FakeLanceDBStore([
+            {"memory_id": "card_b", "library_id": lib_b, "_distance": 0.01},
+            {"memory_id": "card_a", "library_id": lib_a, "_distance": 0.02},
+        ])
+        results = await retrieve_cards(query, DummyEmbeddingProvider(8), store, str(memory_db), final_top_k=5)
+        assert [result.card_id for result in results] == ["card_a"]
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_extraction_disabled_without_judge_config():
     test_dir = make_test_dir()
     memory_db = test_dir / "memory.sqlite"

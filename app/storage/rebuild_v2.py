@@ -40,6 +40,7 @@ async def rebuild_vector_index_v2(
         for card, vec in zip(batch, vectors):
             rows.append({
                 "memory_id": card["card_id"],
+                "library_id": card.get("library_id") or "lib_default",
                 "user_id": card["user_id"],
                 "character_id": card.get("character_id") or "",
                 "conversation_id": card.get("conversation_id") or "",

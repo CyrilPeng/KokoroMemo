@@ -23,6 +23,7 @@ class LanceDBStore:
     def _get_schema(self) -> pa.Schema:
         return pa.schema([
             pa.field("memory_id", pa.string()),
+            pa.field("library_id", pa.string()),
             pa.field("user_id", pa.string()),
             pa.field("character_id", pa.string()),
             pa.field("conversation_id", pa.string()),

@@ -247,6 +247,7 @@ async def save_config(data: dict = Body(...)):
 async def list_memories(
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
+    library_id: str | None = Query(default=None),
     scope: str | None = Query(default=None),
     character_id: str | None = Query(default=None),
     status: str = Query(default="approved"),
@@ -270,6 +271,9 @@ async def list_memories(
             if scope:
                 where_clauses.append("scope = ?")
                 params.append(scope)
+            if library_id:
+                where_clauses.append("library_id = ?")
+                params.append(library_id)
             if character_id:
                 where_clauses.append("character_id = ?")
                 params.append(character_id)
@@ -295,6 +299,7 @@ async def list_memories(
                 memories.append({
                     "memory_id": r["card_id"],
                     "card_id": r["card_id"],
+                    "library_id": r["library_id"],
                     "user_id": r["user_id"],
                     "character_id": r["character_id"],
                     "conversation_id": r["conversation_id"],
@@ -315,6 +320,140 @@ async def list_memories(
         return {"memories": [], "total": 0, "limit": limit, "offset": offset}
 
 
+@router.get("/admin/memory-libraries")
+async def list_memory_libraries_api():
+    """List long-term memory libraries."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import list_memory_libraries
+
+    cfg = get_config()
+    items = await list_memory_libraries(cfg.storage.sqlite.memory_db)
+    return {"items": items}
+
+
+@router.post("/admin/memory-libraries")
+async def create_memory_library_api(data: dict = Body(...)):
+    """Create a memory library or save selected libraries as a new preset."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import create_memory_library
+
+    cfg = get_config()
+    library_id = await create_memory_library(
+        cfg.storage.sqlite.memory_db,
+        name=data.get("name") or "未命名记忆库",
+        description=data.get("description", ""),
+        source_library_ids=data.get("source_library_ids") or [],
+    )
+    return {"status": "ok", "library_id": library_id}
+
+
+@router.put("/admin/memory-libraries/{library_id}")
+async def update_memory_library_api(library_id: str, data: dict = Body(...)):
+    """Rename or describe a memory library."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import update_memory_library
+
+    cfg = get_config()
+    ok = await update_memory_library(
+        cfg.storage.sqlite.memory_db,
+        library_id=library_id,
+        name=data.get("name") or "未命名记忆库",
+        description=data.get("description", ""),
+    )
+    return {"status": "ok" if ok else "error", "message": None if ok else "记忆库不存在"}
+
+
+@router.delete("/admin/memory-libraries/{library_id}")
+async def delete_memory_library_api(library_id: str):
+    """Soft-delete a custom memory library."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import delete_memory_library
+
+    cfg = get_config()
+    ok = await delete_memory_library(cfg.storage.sqlite.memory_db, library_id)
+    return {"status": "ok" if ok else "error", "message": None if ok else "默认记忆库不能删除或记忆库不存在"}
+
+
+@router.get("/admin/conversations/{conversation_id}/memory-mounts")
+async def get_conversation_memory_mounts_api(conversation_id: str):
+    """Get mounted long-term memory libraries for a conversation."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import get_conversation_mounts
+
+    cfg = get_config()
+    mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, conversation_id)
+    return {"items": mounts}
+
+
+@router.post("/admin/conversations/{conversation_id}/memory-mounts")
+async def set_conversation_memory_mounts_api(conversation_id: str, data: dict = Body(...)):
+    """Set mounted long-term memory libraries for a conversation."""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import set_conversation_mounts
+
+    cfg = get_config()
+    library_ids = data.get("library_ids") or []
+    await set_conversation_mounts(
+        cfg.storage.sqlite.memory_db,
+        conversation_id=conversation_id,
+        library_ids=library_ids,
+        write_library_id=data.get("write_library_id"),
+        user_id=data.get("user_id"),
+        character_id=data.get("character_id"),
+    )
+    return {"status": "ok"}
+
+
+@router.post("/admin/memories")
+async def create_memory_card(data: dict = Body(...)):
+    """Manually create an approved memory card."""
+    from app.core.ids import generate_id
+    from app.core.services import get_embedding_provider, get_lancedb_store
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import insert_card, insert_card_version
+    from app.storage.vector_sync import enqueue_card_vector_sync, sync_card_vector
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    card_id = generate_id("card_")
+    await insert_card(
+        db_path,
+        card_id=card_id,
+        library_id=data.get("library_id"),
+        user_id=data.get("user_id") or "default_user",
+        character_id=data.get("character_id"),
+        conversation_id=data.get("conversation_id"),
+        scope=data.get("scope", "global"),
+        card_type=data.get("card_type", "preference"),
+        title=data.get("title"),
+        content=data.get("content", ""),
+        summary=data.get("summary"),
+        importance=float(data.get("importance", 0.5)),
+        confidence=float(data.get("confidence", 0.7)),
+        status=data.get("status", "approved"),
+        is_pinned=1 if data.get("is_pinned") else 0,
+        evidence_text=data.get("evidence_text"),
+    )
+    await insert_card_version(
+        db_path,
+        card_id=card_id,
+        content=data.get("content", ""),
+        card_type=data.get("card_type", "preference"),
+        summary=data.get("summary"),
+        importance=float(data.get("importance", 0.5)),
+        confidence=float(data.get("confidence", 0.7)),
+    )
+    if data.get("status", "approved") == "approved":
+        ep = get_embedding_provider(cfg)
+        store = get_lancedb_store(cfg)
+        if ep and store:
+            try:
+                await sync_card_vector(db_path, card_id, ep, store)
+            except Exception as exc:
+                await enqueue_card_vector_sync(db_path, card_id, str(exc))
+    return {"status": "ok", "card_id": card_id}
+
+
 @router.put("/admin/memories/{card_id}")
 async def update_memory_card(card_id: str, data: dict = Body(...)):
     """Edit a memory card's content, type, or importance."""
@@ -327,7 +466,7 @@ async def update_memory_card(card_id: str, data: dict = Body(...)):
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
 
-    allowed_fields = {"content", "card_type", "scope", "importance", "confidence", "title", "summary", "is_pinned"}
+    allowed_fields = {"library_id", "content", "card_type", "scope", "importance", "confidence", "title", "summary", "is_pinned"}
     updates = {k: v for k, v in data.items() if k in allowed_fields}
     if not updates:
         return {"status": "error", "message": "无可更新字段"}
@@ -469,7 +608,7 @@ async def approve_inbox_item(inbox_id: str):
     from app.core.ids import generate_id
     from app.storage.sqlite_cards import (
         get_inbox_item, update_inbox_status, insert_card, insert_card_version,
-        insert_review_action,
+        insert_review_action, get_write_library_id,
     )
     from app.storage.vector_sync import enqueue_card_vector_sync, sync_card_vector
 
@@ -486,9 +625,11 @@ async def approve_inbox_item(inbox_id: str):
 
     # Create approved card
     card_id = generate_id("card_")
+    library_id = payload.get("library_id") or await get_write_library_id(db_path, payload.get("conversation_id") or "default")
     await insert_card(
         db_path,
         card_id=card_id,
+        library_id=library_id,
         user_id=payload.get("user_id", ""),
         character_id=payload.get("character_id"),
         conversation_id=payload.get("conversation_id"),

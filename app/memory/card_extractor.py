@@ -13,6 +13,7 @@ from app.storage.sqlite_cards import (
     insert_card,
     insert_card_version,
     insert_inbox_item,
+    get_write_library_id,
 )
 from app.storage.vector_sync import enqueue_card_vector_sync, sync_card_vector
 
@@ -60,6 +61,8 @@ async def extract_and_route(
     if not extracted:
         return
 
+    library_id = await get_write_library_id(db_path, conversation_id)
+
     for mem in extracted:
         # Dedup: skip if identical content already exists
         if await card_exists_with_content(db_path, user_id, mem.content):
@@ -76,6 +79,7 @@ async def extract_and_route(
         )
 
         card_payload = {
+            "library_id": library_id,
             "user_id": user_id,
             "character_id": character_id,
             "conversation_id": conversation_id,
@@ -94,6 +98,7 @@ async def extract_and_route(
             await insert_card(
                 db_path,
                 card_id=card_id,
+                library_id=library_id,
                 user_id=user_id,
                 character_id=character_id,
                 conversation_id=conversation_id,
@@ -140,6 +145,7 @@ async def extract_and_route(
                 risk_level=risk_level,
                 reason=f"记忆判断模型: {mem.memory_type}",
                 status="pending",
+                library_id=library_id,
             )
             logger.info("Card sent to inbox: %s (type=%s, risk=%s)", inbox_id, mem.memory_type, risk_level)
 

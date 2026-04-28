@@ -8,6 +8,8 @@ from pathlib import Path
 
 from app.core.ids import generate_id
 
+DEFAULT_MEMORY_LIBRARY_ID = "lib_default"
+
 _CARDS_SCHEMA = """
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
@@ -16,6 +18,7 @@ PRAGMA busy_timeout = 5000;
 
 CREATE TABLE IF NOT EXISTS memory_cards (
   card_id TEXT PRIMARY KEY,
+  library_id TEXT NOT NULL DEFAULT 'lib_default',
   user_id TEXT NOT NULL,
   character_id TEXT,
   conversation_id TEXT,
@@ -43,7 +46,10 @@ CREATE TABLE IF NOT EXISTS memory_cards (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cards_scope
-ON memory_cards(user_id, character_id, scope, status);
+ON memory_cards(library_id, user_id, character_id, scope, status);
+
+CREATE INDEX IF NOT EXISTS idx_cards_library
+ON memory_cards(library_id, status, updated_at);
 
 CREATE INDEX IF NOT EXISTS idx_cards_status
 ON memory_cards(status, card_type);
@@ -53,6 +59,7 @@ ON memory_cards(is_pinned, status);
 
 CREATE TABLE IF NOT EXISTS memory_inbox (
   inbox_id TEXT PRIMARY KEY,
+  library_id TEXT NOT NULL DEFAULT 'lib_default',
   candidate_type TEXT NOT NULL DEFAULT 'card',
   payload_json TEXT NOT NULL,
   user_id TEXT NOT NULL,
@@ -91,6 +98,7 @@ ON memory_edges(target_card_id, status);
 
 CREATE TABLE IF NOT EXISTS memory_summaries (
   summary_id TEXT PRIMARY KEY,
+  library_id TEXT NOT NULL DEFAULT 'lib_default',
   level INTEGER NOT NULL,
   summary_type TEXT NOT NULL,
   title TEXT,
@@ -167,7 +175,48 @@ CREATE TABLE IF NOT EXISTS jobs (
   created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+
+CREATE TABLE IF NOT EXISTS memory_libraries (
+  library_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  is_builtin INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS conversation_memory_mounts (
+  mount_id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  library_id TEXT NOT NULL,
+  user_id TEXT,
+  character_id TEXT,
+  is_write_target INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(library_id) REFERENCES memory_libraries(library_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_mount_unique
+ON conversation_memory_mounts(conversation_id, library_id)
+WHERE status = 'active';
 """
+
+
+_MEMORY_CARD_COLUMNS = {
+    "library_id": "TEXT NOT NULL DEFAULT 'lib_default'",
+}
+
+_MEMORY_INBOX_COLUMNS = {
+    "library_id": "TEXT NOT NULL DEFAULT 'lib_default'",
+}
+
+_MEMORY_SUMMARY_COLUMNS = {
+    "library_id": "TEXT NOT NULL DEFAULT 'lib_default'",
+}
 
 
 async def init_cards_db(db_path: str) -> None:
@@ -175,7 +224,35 @@ async def init_cards_db(db_path: str) -> None:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(_CARDS_SCHEMA)
+        await _ensure_columns(db, "memory_cards", _MEMORY_CARD_COLUMNS)
+        await _ensure_columns(db, "memory_inbox", _MEMORY_INBOX_COLUMNS)
+        await _ensure_columns(db, "memory_summaries", _MEMORY_SUMMARY_COLUMNS)
+        await _ensure_default_library(db)
         await db.commit()
+
+
+async def _ensure_columns(db: aiosqlite.Connection, table: str, columns: dict[str, str]) -> None:
+    cursor = await db.execute(f"PRAGMA table_info({table})")
+    existing = {row[1] for row in await cursor.fetchall()}
+    for name, definition in columns.items():
+        if name not in existing:
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
+async def _ensure_default_library(db: aiosqlite.Connection) -> None:
+    await db.execute(
+        """INSERT INTO memory_libraries (library_id, name, description, status, is_builtin)
+           VALUES (?, '默认记忆库', '未指定预设时使用的默认长期记忆库。', 'active', 1)
+           ON CONFLICT(library_id) DO UPDATE SET
+            name = excluded.name,
+            description = excluded.description,
+            status = 'active',
+            is_builtin = 1,
+            updated_at = datetime('now', 'localtime')""",
+        (DEFAULT_MEMORY_LIBRARY_ID,),
+    )
+    await db.execute("UPDATE memory_cards SET library_id = ? WHERE library_id IS NULL OR library_id = ''", (DEFAULT_MEMORY_LIBRARY_ID,))
+    await db.execute("UPDATE memory_inbox SET library_id = ? WHERE library_id IS NULL OR library_id = ''", (DEFAULT_MEMORY_LIBRARY_ID,))
 
 
 async def card_exists_with_content(db_path: str, user_id: str, content: str) -> bool:
@@ -186,6 +263,164 @@ async def card_exists_with_content(db_path: str, user_id: str, content: str) -> 
             (user_id, content),
         )
         return (await cursor.fetchone()) is not None
+
+
+# --- memory_libraries and mounts ---
+
+async def list_memory_libraries(db_path: str, include_deleted: bool = False) -> list[dict]:
+    await init_cards_db(db_path)
+    where = "" if include_deleted else "WHERE l.status = 'active'"
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            f"""SELECT l.*, COUNT(c.card_id) AS card_count
+                FROM memory_libraries l
+                LEFT JOIN memory_cards c ON c.library_id = l.library_id AND c.status != 'deleted'
+                {where}
+                GROUP BY l.library_id
+                ORDER BY l.is_builtin DESC, l.updated_at DESC"""
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+
+
+async def create_memory_library(
+    db_path: str,
+    name: str,
+    description: str = "",
+    library_id: str | None = None,
+    source_library_ids: list[str] | None = None,
+) -> str:
+    await init_cards_db(db_path)
+    library_id = library_id or generate_id("lib_")
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """INSERT INTO memory_libraries (library_id, name, description, status, is_builtin)
+               VALUES (?, ?, ?, 'active', 0)
+               ON CONFLICT(library_id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                status = 'active',
+                updated_at = datetime('now', 'localtime')""",
+            (library_id, name, description),
+        )
+        for source_library_id in source_library_ids or []:
+            await db.execute(
+                """INSERT OR IGNORE INTO memory_cards
+                   (card_id, library_id, user_id, character_id, conversation_id, scope, card_type,
+                    title, content, summary, importance, confidence, stability, status, is_pinned,
+                    source_turn_ids_json, evidence_text, supersedes_card_id, embedding_model,
+                    embedding_dimension, vector_synced, vector_synced_at, created_at, updated_at,
+                    last_accessed_at, access_count)
+                   SELECT 'card_' || lower(hex(randomblob(12))), ?, user_id, character_id, conversation_id,
+                    scope, card_type, title, content, summary, importance, confidence, stability, status,
+                    is_pinned, source_turn_ids_json, evidence_text, supersedes_card_id, NULL, NULL, 0, NULL,
+                    datetime('now', 'localtime'), datetime('now', 'localtime'), NULL, access_count
+                   FROM memory_cards
+                   WHERE library_id = ? AND status != 'deleted'""",
+                (library_id, source_library_id),
+            )
+        await db.commit()
+    return library_id
+
+
+async def update_memory_library(db_path: str, library_id: str, name: str, description: str = "") -> bool:
+    await init_cards_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            """UPDATE memory_libraries
+               SET name = ?, description = ?, updated_at = datetime('now', 'localtime')
+               WHERE library_id = ?""",
+            (name, description, library_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def delete_memory_library(db_path: str, library_id: str) -> bool:
+    if library_id == DEFAULT_MEMORY_LIBRARY_ID:
+        return False
+    await init_cards_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            """UPDATE memory_libraries
+               SET status = 'deleted', updated_at = datetime('now', 'localtime')
+               WHERE library_id = ? AND is_builtin = 0""",
+            (library_id,),
+        )
+        await db.execute(
+            "UPDATE conversation_memory_mounts SET status = 'deleted', updated_at = datetime('now', 'localtime') WHERE library_id = ?",
+            (library_id,),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def get_conversation_mounts(db_path: str, conversation_id: str) -> list[dict]:
+    await init_cards_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT m.*, l.name, l.description, l.is_builtin
+               FROM conversation_memory_mounts m
+               JOIN memory_libraries l ON l.library_id = m.library_id
+               WHERE m.conversation_id = ? AND m.status = 'active' AND l.status = 'active'
+               ORDER BY m.is_write_target DESC, m.sort_order ASC, m.created_at ASC""",
+            (conversation_id,),
+        )
+        rows = [dict(row) for row in await cursor.fetchall()]
+    if not rows:
+        await set_conversation_mounts(db_path, conversation_id, [DEFAULT_MEMORY_LIBRARY_ID])
+        return await get_conversation_mounts(db_path, conversation_id)
+    return rows
+
+
+async def get_mounted_library_ids(db_path: str, conversation_id: str) -> list[str]:
+    mounts = await get_conversation_mounts(db_path, conversation_id)
+    return [mount["library_id"] for mount in mounts]
+
+
+async def get_write_library_id(db_path: str, conversation_id: str) -> str:
+    mounts = await get_conversation_mounts(db_path, conversation_id)
+    for mount in mounts:
+        if mount.get("is_write_target"):
+            return mount["library_id"]
+    return mounts[0]["library_id"] if mounts else DEFAULT_MEMORY_LIBRARY_ID
+
+
+async def set_conversation_mounts(
+    db_path: str,
+    conversation_id: str,
+    library_ids: list[str],
+    write_library_id: str | None = None,
+    user_id: str | None = None,
+    character_id: str | None = None,
+) -> None:
+    await init_cards_db(db_path)
+    library_ids = [library_id for library_id in dict.fromkeys(library_ids) if library_id]
+    if not library_ids:
+        library_ids = [DEFAULT_MEMORY_LIBRARY_ID]
+    write_library_id = write_library_id if write_library_id in library_ids else library_ids[0]
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "UPDATE conversation_memory_mounts SET status = 'deleted', updated_at = datetime('now', 'localtime') WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        for index, library_id in enumerate(library_ids):
+            await db.execute(
+                """INSERT INTO conversation_memory_mounts
+                   (mount_id, conversation_id, library_id, user_id, character_id, is_write_target, sort_order, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+                   ON CONFLICT(conversation_id, library_id) WHERE status = 'active' DO UPDATE SET
+                    is_write_target = excluded.is_write_target,
+                    sort_order = excluded.sort_order,
+                    status = 'active',
+                    updated_at = datetime('now', 'localtime')""",
+                (
+                    generate_id("mount_"), conversation_id, library_id, user_id, character_id,
+                    1 if library_id == write_library_id else 0, index,
+                ),
+            )
+        await db.commit()
 
 
 # --- memory_cards CRUD ---
@@ -207,15 +442,17 @@ async def insert_card(
     is_pinned: int = 0,
     evidence_text: str | None = None,
     supersedes_card_id: str | None = None,
+    library_id: str | None = None,
 ) -> None:
+    library_id = library_id or DEFAULT_MEMORY_LIBRARY_ID
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """INSERT OR IGNORE INTO memory_cards
-               (card_id, user_id, character_id, conversation_id, scope, card_type,
+               (card_id, library_id, user_id, character_id, conversation_id, scope, card_type,
                 title, content, summary, importance, confidence, status, is_pinned,
                 evidence_text, supersedes_card_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (card_id, user_id, character_id, conversation_id, scope, card_type,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (card_id, library_id, user_id, character_id, conversation_id, scope, card_type,
              title, content, summary, importance, confidence, status, is_pinned,
              evidence_text, supersedes_card_id),
         )
@@ -367,14 +604,22 @@ async def get_approved_cards(db_path: str, user_id: str | None = None) -> list[d
         return [dict(r) for r in rows]
 
 
-async def get_pinned_cards(db_path: str, user_id: str, character_id: str | None) -> list[dict]:
+async def get_pinned_cards(
+    db_path: str,
+    user_id: str,
+    character_id: str | None,
+    library_ids: list[str] | None = None,
+) -> list[dict]:
     """Get pinned/boundary cards for retrieval."""
+    library_ids = library_ids or [DEFAULT_MEMORY_LIBRARY_ID]
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
+        placeholders = ",".join("?" for _ in library_ids)
         query = """SELECT * FROM memory_cards
                    WHERE status = 'approved' AND user_id = ?
                    AND (is_pinned = 1 OR card_type = 'boundary')"""
-        params: list = [user_id]
+        query += f" AND library_id IN ({placeholders})"
+        params: list = [user_id, *library_ids]
         if character_id:
             query += " AND (character_id = ? OR character_id IS NULL)"
             params.append(character_id)
@@ -384,16 +629,25 @@ async def get_pinned_cards(db_path: str, user_id: str, character_id: str | None)
 
 
 async def get_recent_important_cards(
-    db_path: str, user_id: str, character_id: str | None, days: int = 7, min_importance: float = 0.75, limit: int = 6
+    db_path: str,
+    user_id: str,
+    character_id: str | None,
+    days: int = 7,
+    min_importance: float = 0.75,
+    limit: int = 6,
+    library_ids: list[str] | None = None,
 ) -> list[dict]:
     """Get recently created important approved cards."""
+    library_ids = library_ids or [DEFAULT_MEMORY_LIBRARY_ID]
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
+        placeholders = ",".join("?" for _ in library_ids)
         query = """SELECT * FROM memory_cards
                    WHERE status = 'approved' AND user_id = ?
                    AND importance >= ?
                    AND created_at >= datetime('now', 'localtime', ?)"""
-        params: list = [user_id, min_importance, f"-{days} days"]
+        query += f" AND library_id IN ({placeholders})"
+        params: list = [user_id, min_importance, f"-{days} days", *library_ids]
         if character_id:
             query += " AND (character_id = ? OR character_id IS NULL)"
             params.append(character_id)
@@ -418,14 +672,16 @@ async def insert_inbox_item(
     risk_level: str = "low",
     reason: str | None = None,
     status: str = "pending",
+    library_id: str | None = None,
 ) -> None:
+    library_id = library_id or DEFAULT_MEMORY_LIBRARY_ID
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """INSERT INTO memory_inbox
-               (inbox_id, candidate_type, payload_json, user_id, character_id, conversation_id,
+               (inbox_id, library_id, candidate_type, payload_json, user_id, character_id, conversation_id,
                 suggested_action, risk_level, reason, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (inbox_id, candidate_type, payload_json, user_id, character_id, conversation_id,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (inbox_id, library_id, candidate_type, payload_json, user_id, character_id, conversation_id,
              suggested_action, risk_level, reason, status),
         )
         await db.commit()

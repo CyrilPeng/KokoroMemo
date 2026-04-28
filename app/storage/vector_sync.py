@@ -29,6 +29,7 @@ async def sync_card_vector(
     vec = await embedding_provider.embed_text(card["content"])
     lancedb_store.upsert([{
         "memory_id": card["card_id"],
+        "library_id": card.get("library_id") or "lib_default",
         "user_id": card["user_id"],
         "character_id": card.get("character_id") or "",
         "conversation_id": card.get("conversation_id") or "",

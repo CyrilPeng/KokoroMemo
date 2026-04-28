@@ -16,7 +16,15 @@ from app.memory.query_builder import RetrievalQuery
 from app.memory.review_policy import auto_review
 from app.providers.embedding_dummy import DummyEmbeddingProvider
 from app.storage.sqlite_app import init_app_db
-from app.storage.sqlite_cards import init_cards_db, insert_card
+from app.storage.sqlite_cards import (
+    DEFAULT_MEMORY_LIBRARY_ID,
+    create_memory_library,
+    get_conversation_mounts,
+    init_cards_db,
+    insert_card,
+    list_memory_libraries,
+    set_conversation_mounts,
+)
 from app.storage.sqlite_conversation import init_chat_db, save_raw_request
 
 
@@ -79,11 +87,36 @@ async def test_schema_initializes_card_and_chat_tables():
 
         with sqlite3.connect(memory_db) as conn:
             tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert {"memory_cards", "memory_card_versions", "review_actions", "jobs"} <= tables
+        assert {"memory_cards", "memory_card_versions", "review_actions", "jobs", "memory_libraries", "conversation_memory_mounts"} <= tables
+        libraries = await list_memory_libraries(str(memory_db))
+        assert libraries[0]["library_id"] == DEFAULT_MEMORY_LIBRARY_ID
 
         with sqlite3.connect(chat_db) as conn:
             tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert "injected_memory_logs" in tables
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_memory_library_mounts_and_preset_copy():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        await insert_card(
+            str(memory_db), "card_base", "u1", None, None,
+            "global", "preference", "用户喜欢安静的叙事", status="approved",
+        )
+        lib_id = await create_memory_library(
+            str(memory_db), "跑团 A", "测试库", source_library_ids=[DEFAULT_MEMORY_LIBRARY_ID],
+        )
+        await set_conversation_mounts(str(memory_db), "conv1", [DEFAULT_MEMORY_LIBRARY_ID, lib_id], write_library_id=lib_id)
+        mounts = await get_conversation_mounts(str(memory_db), "conv1")
+        assert [mount["library_id"] for mount in mounts] == [lib_id, DEFAULT_MEMORY_LIBRARY_ID]
+        with sqlite3.connect(memory_db) as conn:
+            copied = conn.execute("SELECT COUNT(*) FROM memory_cards WHERE library_id = ?", (lib_id,)).fetchone()[0]
+        assert copied == 1
     finally:
         cleanup_test_dir(test_dir)
 

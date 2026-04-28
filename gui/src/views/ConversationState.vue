@@ -5,6 +5,7 @@ import {
   NCard,
   NDataTable,
   NDivider,
+  NDropdown,
   NForm,
   NFormItem,
   NGrid,
@@ -54,6 +55,8 @@ const showPresetModal = ref(false)
 const presetForm = ref({ name: '', description: '' })
 const showCopyModal = ref(false)
 const copyForm = ref({ target_conversation_id: '', copy_mounts: true })
+const showInitWizard = ref(false)
+const wizardForm = ref({ library_ids: ['lib_default'] as string[], write_library_id: 'lib_default', template_id: 'tpl_roleplay_general' })
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? '（内置）' : ''}`, value: item.template_id })))
 const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
@@ -308,6 +311,48 @@ async function confirmCopy() {
   }
 }
 
+function openInitWizard() {
+  wizardForm.value = {
+    library_ids: mountedLibraryIds.value.length ? [...mountedLibraryIds.value] : ['lib_default'],
+    write_library_id: writeLibraryId.value || 'lib_default',
+    template_id: selectedTemplateId.value || 'tpl_roleplay_general',
+  }
+  showInitWizard.value = true
+}
+
+function handleWizardLibrariesChange(value: string[]) {
+  wizardForm.value.library_ids = value
+  if (!value.includes(wizardForm.value.write_library_id)) {
+    wizardForm.value.write_library_id = value[0] || 'lib_default'
+  }
+}
+
+async function confirmInitWizard() {
+  if (!ensureConversationId()) return
+  if (!wizardForm.value.library_ids.length) {
+    message.warning('请至少选择一个记忆库')
+    return
+  }
+  try {
+    const resp = await apiFetch(`/admin/conversations/${conversationId.value}/config`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({
+        library_ids: wizardForm.value.library_ids,
+        write_library_id: wizardForm.value.write_library_id,
+        template_id: wizardForm.value.template_id,
+      }),
+    })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || '初始化失败')
+    showInitWizard.value = false
+    message.success('会话已初始化')
+    await fetchAll()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
 function openTemplateModal() {
   templateJson.value = JSON.stringify({
     name: '自定义状态板',
@@ -401,6 +446,33 @@ async function deletePreset(presetId: string) {
   if (data.status === 'ok') {
     message.success('预设已删除')
     await fetchPresets()
+  }
+}
+
+function handlePresetAction(key: string, preset: any) {
+  if (key === 'apply') {
+    applyPreset(preset)
+  } else if (key === 'export') {
+    exportSinglePreset(preset.preset_id)
+  } else if (key === 'delete') {
+    deletePreset(preset.preset_id)
+  }
+}
+
+async function exportSinglePreset(presetId: string) {
+  try {
+    const resp = await apiFetch(`/admin/memory-mount-presets/${presetId}/export`, { headers: authHeaders() })
+    const data = await resp.json()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `mount_preset_${presetId}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success('预设已导出')
+  } catch (e: any) {
+    message.error(e.message || '导出失败')
   }
 }
 
@@ -635,15 +707,20 @@ onMounted(() => {
         <NGridItem span="4">
           <NFormItem label="挂载组合预设" label-placement="top" style="margin-bottom: 0;">
             <NSpace align="center" :wrap="true">
-              <NButton v-for="preset in presets" :key="preset.preset_id" size="small" quaternary type="info" @click="applyPreset(preset)">
-                {{ preset.name }}
-                <template #icon>
-                  <NPopconfirm @positive-click="deletePreset(preset.preset_id)">
-                    <template #trigger><span class="preset-delete" @click.stop>x</span></template>
-                    确认删除预设？
-                  </NPopconfirm>
-                </template>
-              </NButton>
+              <NDropdown
+                v-for="preset in presets"
+                :key="preset.preset_id"
+                trigger="click"
+                :options="[
+                  { label: '应用', key: 'apply' },
+                  { label: '导出', key: 'export' },
+                  { type: 'divider', key: 'd1' },
+                  { label: '删除', key: 'delete' },
+                ]"
+                @select="(key: string) => handlePresetAction(key, preset)"
+              >
+                <NButton size="small" quaternary type="info">{{ preset.name }}</NButton>
+              </NDropdown>
               <NButton size="small" dashed @click="saveAsPreset" :disabled="!mountedLibraryIds.length">保存当前为预设</NButton>
               <NButton size="small" dashed @click="triggerImportPreset">导入预设</NButton>
               <NButton size="small" dashed @click="exportAllPresets" :disabled="!presets.length">导出全部预设</NButton>
@@ -698,9 +775,12 @@ onMounted(() => {
       <NSpace align="center" justify="space-between">
         <div>
           <div style="color: #e4e4e7; font-weight: 600; margin-bottom: 4px;">这是一个新会话</div>
-          <div style="color: #a1a1aa; font-size: 13px;">当前会话尚未配置。请在上方选择记忆库组合和状态板模板，然后点击"保存配置"。</div>
+          <div style="color: #a1a1aa; font-size: 13px;">当前会话尚未配置。点击"初始化向导"可快速选择记忆库、写入目标和状态板模板。</div>
         </div>
-        <NButton type="primary" @click="saveFullConfig">快速初始化</NButton>
+        <NSpace>
+          <NButton type="primary" @click="openInitWizard">初始化向导</NButton>
+          <NButton @click="saveFullConfig">使用当前配置</NButton>
+        </NSpace>
       </NSpace>
     </NCard>
 
@@ -763,6 +843,41 @@ onMounted(() => {
         <NFormItem label="描述（可选）"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showPresetModal = false">取消</NButton><NButton type="primary" @click="confirmSavePreset">保存</NButton></NSpace></template>
+    </NModal>
+
+    <!-- 新会话初始化向导 Modal -->
+    <NModal v-model:show="showInitWizard" preset="card" title="新会话初始化" style="width: 560px; background: #18181b;">
+      <div style="color: #a1a1aa; font-size: 13px; margin-bottom: 16px;">
+        为会话 <strong style="color: #e4e4e7;">{{ conversationId }}</strong> 选择初始配置。
+      </div>
+      <NForm label-placement="top">
+        <NFormItem label="挂载记忆库">
+          <NSelect
+            :value="wizardForm.library_ids"
+            multiple
+            filterable
+            :options="memoryLibraryOptions"
+            placeholder="选择要挂载的记忆库"
+            @update:value="handleWizardLibrariesChange"
+          />
+        </NFormItem>
+        <NFormItem label="写入目标记忆库">
+          <NSelect
+            v-model:value="wizardForm.write_library_id"
+            :options="memoryLibraryOptions.filter((item) => wizardForm.library_ids.includes(item.value))"
+            placeholder="新记忆写入的目标库"
+          />
+        </NFormItem>
+        <NFormItem label="状态板模板">
+          <NSelect v-model:value="wizardForm.template_id" :options="templateOptions" placeholder="选择状态板模板" />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showInitWizard = false">取消</NButton>
+          <NButton type="primary" @click="confirmInitWizard">初始化会话</NButton>
+        </NSpace>
+      </template>
     </NModal>
 
     <!-- 复制到新会话 Modal -->

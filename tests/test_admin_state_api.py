@@ -69,3 +69,22 @@ async def test_cors_allows_vite_dev_origin():
         )
     assert resp.status_code == 200
     assert resp.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+@pytest.mark.asyncio
+async def test_admin_config_returns_direct_config_keys(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "env-llm-key")
+    monkeypatch.setenv("MODELARK_API_KEY", "env-modelark-key")
+    cfg = AppConfig()
+    cfg.llm.api_key = "config-llm-key"
+    cfg.embedding.api_key = "config-embedding-key"
+    cfg.rerank.api_key = "config-rerank-key"
+    set_config(cfg)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/admin/config")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["llm"]["api_key"] == "config-llm-key"
+    assert data["embedding"]["api_key"] == "config-embedding-key"
+    assert data["rerank"]["api_key"] == "config-rerank-key"

@@ -135,18 +135,18 @@ async function loadConfig() {
       config.value.llm_forward_mode = data.llm?.forward_mode || 'override'
       config.value.llm_provider = data.llm?.provider || 'openai_compatible'
       config.value.llm_base_url = data.llm?.base_url || ''
-      config.value.llm_api_key = ''
+      config.value.llm_api_key = data.llm?.api_key || ''
       config.value.llm_model = data.llm?.model || ''
       config.value.embedding_enabled = data.embedding?.enabled ?? true
       config.value.embedding_provider = data.embedding?.provider || 'modelark'
       config.value.embedding_base_url = data.embedding?.base_url || ''
-      config.value.embedding_api_key = ''
+      config.value.embedding_api_key = data.embedding?.api_key || ''
       config.value.embedding_model = data.embedding?.model || ''
       config.value.embedding_dimension = data.embedding?.dimension || 4096
       config.value.rerank_enabled = data.rerank?.enabled ?? false
       config.value.rerank_provider = data.rerank?.provider || 'modelark'
       config.value.rerank_base_url = data.rerank?.base_url || ''
-      config.value.rerank_api_key = ''
+      config.value.rerank_api_key = data.rerank?.api_key || ''
       config.value.rerank_model = data.rerank?.model || ''
       config.value.rerank_max_docs = data.rerank?.max_documents_per_request || 20
       config.value.memory_enabled = data.memory?.enabled ?? true
@@ -191,10 +191,7 @@ async function saveConfig() {
         final_top_k: config.value.final_top_k,
       },
     }
-    // Only include api_key if user typed something
-    if (config.value.llm_api_key) {
-      payload.llm.api_key = config.value.llm_api_key
-    }
+    payload.llm.api_key = config.value.llm_api_key
 
     const resp = await apiFetch('/admin/config', {
       method: 'POST',

@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/CyrilPeng/KokoroMemo">GitHub</a> ·
+  <a href="#下载发行版">下载发行版</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#接入-airp--ai-客户端">接入客户端</a> ·
   <a href="#记忆审核流程">记忆审核</a> ·
@@ -251,6 +252,12 @@ Embedding：默认开启，是长期记忆召回的核心
 Rerank：默认关闭，是提高召回精度的增强项
 Chat LLM：由用户自行配置
 ```
+
+### 桌面发行版
+
+KokoroMemo 提供 Tauri 桌面端发行版。桌面版启动时会自动拉起本地后端服务，默认监听 `127.0.0.1:14514`，无需用户单独打开命令行启动 Python 后端。
+
+Windows 发行版遵循单 exe 分发原则：`Portable.zip` 解压后的文件夹内只有 `KokoroMemo.exe`，MSI 安装版同样安装内嵌后端的主程序，不会额外分离携带 `kokoromemo-server.exe`。关闭窗口时默认最小化到系统托盘，可在设置页关闭该行为；设置页也提供 GitHub 最新发行版检测。
 
 ---
 
@@ -559,7 +566,30 @@ approved 记忆才会进入默认召回流程
 
 ---
 
+## 下载发行版
+
+普通用户推荐优先使用 GitHub Release 中的桌面发行版：
+
+```text
+Windows Portable: KokoroMemo-版本号-Windows-Portable.zip
+Windows MSI:      KokoroMemo-版本号-Windows-x64.msi
+macOS:            KokoroMemo-版本号-macOS-arm64.dmg
+Linux:            KokoroMemo-版本号-Linux-x64.AppImage
+```
+
+Windows 便携版解压后会生成同名文件夹，文件夹内仅包含 `KokoroMemo.exe`。这个 exe 已内嵌前端和后端，双击启动后会自动启动本地后端服务，客户端仍然连接：
+
+```text
+http://127.0.0.1:14514/v1
+```
+
+桌面版默认启用“关闭后最小化到托盘”。如果要完全退出应用，请使用托盘菜单中的退出，或先在设置页关闭该选项。设置页会自动对比 GitHub 最新发行版，也可以手动检查更新并打开 Release 页面。
+
+---
+
 ## 快速开始
+
+本节面向从源码运行和开发调试。如果只是日常使用，建议直接下载发行版。
 
 ### 环境要求
 
@@ -659,6 +689,8 @@ Rerank 能提高候选排序质量，但会增加延迟和额外 API 调用。
 
 ### 7. 启动后端
 
+源码运行时需要手动启动后端。桌面发行版会自动启动后端，不需要执行这一步。
+
 ```bash
 python -m app.main
 ```
@@ -671,6 +703,8 @@ Web 管理 API:          http://127.0.0.1:14515
 ```
 
 ### 8. 启动前端管理界面
+
+源码运行时可用浏览器访问前端管理界面。
 
 ```bash
 cd gui
@@ -1092,6 +1126,17 @@ http://localhost:5173
 ```bash
 cd gui
 npm run tauri dev
+```
+
+发行版桌面窗口会自动启动后端；源码调试时如果没有 sidecar，Tauri 会回退到 `python -m app.main`。Windows CI 发行构建会把后端二进制内嵌到 `KokoroMemo.exe`，并禁用外部 sidecar，保证 Portable 和 MSI 都是单 exe 后端启动模型。
+
+桌面端还包含：
+
+```text
+关闭窗口默认最小化到托盘
+托盘菜单支持显示窗口和退出应用
+设置页支持开关“关闭后最小化到托盘”
+设置页支持 GitHub Release 更新检测
 ```
 
 ---

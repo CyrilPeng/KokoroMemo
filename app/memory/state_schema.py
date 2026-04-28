@@ -50,6 +50,8 @@ class ConversationStateItem:
     content: str
     user_id: str | None = None
     character_id: str | None = None
+    world_id: str | None = None
+    item_key: str | None = None
     title: str | None = None
     confidence: float = 0.7
     source: str = "manual"
@@ -57,25 +59,36 @@ class ConversationStateItem:
     priority: int = 0
     ttl_turns: int | None = None
     source_turn_id: str | None = None
+    source_turn_ids: list[str] = field(default_factory=list)
+    source_message_ids: list[str] = field(default_factory=list)
+    linked_card_ids: list[str] = field(default_factory=list)
+    linked_summary_ids: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str | None = None
     updated_at: str | None = None
     last_seen_at: str | None = None
+    last_injected_at: str | None = None
+    expires_at: str | None = None
 
 
 @dataclass
 class StateUpdate:
     category: str
     content: str
+    item_key: str | None = None
     title: str | None = None
     confidence: float = 0.7
     status: str = "active"
     priority: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+    reason: str | None = None
 
 
 @dataclass
 class StateUpdateResult:
+    upserts: list[StateUpdate] = field(default_factory=list)
+    resolved_item_ids: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
     created: int = 0
     updated: int = 0
     resolved: int = 0

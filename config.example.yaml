@@ -4,6 +4,8 @@ server:
   webui_port: 14515
   log_level: "INFO"
   allow_remote_access: false
+  admin_token: ""
+  admin_token_env: "ADMIN_TOKEN"
 
 llm:
   # 支持: openai_compatible | openai_responses | anthropic | gemini
@@ -123,7 +125,7 @@ memory:
   state_updater:
     enabled: true
     mode: "rule_only"
-    update_after_each_turn: false
+    update_after_each_turn: true
     update_every_n_turns: 1
     min_confidence: 0.55
     auto_expire_resolved_items: true

@@ -9,10 +9,13 @@ import pytest
 
 from app.memory.query_builder import RetrievalQuery
 from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
+from app.memory.state_projector import project_cards_to_state
+from app.memory.state_updater import rule_based_state_updates
 from app.memory.state_injector import inject_state_board
 from app.memory.state_renderer import HOT_CONTEXT_HEADER, render_state_board
 from app.memory.state_schema import ConversationStateItem, StateRenderOptions
 from app.storage.sqlite_state import SQLiteStateStore, init_state_db
+from app.storage.sqlite_cards import init_cards_db, insert_card
 
 
 def make_test_dir() -> Path:
@@ -66,6 +69,7 @@ async def test_state_store_upsert_list_resolve_and_decision():
         assert len(items) == 1
         assert items[0].item_id == item_id
         assert items[0].metadata == {}
+        assert items[0].content == "两人正在旧图书馆调查线索"
 
         decision_id = await store.record_retrieval_decision(
             conversation_id="conv1",
@@ -159,3 +163,35 @@ def test_retrieval_gate_low_confidence_triggers():
     )
     assert decision.should_retrieve is True
     assert decision.reason == "low_state_confidence"
+
+
+def test_state_updater_rule_location_and_promise():
+    updates = rule_based_state_updates("我们去车站吧，我答应会买票", "好，下一步需要确认发车时间。")
+    categories = {update.category for update in updates}
+    assert "location" in categories
+    assert "promise" in categories
+    assert "main_quest" in categories
+
+
+def test_state_updater_rule_boundary():
+    updates = rule_based_state_updates("不要替我决定角色行动", "明白。")
+    assert any(update.category == "boundary" for update in updates)
+
+
+@pytest.mark.asyncio
+async def test_project_approved_boundary_card_to_state():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        await init_state_db(str(memory_db))
+        await insert_card(
+            str(memory_db), "card_boundary", "u1", "c1", None,
+            "character", "boundary", "不要替用户决定角色行动", status="approved", confidence=0.9,
+        )
+        result = await project_cards_to_state(str(memory_db), "conv1", user_id="u1", character_id="c1")
+        assert result["projected"] == 1
+        items = await SQLiteStateStore(str(memory_db)).list_active_items("conv1")
+        assert items[0].linked_card_ids == ["card_boundary"]
+    finally:
+        cleanup_test_dir(test_dir)

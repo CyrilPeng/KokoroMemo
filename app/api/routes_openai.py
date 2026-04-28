@@ -20,6 +20,7 @@ from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
 from app.memory.state_injector import inject_state_board
 from app.memory.state_renderer import render_state_board
 from app.memory.state_schema import ConversationStateItem, StateRenderOptions
+from app.memory.state_updater import StateUpdaterContext, update_conversation_state
 from app.proxy.request_parser import resolve_context, RequestContext
 from app.storage.sqlite_app import init_app_db, upsert_conversation
 from app.storage.sqlite_cards import init_cards_db
@@ -101,6 +102,7 @@ async def chat_completions(request: Request):
             )
             if state_text:
                 injected_messages = inject_state_board(injected_messages, state_text)
+                await state_store.mark_items_injected([item.item_id for item in state_items if item.item_id])
         except Exception as e:
             logger.warning("Hot context injection failed (degraded): %s", e)
 
@@ -289,6 +291,33 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
         )
     except Exception as e:
         logger.warning("Failed to persist response: %s", e)
+        turn_id = None
+
+    if cfg.memory.enabled and cfg.memory.state_updater.enabled and cfg.memory.state_updater.update_after_each_turn:
+        if assistant_text and _should_run_state_updater(cfg, turn_index if 'turn_index' in locals() else None):
+            user_msg = _latest_user_message(original_messages)
+            if user_msg:
+                try:
+                    await update_conversation_state(
+                        StateUpdaterContext(
+                            db_path=cfg.storage.sqlite.memory_db,
+                            user_id=ctx.user_id,
+                            character_id=ctx.character_id,
+                            conversation_id=ctx.conversation_id,
+                            turn_id=turn_id if 'turn_id' in locals() else None,
+                            mode=cfg.memory.state_updater.mode,
+                            min_confidence=cfg.memory.state_updater.min_confidence,
+                            llm_provider=cfg.llm.provider,
+                            llm_base_url=cfg.llm.base_url,
+                            llm_api_key=cfg.llm.get_api_key(),
+                            llm_model=cfg.llm.model,
+                            llm_timeout_seconds=cfg.llm.timeout_seconds,
+                        ),
+                        user_msg,
+                        assistant_text,
+                    )
+                except Exception as e:
+                    logger.warning("State updater failed: %s", e)
 
     # Memory extraction via card system
     if not cfg.memory.enabled or not cfg.memory.extraction_enabled:
@@ -299,12 +328,7 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
     # Ensure cards DB is initialized (may race with _persist_request)
     await init_cards_db(cfg.storage.sqlite.memory_db)
 
-    # Get latest user message
-    user_msg = ""
-    for m in reversed(original_messages):
-        if m.get("role") == "user":
-            user_msg = m.get("content", "")
-            break
+    user_msg = _latest_user_message(original_messages)
 
     if not user_msg:
         return
@@ -328,6 +352,20 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
         )
     except Exception as e:
         logger.warning("Memory extraction failed: %s", e)
+
+
+def _latest_user_message(messages: list[dict]) -> str:
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            return message.get("content", "")
+    return ""
+
+
+def _should_run_state_updater(cfg, turn_index: int | None) -> bool:
+    every_n = cfg.memory.state_updater.update_every_n_turns
+    if every_n <= 1 or turn_index is None:
+        return True
+    return turn_index % every_n == 0
 
 
 async def _non_stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext, cfg, original_messages: list[dict]) -> JSONResponse:

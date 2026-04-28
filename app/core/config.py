@@ -17,6 +17,13 @@ class ServerConfig:
     webui_port: int = 14515
     log_level: str = "INFO"
     allow_remote_access: bool = False
+    admin_token_env: str = "ADMIN_TOKEN"
+    admin_token: str = ""
+
+    def get_admin_token(self) -> str:
+        if self.admin_token:
+            return self.admin_token
+        return os.environ.get(self.admin_token_env, "")
 
 
 @dataclass
@@ -157,7 +164,7 @@ class HotContextConfig:
 class StateUpdaterConfig:
     enabled: bool = True
     mode: str = "rule_only"
-    update_after_each_turn: bool = False
+    update_after_each_turn: bool = True
     update_every_n_turns: int = 1
     min_confidence: float = 0.55
     auto_expire_resolved_items: bool = True

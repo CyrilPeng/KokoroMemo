@@ -136,12 +136,20 @@ memory:
       preference: 5
   state_updater:
     enabled: true
-    mode: "rule_only"
+    mode: "model_template"  # model_template | rule_only
     update_after_each_turn: true
     update_every_n_turns: 1
     min_confidence: 0.55
     auto_expire_resolved_items: true
     max_state_items_per_conversation: 200
+    provider: "openai_compatible"
+    base_url: ""
+    api_key: ""
+    api_key_env: "STATE_FILLER_API_KEY"
+    model: ""
+    timeout_seconds: 30
+    temperature: 0.0
+    prompt: ""
   retrieval_gate:
     enabled: true
     mode: "auto"  # always | never | auto

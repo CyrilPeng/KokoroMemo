@@ -20,6 +20,7 @@ from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
 from app.memory.state_injector import inject_state_board
 from app.memory.state_renderer import render_state_board
 from app.memory.state_schema import ConversationStateItem, StateRenderOptions
+from app.memory.state_filler import StateFillerConfigView, fill_conversation_state
 from app.memory.state_updater import StateUpdaterContext, update_conversation_state
 from app.proxy.request_parser import resolve_context, RequestContext
 from app.storage.sqlite_app import init_app_db, upsert_conversation
@@ -300,24 +301,45 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
             user_msg = _latest_user_message(original_messages)
             if user_msg:
                 try:
-                    await update_conversation_state(
-                        StateUpdaterContext(
+                    if cfg.memory.state_updater.mode == "rule_only":
+                        await update_conversation_state(
+                            StateUpdaterContext(
+                                db_path=cfg.storage.sqlite.memory_db,
+                                user_id=ctx.user_id,
+                                character_id=ctx.character_id,
+                                conversation_id=ctx.conversation_id,
+                                turn_id=turn_id if 'turn_id' in locals() else None,
+                                mode=cfg.memory.state_updater.mode,
+                                min_confidence=cfg.memory.state_updater.min_confidence,
+                                llm_provider=cfg.llm.provider,
+                                llm_base_url=cfg.llm.base_url,
+                                llm_api_key=cfg.llm.get_api_key(),
+                                llm_model=cfg.llm.model,
+                                llm_timeout_seconds=cfg.llm.timeout_seconds,
+                            ),
+                            user_msg,
+                            assistant_text,
+                        )
+                    else:
+                        await fill_conversation_state(
                             db_path=cfg.storage.sqlite.memory_db,
+                            conversation_id=ctx.conversation_id,
                             user_id=ctx.user_id,
                             character_id=ctx.character_id,
-                            conversation_id=ctx.conversation_id,
+                            user_message=user_msg,
+                            assistant_message=assistant_text,
                             turn_id=turn_id if 'turn_id' in locals() else None,
-                            mode=cfg.memory.state_updater.mode,
-                            min_confidence=cfg.memory.state_updater.min_confidence,
-                            llm_provider=cfg.llm.provider,
-                            llm_base_url=cfg.llm.base_url,
-                            llm_api_key=cfg.llm.get_api_key(),
-                            llm_model=cfg.llm.model,
-                            llm_timeout_seconds=cfg.llm.timeout_seconds,
-                        ),
-                        user_msg,
-                        assistant_text,
-                    )
+                            config=StateFillerConfigView(
+                                provider=cfg.memory.state_updater.provider,
+                                base_url=cfg.memory.state_updater.base_url or cfg.memory.judge.base_url or cfg.llm.base_url,
+                                api_key=cfg.memory.state_updater.get_api_key() or cfg.memory.judge.get_api_key() or cfg.llm.get_api_key(),
+                                model=cfg.memory.state_updater.model or cfg.memory.judge.model or cfg.llm.model,
+                                timeout_seconds=cfg.memory.state_updater.timeout_seconds,
+                                temperature=cfg.memory.state_updater.temperature,
+                                min_confidence=cfg.memory.state_updater.min_confidence,
+                                prompt=cfg.memory.state_updater.prompt,
+                            ),
+                        )
                 except Exception as e:
                     logger.warning("State updater failed: %s", e)
 

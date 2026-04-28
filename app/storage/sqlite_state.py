@@ -631,11 +631,18 @@ class SQLiteStateStore:
         item_key = item.item_key or _derive_item_key(item)
         payload = _item_payload(item)
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute(
-                """SELECT item_id, content FROM conversation_state_items
-                   WHERE conversation_id = ? AND category = ? AND item_key = ? AND status = 'active'""",
-                (item.conversation_id, item.category, item_key),
-            )
+            if item.field_id:
+                cursor = await db.execute(
+                    """SELECT item_id, content FROM conversation_state_items
+                       WHERE conversation_id = ? AND field_id = ? AND status = 'active'""",
+                    (item.conversation_id, item.field_id),
+                )
+            else:
+                cursor = await db.execute(
+                    """SELECT item_id, content FROM conversation_state_items
+                       WHERE conversation_id = ? AND category = ? AND item_key = ? AND status = 'active'""",
+                    (item.conversation_id, item.category, item_key),
+                )
             existing = await cursor.fetchone()
             if existing:
                 item_id = existing[0]

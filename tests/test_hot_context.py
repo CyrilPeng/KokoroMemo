@@ -10,6 +10,7 @@ import pytest
 from app.memory.query_builder import RetrievalQuery
 from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
 from app.memory.state_projector import project_cards_to_state
+from app.memory.state_filler import StateFillerConfigView, fill_conversation_state
 from app.memory.state_updater import rule_based_state_updates
 from app.memory.state_injector import inject_state_board
 from app.memory.state_renderer import HOT_CONTEXT_HEADER, render_state_board
@@ -145,6 +146,76 @@ async def test_builtin_template_renders_field_tabs():
         assert item_id
         assert "通用角色扮演" in rendered
         assert "用户称呼：用户希望被称为主人" in rendered
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+class FakeStateFillerProvider:
+    def __init__(self, content: str):
+        self.content = content
+
+    async def chat(self, body: dict, timeout: int) -> dict:
+        return {"choices": [{"message": {"content": self.content}}]}
+
+    async def stream_chat(self, body: dict, timeout: int):
+        yield "data: [DONE]"
+
+
+@pytest.mark.asyncio
+async def test_state_filler_updates_template_field(monkeypatch):
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        provider = FakeStateFillerProvider('{"updates":[{"field_key":"user_addressing","value":"用户希望被称为主人","confidence":0.91}]}')
+        monkeypatch.setattr("app.memory.state_filler.create_llm_provider", lambda **kwargs: provider)
+        result = await fill_conversation_state(
+            db_path=str(memory_db),
+            conversation_id="conv1",
+            user_message="从现在起叫我主人",
+            assistant_message="好的，主人。",
+            config=StateFillerConfigView(provider="openai_compatible", base_url="http://fake", api_key="key", model="cheap-model"),
+        )
+        assert result.applied == 1
+        items = await SQLiteStateStore(str(memory_db)).list_active_items("conv1")
+        assert items[0].field_key == "user_addressing"
+        assert items[0].content == "用户希望被称为主人"
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_state_filler_skips_locked_field(monkeypatch):
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        store = SQLiteStateStore(str(memory_db))
+        template = await store.get_conversation_template("conv1")
+        field = template.tabs[0].fields[0]
+        await store.upsert_item(ConversationStateItem(
+            item_id=None,
+            conversation_id="conv1",
+            template_id=template.template_id,
+            tab_id=template.tabs[0].tab_id,
+            field_id=field.field_id,
+            field_key=field.field_key,
+            category="preference",
+            item_key=field.field_key,
+            title=field.label,
+            content="用户希望被称为指挥官",
+            user_locked=True,
+        ))
+        provider = FakeStateFillerProvider('{"updates":[{"field_key":"user_addressing","value":"用户希望被称为主人","confidence":0.99}]}')
+        monkeypatch.setattr("app.memory.state_filler.create_llm_provider", lambda **kwargs: provider)
+        result = await fill_conversation_state(
+            db_path=str(memory_db),
+            conversation_id="conv1",
+            user_message="从现在起叫我主人",
+            assistant_message="好的。",
+            config=StateFillerConfigView(provider="openai_compatible", base_url="http://fake", api_key="key", model="cheap-model"),
+        )
+        items = await store.list_active_items("conv1")
+        assert result.applied == 0
+        assert items[0].content == "用户希望被称为指挥官"
     finally:
         cleanup_test_dir(test_dir)
 

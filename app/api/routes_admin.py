@@ -141,6 +141,22 @@ async def get_current_config():
                 "user_rules": cfg.memory.judge.user_rules,
                 "prompt": cfg.memory.judge.prompt,
             },
+            "state_updater": {
+                "enabled": cfg.memory.state_updater.enabled,
+                "mode": cfg.memory.state_updater.mode,
+                "update_after_each_turn": cfg.memory.state_updater.update_after_each_turn,
+                "update_every_n_turns": cfg.memory.state_updater.update_every_n_turns,
+                "min_confidence": cfg.memory.state_updater.min_confidence,
+                "max_state_items_per_conversation": cfg.memory.state_updater.max_state_items_per_conversation,
+                "provider": cfg.memory.state_updater.provider,
+                "base_url": cfg.memory.state_updater.base_url,
+                "api_key": cfg.memory.state_updater.api_key,
+                "api_key_set": bool(cfg.memory.state_updater.get_api_key()),
+                "model": cfg.memory.state_updater.model,
+                "timeout_seconds": cfg.memory.state_updater.timeout_seconds,
+                "temperature": cfg.memory.state_updater.temperature,
+                "prompt": cfg.memory.state_updater.prompt,
+            },
         },
         "llm": {
             "forward_mode": cfg.llm.forward_mode,
@@ -873,6 +889,41 @@ async def rebuild_conversation_state(conversation_id: str, request: Request, dat
         character_id=data.get("character_id"),
     )
     return {"status": "ok", **result}
+
+
+@router.post("/admin/conversations/{conversation_id}/state/fill")
+async def fill_conversation_state_once(conversation_id: str, request: Request, data: dict = Body(...)):
+    """Manually run the model-driven state board filler."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.memory.state_filler import StateFillerConfigView, fill_conversation_state
+
+    cfg = get_config()
+    result = await fill_conversation_state(
+        db_path=cfg.storage.sqlite.memory_db,
+        conversation_id=conversation_id,
+        user_id=data.get("user_id"),
+        character_id=data.get("character_id"),
+        user_message=data.get("user_message", ""),
+        assistant_message=data.get("assistant_message", ""),
+        config=StateFillerConfigView(
+            provider=data.get("provider") or cfg.memory.state_updater.provider,
+            base_url=data.get("base_url") or cfg.memory.state_updater.base_url or cfg.memory.judge.base_url or cfg.llm.base_url,
+            api_key=data.get("api_key") or cfg.memory.state_updater.get_api_key() or cfg.memory.judge.get_api_key() or cfg.llm.get_api_key(),
+            model=data.get("model") or cfg.memory.state_updater.model or cfg.memory.judge.model or cfg.llm.model,
+            timeout_seconds=int(data.get("timeout_seconds") or cfg.memory.state_updater.timeout_seconds),
+            temperature=float(data.get("temperature") if data.get("temperature") is not None else cfg.memory.state_updater.temperature),
+            min_confidence=float(data.get("min_confidence") if data.get("min_confidence") is not None else cfg.memory.state_updater.min_confidence),
+            prompt=data.get("prompt") or cfg.memory.state_updater.prompt,
+        ),
+    )
+    return {
+        "status": "ok",
+        "applied": result.applied,
+        "skipped": result.skipped,
+        "updates": [update.__dict__ for update in result.updates],
+        "notes": result.notes,
+    }
 
 
 @router.post("/admin/inbox/{inbox_id}/reject")

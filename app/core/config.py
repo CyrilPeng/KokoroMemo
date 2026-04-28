@@ -163,12 +163,25 @@ class HotContextConfig:
 @dataclass
 class StateUpdaterConfig:
     enabled: bool = True
-    mode: str = "rule_only"
+    mode: str = "model_template"
     update_after_each_turn: bool = True
     update_every_n_turns: int = 1
     min_confidence: float = 0.55
     auto_expire_resolved_items: bool = True
     max_state_items_per_conversation: int = 200
+    provider: str = "openai_compatible"
+    base_url: str = ""
+    api_key: str = ""
+    api_key_env: str = "STATE_FILLER_API_KEY"
+    model: str = ""
+    timeout_seconds: int = 30
+    temperature: float = 0.0
+    prompt: str = ""
+
+    def get_api_key(self) -> str:
+        if self.api_key:
+            return self.api_key
+        return os.environ.get(self.api_key_env, "")
 
 
 @dataclass

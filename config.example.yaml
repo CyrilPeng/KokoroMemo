@@ -71,6 +71,86 @@ memory:
     min_confidence: 0.55
     extract_after_each_turn: true
     fallback_rule_based: true
+  hot_context:
+    enabled: true
+    inject_always: true
+    max_chars: 1200
+    include_sections:
+      scene: true
+      key_person: true
+      main_quest: true
+      side_quest: true
+      promise: true
+      open_loop: true
+      relationship: true
+      boundary: true
+      preference: true
+      location: true
+      item: true
+      world_state: true
+      recent_summary: true
+      mood: true
+    section_order:
+      - boundary
+      - scene
+      - location
+      - key_person
+      - relationship
+      - main_quest
+      - side_quest
+      - promise
+      - open_loop
+      - item
+      - world_state
+      - recent_summary
+      - mood
+      - preference
+    max_items_per_section:
+      boundary: 5
+      scene: 6
+      location: 4
+      key_person: 8
+      relationship: 4
+      main_quest: 5
+      side_quest: 5
+      promise: 6
+      open_loop: 6
+      item: 6
+      world_state: 5
+      recent_summary: 3
+      mood: 3
+      preference: 5
+  state_updater:
+    enabled: true
+    mode: "rule_only"
+    update_after_each_turn: false
+    update_every_n_turns: 1
+    min_confidence: 0.55
+    auto_expire_resolved_items: true
+    max_state_items_per_conversation: 200
+  retrieval_gate:
+    enabled: true
+    mode: "auto"  # always | never | auto
+    vector_search_on_new_session: true
+    vector_search_every_n_turns: 6
+    vector_search_when_state_confidence_below: 0.65
+    trigger_keywords:
+      - "记得"
+      - "还记得"
+      - "上次"
+      - "以前"
+      - "之前"
+      - "曾经"
+      - "约定"
+      - "我们说过"
+      - "你答应过"
+      - "那个人"
+      - "那个地方"
+      - "那个东西"
+      - "叫什么"
+      - "发生过什么"
+    skip_when_latest_user_text_chars_below: 4
+    skip_when_state_is_sufficient: true
 
 storage:
   root_dir: "./data"

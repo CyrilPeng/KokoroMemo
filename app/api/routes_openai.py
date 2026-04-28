@@ -16,6 +16,10 @@ from app.core.services import get_embedding_provider, get_lancedb_store
 from app.core.state import get_config
 from app.memory.card_injector import inject_cards
 from app.memory.query_builder import build_retrieval_query
+from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
+from app.memory.state_injector import inject_state_board
+from app.memory.state_renderer import render_state_board
+from app.memory.state_schema import ConversationStateItem, StateRenderOptions
 from app.proxy.request_parser import resolve_context, RequestContext
 from app.storage.sqlite_app import init_app_db, upsert_conversation
 from app.storage.sqlite_cards import init_cards_db
@@ -27,6 +31,7 @@ from app.storage.sqlite_conversation import (
     save_turn_and_messages,
     get_turn_count,
 )
+from app.storage.sqlite_state import SQLiteStateStore, init_state_db
 
 logger = logging.getLogger("kokoromemo.proxy")
 
@@ -79,34 +84,93 @@ async def chat_completions(request: Request):
             messages[i] = dict(msg)
             messages[i]["content"] = resolve_variables(msg["content"], **var_kwargs)
 
+    state_items: list[ConversationStateItem] = []
+    state_store: SQLiteStateStore | None = None
+    if cfg.memory.enabled and cfg.memory.hot_context.enabled:
+        try:
+            state_store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+            state_items = await state_store.list_active_items(ctx.conversation_id)
+            state_text = render_state_board(
+                state_items,
+                StateRenderOptions(
+                    max_chars=cfg.memory.hot_context.max_chars,
+                    include_sections=cfg.memory.hot_context.include_sections,
+                    section_order=cfg.memory.hot_context.section_order,
+                    max_items_per_section=cfg.memory.hot_context.max_items_per_section,
+                ),
+            )
+            if state_text:
+                injected_messages = inject_state_board(injected_messages, state_text)
+        except Exception as e:
+            logger.warning("Hot context injection failed (degraded): %s", e)
+
     if cfg.memory.enabled and cfg.memory.inject_enabled and cfg.embedding.enabled:
         try:
-            ep = get_embedding_provider(cfg)
-            store = get_lancedb_store(cfg)
-            if ep and store:
-                query = build_retrieval_query(
-                    messages, ctx.user_id, ctx.character_id, ctx.conversation_id,
-                    max_recent_turns=cfg.memory.max_recent_turns_for_query,
-                )
-                from app.memory.card_retriever import retrieve_cards
-                candidates = await retrieve_cards(
-                    query, ep, store,
-                    cards_db_path=cfg.storage.sqlite.memory_db,
-                    vector_top_k=cfg.memory.vector_top_k,
-                    final_top_k=cfg.memory.final_top_k,
-                )
-                if candidates:
-                    injected_messages = inject_cards(
-                        messages, candidates,
-                        max_chars=cfg.memory.max_injected_chars,
-                        max_count=cfg.memory.final_top_k,
-                        username=ctx.user_id,
-                        character_name=ctx.character_id,
-                        model_name=cfg.llm.model,
-                        conversation_id=ctx.conversation_id,
+            query = build_retrieval_query(
+                messages, ctx.user_id, ctx.character_id, ctx.conversation_id,
+                max_recent_turns=cfg.memory.max_recent_turns_for_query,
+            )
+            should_retrieve = True
+            if cfg.memory.retrieval_gate.enabled:
+                turn_index = await get_turn_count(ctx.chat_db_path, ctx.conversation_id)
+                decision = decide_retrieval(
+                    RetrievalGateInput(
+                        query=query,
+                        state_items=state_items,
+                        turn_index=turn_index,
+                        mode=cfg.memory.retrieval_gate.mode,
+                        vector_search_on_new_session=cfg.memory.retrieval_gate.vector_search_on_new_session,
+                        vector_search_every_n_turns=cfg.memory.retrieval_gate.vector_search_every_n_turns,
+                        vector_search_when_state_confidence_below=cfg.memory.retrieval_gate.vector_search_when_state_confidence_below,
+                        trigger_keywords=cfg.memory.retrieval_gate.trigger_keywords,
+                        skip_when_latest_user_text_chars_below=cfg.memory.retrieval_gate.skip_when_latest_user_text_chars_below,
+                        skip_when_state_is_sufficient=cfg.memory.retrieval_gate.skip_when_state_is_sufficient,
                     )
-                    await _persist_injection(ctx, injected_messages, candidates)
-                    logger.info("Injected %d memories for conv=%s", len(candidates), ctx.conversation_id)
+                )
+                should_retrieve = decision.should_retrieve
+                try:
+                    if state_store is None:
+                        state_store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+                    await state_store.record_retrieval_decision(
+                        request_id=ctx.request_id,
+                        conversation_id=ctx.conversation_id,
+                        user_id=ctx.user_id,
+                        character_id=ctx.character_id,
+                        mode=decision.mode,
+                        should_retrieve=decision.should_retrieve,
+                        reason=decision.reason,
+                        reasons=decision.reasons,
+                        latest_user_text=query.latest_user_text,
+                        state_item_count=decision.state_item_count,
+                        avg_state_confidence=decision.avg_state_confidence,
+                        turn_index=turn_index,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to persist retrieval gate decision: %s", e)
+
+            if should_retrieve:
+                ep = get_embedding_provider(cfg)
+                store = get_lancedb_store(cfg)
+                if ep and store:
+                    from app.memory.card_retriever import retrieve_cards
+                    candidates = await retrieve_cards(
+                        query, ep, store,
+                        cards_db_path=cfg.storage.sqlite.memory_db,
+                        vector_top_k=cfg.memory.vector_top_k,
+                        final_top_k=cfg.memory.final_top_k,
+                    )
+                    if candidates:
+                        injected_messages = inject_cards(
+                            injected_messages, candidates,
+                            max_chars=cfg.memory.max_injected_chars,
+                            max_count=cfg.memory.final_top_k,
+                            username=ctx.user_id,
+                            character_name=ctx.character_id,
+                            model_name=cfg.llm.model,
+                            conversation_id=ctx.conversation_id,
+                        )
+                        await _persist_injection(ctx, injected_messages, candidates)
+                        logger.info("Injected %d memories for conv=%s", len(candidates), ctx.conversation_id)
         except Exception as e:
             logger.warning("Memory retrieval failed (degraded): %s", e)
 
@@ -192,6 +256,7 @@ async def _persist_request(cfg, ctx: RequestContext, raw_body: dict) -> None:
         await init_app_db(cfg.storage.sqlite.app_db)
         await init_chat_db(ctx.chat_db_path)
         await init_cards_db(cfg.storage.sqlite.memory_db)
+        await init_state_db(cfg.storage.sqlite.memory_db)
         await upsert_conversation(
             cfg.storage.sqlite.app_db, ctx.conversation_id,
             ctx.user_id, ctx.character_id, ctx.client_name, ctx.conv_dir,

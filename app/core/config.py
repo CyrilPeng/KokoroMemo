@@ -99,6 +99,99 @@ class ScopesConfig:
 
 
 @dataclass
+class HotContextConfig:
+    enabled: bool = True
+    inject_always: bool = True
+    max_chars: int = 1200
+    include_sections: dict[str, bool] = field(default_factory=lambda: {
+        "scene": True,
+        "key_person": True,
+        "main_quest": True,
+        "side_quest": True,
+        "promise": True,
+        "open_loop": True,
+        "relationship": True,
+        "boundary": True,
+        "preference": True,
+        "location": True,
+        "item": True,
+        "world_state": True,
+        "recent_summary": True,
+        "mood": True,
+    })
+    section_order: list[str] = field(default_factory=lambda: [
+        "boundary",
+        "scene",
+        "location",
+        "key_person",
+        "relationship",
+        "main_quest",
+        "side_quest",
+        "promise",
+        "open_loop",
+        "item",
+        "world_state",
+        "recent_summary",
+        "mood",
+        "preference",
+    ])
+    max_items_per_section: dict[str, int] = field(default_factory=lambda: {
+        "boundary": 5,
+        "scene": 6,
+        "location": 4,
+        "key_person": 8,
+        "relationship": 4,
+        "main_quest": 5,
+        "side_quest": 5,
+        "promise": 6,
+        "open_loop": 6,
+        "item": 6,
+        "world_state": 5,
+        "recent_summary": 3,
+        "mood": 3,
+        "preference": 5,
+    })
+
+
+@dataclass
+class StateUpdaterConfig:
+    enabled: bool = True
+    mode: str = "rule_only"
+    update_after_each_turn: bool = False
+    update_every_n_turns: int = 1
+    min_confidence: float = 0.55
+    auto_expire_resolved_items: bool = True
+    max_state_items_per_conversation: int = 200
+
+
+@dataclass
+class RetrievalGateConfig:
+    enabled: bool = True
+    mode: str = "auto"
+    vector_search_on_new_session: bool = True
+    vector_search_every_n_turns: int = 6
+    vector_search_when_state_confidence_below: float = 0.65
+    trigger_keywords: list[str] = field(default_factory=lambda: [
+        "记得",
+        "还记得",
+        "上次",
+        "以前",
+        "之前",
+        "曾经",
+        "约定",
+        "我们说过",
+        "你答应过",
+        "那个人",
+        "那个地方",
+        "那个东西",
+        "叫什么",
+        "发生过什么",
+    ])
+    skip_when_latest_user_text_chars_below: int = 4
+    skip_when_state_is_sufficient: bool = True
+
+
+@dataclass
 class MemoryConfig:
     enabled: bool = True
     inject_enabled: bool = True
@@ -110,6 +203,9 @@ class MemoryConfig:
     scopes: ScopesConfig = field(default_factory=ScopesConfig)
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     extraction: ExtractionConfig = field(default_factory=ExtractionConfig)
+    hot_context: HotContextConfig = field(default_factory=HotContextConfig)
+    state_updater: StateUpdaterConfig = field(default_factory=StateUpdaterConfig)
+    retrieval_gate: RetrievalGateConfig = field(default_factory=RetrievalGateConfig)
 
 
 @dataclass

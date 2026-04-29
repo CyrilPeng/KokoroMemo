@@ -1565,3 +1565,192 @@ async def import_mount_preset(data: dict = Body(...)):
         description=preset_data.get("description", ""),
     )
     return {"status": "ok", "preset_id": preset_id}
+
+
+# --- Conversation Import/Export ---
+
+
+@router.get("/admin/memory-graph")
+async def get_memory_graph(
+    request: Request,
+    library_id: str | None = Query(default=None),
+    limit: int = Query(default=100, le=500),
+):
+    """Return graph data (nodes + edges) for visualization."""
+    _require_admin(request)
+    import aiosqlite
+    from app.core.state import get_config
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    nodes = []
+    edges = []
+
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            query = "SELECT card_id, card_type, content, importance, confidence, scope FROM memory_cards WHERE status = 'approved'"
+            params: list = []
+            if library_id:
+                query += " AND library_id = ?"
+                params.append(library_id)
+            query += " ORDER BY importance DESC LIMIT ?"
+            params.append(limit)
+
+            cursor = await db.execute(query, params)
+            rows = await cursor.fetchall()
+            card_ids = set()
+            for row in rows:
+                card_ids.add(row["card_id"])
+                nodes.append({
+                    "id": row["card_id"],
+                    "label": row["content"][:60],
+                    "type": row["card_type"],
+                    "importance": row["importance"],
+                    "confidence": row["confidence"],
+                    "scope": row["scope"],
+                })
+
+            if card_ids:
+                placeholders = ",".join("?" * len(card_ids))
+                cursor = await db.execute(
+                    f"SELECT source_card_id, target_card_id, edge_type, weight, confidence "
+                    f"FROM memory_edges WHERE status = 'active' "
+                    f"AND (source_card_id IN ({placeholders}) OR target_card_id IN ({placeholders}))",
+                    list(card_ids) + list(card_ids),
+                )
+                for row in await cursor.fetchall():
+                    edges.append({
+                        "source": row["source_card_id"],
+                        "target": row["target_card_id"],
+                        "type": row["edge_type"],
+                        "weight": row["weight"],
+                        "confidence": row["confidence"],
+                    })
+    except Exception:
+        pass
+
+    return {"nodes": nodes, "edges": edges}
+
+
+@router.post("/admin/import/sillytavern")
+async def import_sillytavern(request: Request, data: dict = Body(...)):
+    """Import a SillyTavern JSONL chat log."""
+    _require_admin(request)
+    from app.core.ids import generate_id
+    from app.core.state import get_config
+    from app.importers.sillytavern import parse_sillytavern_jsonl
+    from app.storage.sqlite_app import init_app_db, upsert_conversation
+    from app.storage.sqlite_conversation import init_chat_db, save_turn_and_messages
+
+    cfg = get_config()
+    text = data.get("content", "")
+    if not text:
+        raise HTTPException(status_code=400, detail="content is required (JSONL text)")
+
+    conv = parse_sillytavern_jsonl(text)
+    if not conv.turns:
+        return {"status": "error", "message": "No valid turns found in input"}
+
+    user_id = data.get("user_id", "default")
+    character_id = data.get("character_id") or None
+    conversation_id = data.get("conversation_id") or generate_id("conv_import_")
+
+    from pathlib import Path
+    conv_dir = str(Path(cfg.storage.root_dir, "conversations", conversation_id))
+    chat_db_path = str(Path(conv_dir, "chat.sqlite"))
+
+    await init_app_db(cfg.storage.sqlite.app_db)
+    await init_chat_db(chat_db_path)
+    await upsert_conversation(
+        cfg.storage.sqlite.app_db, conversation_id,
+        user_id, character_id, "sillytavern_import", conv_dir,
+    )
+
+    messages = []
+    if conv.system_prompt:
+        messages.append({"role": "system", "content": conv.system_prompt})
+    for turn in conv.turns:
+        messages.append({"role": turn.role, "content": turn.content})
+
+    turn_id = generate_id("turn_")
+    await save_turn_and_messages(chat_db_path, turn_id, conversation_id, messages)
+
+    return {
+        "status": "ok",
+        "conversation_id": conversation_id,
+        "turns_imported": len(conv.turns),
+        "character_name": conv.character_name,
+    }
+
+
+@router.post("/admin/import/{conversation_id}/extract-memories")
+async def extract_memories_from_import(conversation_id: str, request: Request, data: dict = Body(default={})):
+    """Batch-extract memories from an imported conversation."""
+    _require_admin(request)
+    from app.core.services import get_embedding_provider, get_lancedb_store
+    from app.core.state import get_config
+    from app.memory.card_extractor import extract_and_route
+    from app.memory.judge import MemoryJudgeConfigView
+    from app.storage.sqlite_conversation import get_all_messages
+
+    cfg = get_config()
+    from pathlib import Path
+    chat_db_path = str(Path(cfg.storage.root_dir, "conversations", conversation_id, "chat.sqlite"))
+
+    if not Path(chat_db_path).exists():
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    messages = await get_all_messages(chat_db_path, conversation_id)
+    pairs: list[tuple[str, str]] = []
+    i = 0
+    while i < len(messages) - 1:
+        if messages[i].get("role") == "user" and messages[i + 1].get("role") == "assistant":
+            pairs.append((messages[i]["content"], messages[i + 1]["content"]))
+            i += 2
+        else:
+            i += 1
+
+    if not pairs:
+        return {"status": "ok", "extracted_pairs": 0, "message": "No user-assistant pairs found"}
+
+    user_id = data.get("user_id", "default")
+    character_id = data.get("character_id") or None
+    ep = get_embedding_provider(cfg)
+    store = get_lancedb_store(cfg)
+
+    judge_config = None
+    if cfg.memory.judge.enabled and cfg.memory.judge.model:
+        judge_config = MemoryJudgeConfigView(
+            provider=cfg.memory.judge.provider,
+            base_url=cfg.memory.judge.base_url or cfg.llm.base_url,
+            api_key=cfg.memory.judge.get_api_key() or cfg.llm.get_api_key(),
+            model=cfg.memory.judge.model or cfg.llm.model,
+            timeout_seconds=cfg.memory.judge.timeout_seconds,
+            temperature=cfg.memory.judge.temperature,
+            mode=cfg.memory.judge.mode,
+            user_rules=cfg.memory.judge.user_rules,
+            prompt=cfg.memory.judge.prompt,
+        )
+
+    max_pairs = data.get("max_pairs", 50)
+    extracted_count = 0
+    for user_msg, assistant_msg in pairs[:max_pairs]:
+        try:
+            await extract_and_route(
+                db_path=cfg.storage.sqlite.memory_db,
+                user_message=user_msg,
+                assistant_message=assistant_msg,
+                user_id=user_id,
+                character_id=character_id,
+                conversation_id=conversation_id,
+                embedding_provider=ep,
+                lancedb_store=store,
+                judge_config=judge_config,
+                lang=cfg.language,
+            )
+            extracted_count += 1
+        except Exception:
+            continue
+
+    return {"status": "ok", "extracted_pairs": extracted_count, "total_pairs": len(pairs)}

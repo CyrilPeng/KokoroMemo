@@ -77,7 +77,7 @@ async def chat_completions(request: Request):
     cfg = get_config()
     raw_body: dict[str, Any] = await request.json()
     raw_body_for_persist = deepcopy(raw_body)
-    ctx = await resolve_context(request, raw_body, cfg.storage.root_dir)
+    ctx = await resolve_context(request, raw_body, cfg.storage.root_dir, cfg)
 
     await _persist_request(cfg, ctx, raw_body_for_persist)
 
@@ -279,12 +279,42 @@ async def _persist_request(cfg, ctx: RequestContext, raw_body: dict) -> None:
             cfg.storage.sqlite.app_db, ctx.conversation_id,
             ctx.user_id, ctx.character_id, ctx.client_name, ctx.conv_dir,
         )
+        await _apply_character_defaults_if_new(cfg, ctx)
         await save_raw_request(
             ctx.chat_db_path, ctx.request_id, ctx.conversation_id,
             json.dumps(raw_body, ensure_ascii=False),
         )
     except Exception as e:
         logger.warning("Failed to persist request: %s", e)
+
+
+async def _apply_character_defaults_if_new(cfg, ctx: RequestContext) -> None:
+    """Auto-apply character defaults to a new conversation (no existing mounts)."""
+    if not ctx.character_id:
+        return
+    try:
+        from app.storage.sqlite_app import get_character_defaults
+        from app.storage.sqlite_cards import get_conversation_mounts, set_conversation_mounts
+        from app.storage.sqlite_state import SQLiteStateStore
+
+        mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, ctx.conversation_id)
+        if mounts and any(m.get("library_id") != "lib_default" for m in mounts):
+            return
+
+        defaults = await get_character_defaults(cfg.storage.sqlite.app_db, ctx.character_id)
+        if not defaults or not defaults.get("auto_apply"):
+            return
+
+        library_ids = defaults.get("library_ids") or ["lib_default"]
+        write_library_id = defaults.get("write_library_id") or library_ids[0]
+        await set_conversation_mounts(cfg.storage.sqlite.memory_db, ctx.conversation_id, library_ids, write_library_id)
+
+        template_id = defaults.get("template_id")
+        if template_id:
+            store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+            await store.set_conversation_template(ctx.conversation_id, template_id)
+    except Exception as e:
+        logger.debug("Character defaults auto-apply skipped: %s", e)
 
 
 async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list[dict], assistant_text: str, response_json: str | None, stream_text: str | None) -> None:

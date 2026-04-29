@@ -283,6 +283,13 @@ class CompatibilityConfig:
 
 
 @dataclass
+class ConversationConfig:
+    auto_new_session_gap_minutes: int = 0
+    detect_system_prompt_change: bool = False
+    detect_message_count_reset: bool = False
+
+
+@dataclass
 class AppConfig:
     language: str = "zh"
     server: ServerConfig = field(default_factory=ServerConfig)
@@ -292,6 +299,7 @@ class AppConfig:
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     compatibility: CompatibilityConfig = field(default_factory=CompatibilityConfig)
+    conversation: ConversationConfig = field(default_factory=ConversationConfig)
 
 
 def _merge_dataclass(dc: Any, data: dict) -> Any:

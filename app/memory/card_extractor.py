@@ -71,6 +71,12 @@ async def extract_and_route(
             logger.debug("Skipping duplicate card: %s", mem.content[:50])
             continue
 
+        # Semantic dedup: skip near-duplicates via vector similarity
+        if embedding_provider and lancedb_store:
+            if await _is_semantic_duplicate(embedding_provider, lancedb_store, user_id, mem.content):
+                logger.debug("Skipping semantic near-duplicate: %s", mem.content[:50])
+                continue
+
         risk_level = _risk_level_from_tags(mem.tags) or determine_risk_level(mem.memory_type, mem.confidence)
         decision = auto_review(
             card_type=mem.memory_type,
@@ -161,3 +167,26 @@ def _risk_level_from_tags(tags: list[str]) -> str | None:
         if tag in {"risk:low", "risk:medium", "risk:high"}:
             return tag.split(":", 1)[1]
     return None
+
+
+async def _is_semantic_duplicate(embedding_provider, lancedb_store, user_id: str, content: str, threshold: float = 0.92) -> bool:
+    """Check if content is semantically near-duplicate to existing cards."""
+    try:
+        vectors = await embedding_provider.embed_texts([content])
+        if not vectors or not vectors[0]:
+            return False
+        results = await lancedb_store.search(
+            vectors[0],
+            top_k=3,
+            where=f"user_id = '{user_id}' AND status = 'approved'",
+        )
+        if not results:
+            return False
+        for r in results:
+            distance = r.get("_distance", 1.0)
+            similarity = 1.0 - distance
+            if similarity >= threshold:
+                return True
+    except Exception:
+        pass
+    return False

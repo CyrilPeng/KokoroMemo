@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import aiosqlite
 from pathlib import Path
 
@@ -23,6 +25,16 @@ CREATE TABLE IF NOT EXISTS characters (
   user_id TEXT NOT NULL,
   display_name TEXT,
   system_prompt_hash TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS character_defaults (
+  character_id TEXT PRIMARY KEY,
+  template_id TEXT,
+  library_ids_json TEXT NOT NULL DEFAULT '["lib_default"]',
+  write_library_id TEXT,
+  auto_apply INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
@@ -71,3 +83,77 @@ async def upsert_conversation(
             (conversation_id, user_id, character_id, client_name, conv_path),
         )
         await db.commit()
+
+
+async def get_character_defaults(db_path: str, character_id: str) -> dict | None:
+    """Get default template and library config for a character."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM character_defaults WHERE character_id = ?",
+            (character_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "character_id": row["character_id"],
+            "template_id": row["template_id"],
+            "library_ids": json.loads(row["library_ids_json"]),
+            "write_library_id": row["write_library_id"],
+            "auto_apply": bool(row["auto_apply"]),
+        }
+
+
+async def set_character_defaults(
+    db_path: str,
+    character_id: str,
+    template_id: str | None = None,
+    library_ids: list[str] | None = None,
+    write_library_id: str | None = None,
+    auto_apply: bool = True,
+) -> None:
+    """Save default template and library config for a character."""
+    library_ids_json = json.dumps(library_ids or ["lib_default"])
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """
+            INSERT INTO character_defaults (character_id, template_id, library_ids_json, write_library_id, auto_apply)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(character_id) DO UPDATE SET
+              template_id = excluded.template_id,
+              library_ids_json = excluded.library_ids_json,
+              write_library_id = excluded.write_library_id,
+              auto_apply = excluded.auto_apply,
+              updated_at = datetime('now', 'localtime')
+            """,
+            (character_id, template_id, library_ids_json, write_library_id, int(auto_apply)),
+        )
+        await db.commit()
+
+
+async def list_characters(db_path: str) -> list[dict]:
+    """List all known characters."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT c.*, cd.template_id, cd.library_ids_json, cd.write_library_id, cd.auto_apply "
+            "FROM characters c LEFT JOIN character_defaults cd ON c.character_id = cd.character_id "
+            "ORDER BY c.updated_at DESC"
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "character_id": row["character_id"],
+                "user_id": row["user_id"],
+                "display_name": row["display_name"],
+                "system_prompt_hash": row["system_prompt_hash"],
+                "template_id": row["template_id"],
+                "library_ids": json.loads(row["library_ids_json"]) if row["library_ids_json"] else None,
+                "write_library_id": row["write_library_id"],
+                "auto_apply": bool(row["auto_apply"]) if row["auto_apply"] is not None else None,
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]

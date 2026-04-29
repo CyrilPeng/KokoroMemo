@@ -371,6 +371,51 @@ async def list_memories(
         return {"memories": [], "total": 0, "limit": limit, "offset": offset}
 
 
+@router.get("/admin/characters")
+async def list_characters_api(request: Request):
+    """List all known characters with their default configurations."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import list_characters
+
+    cfg = get_config()
+    items = await list_characters(cfg.storage.sqlite.app_db)
+    return {"items": items}
+
+
+@router.get("/admin/characters/{character_id}/defaults")
+async def get_character_defaults_api(character_id: str, request: Request):
+    """Get default config for a character."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import get_character_defaults
+
+    cfg = get_config()
+    defaults = await get_character_defaults(cfg.storage.sqlite.app_db, character_id)
+    if not defaults:
+        return {"character_id": character_id, "template_id": None, "library_ids": None, "write_library_id": None, "auto_apply": True}
+    return defaults
+
+
+@router.post("/admin/characters/{character_id}/defaults")
+async def set_character_defaults_api(character_id: str, request: Request, data: dict = Body(...)):
+    """Set default template and library config for a character."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import set_character_defaults
+
+    cfg = get_config()
+    await set_character_defaults(
+        cfg.storage.sqlite.app_db,
+        character_id,
+        template_id=data.get("template_id"),
+        library_ids=data.get("library_ids"),
+        write_library_id=data.get("write_library_id"),
+        auto_apply=data.get("auto_apply", True),
+    )
+    return {"status": "ok", "character_id": character_id}
+
+
 @router.get("/admin/memory-libraries")
 async def list_memory_libraries_api():
     """List long-term memory libraries."""

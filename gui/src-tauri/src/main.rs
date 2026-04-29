@@ -80,11 +80,11 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-fn backend_work_dir(app: &tauri::AppHandle) -> PathBuf {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+fn backend_work_dir(_app: &tauri::AppHandle) -> PathBuf {
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(PathBuf::from))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let _ = fs::create_dir_all(&dir);
     dir
 }
@@ -96,8 +96,12 @@ const EMBEDDED_BACKEND: &[u8] = include_bytes!(concat!(
 ));
 
 #[cfg(all(windows, kokoromemo_embedded_backend))]
-fn embedded_backend_path(app: &tauri::AppHandle) -> std::io::Result<PathBuf> {
-    let runtime_dir = backend_work_dir(app).join("runtime");
+fn embedded_backend_path(_app: &tauri::AppHandle) -> std::io::Result<PathBuf> {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let runtime_dir = exe_dir.join("runtime");
     fs::create_dir_all(&runtime_dir)?;
     let backend_path = runtime_dir.join("kokoromemo-server.exe");
     let should_write = fs::metadata(&backend_path)
@@ -144,28 +148,26 @@ fn spawn_backend(app: tauri::AppHandle) {
 
         #[cfg(not(all(windows, kokoromemo_embedded_backend)))]
         {
+            #[cfg(debug_assertions)]
+            let command = {
+                let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                let project_root = manifest_dir
+                    .parent()
+                    .and_then(|path| path.parent())
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| work_dir.clone());
+                app.shell()
+                    .command("python")
+                    .args(["-m", "app.main"])
+                    .current_dir(project_root)
+            };
+
+            #[cfg(not(debug_assertions))]
             let command = match app.shell().sidecar("kokoromemo-server") {
                 Ok(command) => command.current_dir(&work_dir),
                 Err(error) => {
-                    #[cfg(debug_assertions)]
-                    {
-                        eprintln!("sidecar backend not found, falling back to python: {error}");
-                        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                        let project_root = manifest_dir
-                            .parent()
-                            .and_then(|path| path.parent())
-                            .map(PathBuf::from)
-                            .unwrap_or_else(|| work_dir.clone());
-                        app.shell()
-                            .command("python")
-                            .args(["-m", "app.main"])
-                            .current_dir(project_root)
-                    }
-                    #[cfg(not(debug_assertions))]
-                    {
-                        eprintln!("failed to resolve backend sidecar: {error}");
-                        return;
-                    }
+                    eprintln!("failed to resolve backend sidecar: {error}");
+                    return;
                 }
             };
 

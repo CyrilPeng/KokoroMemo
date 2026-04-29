@@ -28,7 +28,7 @@ export default {
     builtin: 'Built-in',
     unnamed: 'Unnamed',
     none: 'None',
-    version: 'v0.2.1 · Local Long-term Memory',
+    version: 'v0.2.3 · Local Long-term Memory',
   },
   nav: {
     dashboard: 'Dashboard',
@@ -294,6 +294,10 @@ export default {
   settings: {
     title: 'Settings',
     subtitle: 'Configure KokoroMemo service parameters',
+    tabModel: 'Models',
+    tabMemory: 'Memory',
+    tabServer: 'Service',
+    helpTitle: 'Help',
     serverConfig: 'Service Configuration',
     guiBackendUrl: 'GUI Backend URL',
     guiBackendUrlHelp: 'GUI uses this URL to access the KokoroMemo backend. If you change the backend port, update this accordingly.',

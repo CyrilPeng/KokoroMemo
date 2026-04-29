@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   NCard, NForm, NFormItem, NInput, NSwitch, NInputNumber,
-  NButton, NSpace, NDivider, NAlert, NSelect, NTag, NTooltip, useMessage,
+  NButton, NSpace, NDivider, NAlert, NSelect,
+  NTabs, NTabPane, NModal, useMessage,
 } from 'naive-ui'
 import { apiFetch, getServerUrl, setServerUrl } from '../api'
 import { useI18n } from 'vue-i18n'
@@ -152,11 +153,12 @@ async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | '
   }
   const flagRef = target === 'llm' ? fetchingLlm : target === 'embedding' ? fetchingEmbedding : target === 'rerank' ? fetchingRerank : target === 'judge' ? fetchingJudge : fetchingStateFiller
   flagRef.value = true
+  const provider = target === 'llm' ? config.value.llm_provider : undefined
   try {
     const resp = await apiFetch('/admin/fetch-models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
+      body: JSON.stringify({ base_url: baseUrl, api_key: apiKey, provider }),
     })
     const data = await resp.json()
     if (data.status === 'ok' && data.models.length > 0) {
@@ -240,8 +242,9 @@ const judgeModeOptions = computed(() => [
 
 const fillModeOptions = computed(() => [
   { label: t('settings.fillModeTemplate'), value: 'model_template' },
-  { label: t('settings.fillModeRule'), value: 'rule_only' },
 ])
+
+const helpModal = ref('')
 
 const providerUrlPlaceholder = computed(() => {
   const map: Record<string, string> = {
@@ -316,7 +319,7 @@ async function loadConfig() {
       config.value.judge_model = data.memory?.judge?.model || ''
       config.value.judge_timeout_seconds = data.memory?.judge?.timeout_seconds || 30
       config.value.judge_temperature = data.memory?.judge?.temperature ?? 0
-      config.value.judge_mode = normalizeJudgeMode(data.memory?.judge?.mode || 'model_only')
+      config.value.judge_mode = data.memory?.judge?.mode || 'model_only'
       config.value.judge_user_rules = (data.memory?.judge?.user_rules || []).join('\n')
       config.value.judge_prompt = data.memory?.judge?.prompt || ''
       config.value.state_filler_enabled = data.memory?.state_updater?.enabled ?? true
@@ -426,15 +429,9 @@ async function rebuildIndex() {
   }
 }
 
-function normalizeJudgeMode(mode: string) {
-  if (mode === 'model_with_user_rules' || mode === 'rule_then_llm' || mode === 'user_rules_then_model') return 'model_with_user_rules'
-  return 'model_only'
-}
-
 onMounted(() => {
   loadConfig()
   syncCloseToTraySetting()
-  checkForUpdates(true)
 })
 </script>
 
@@ -445,482 +442,320 @@ onMounted(() => {
       <p style="color: #71717a; font-size: 14px;">{{ $t('settings.subtitle') }}</p>
     </div>
 
-    <NSpace vertical :size="16">
-      <!-- Service Config -->
-      <NCard :title="$t('settings.serverConfig')" style="background: #18181b; border: 1px solid #27272a;">
-        <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.guiBackendUrl') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.guiBackendUrlHelp') }}
-              </NTooltip>
+    <NTabs type="line" animated>
+      <!-- Tab 1: 模型配置 -->
+      <NTabPane name="model" :tab="$t('settings.tabModel')">
+        <NSpace vertical :size="16">
+          <!-- LLM Config -->
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>
+              <NSpace align="center">
+                <span>{{ $t('settings.llmConfig') }}</span>
+                <NButton quaternary size="tiny" @click="helpModal = 'llm'"><span class="help-icon">?</span></NButton>
+              </NSpace>
             </template>
-            <NInput v-model:value="backendUrl" placeholder="http://127.0.0.1:14514" style="width: 320px;" />
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.localPort') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.localPortHelp') }}
-              </NTooltip>
-            </template>
-            <NInputNumber v-model:value="config.server_port" :min="1024" :max="65535" style="width: 200px;" />
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.storageDir') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.storageDirHelp') }}
-              </NTooltip>
-            </template>
-            <div style="display: flex; gap: 8px; flex: 1;">
-              <NInput v-model:value="config.storage_root_dir" placeholder="./data" style="flex: 1;" />
-              <NButton size="small" @click="pickFolder" :title="$t('settings.selectFolder')">
-                📁
-              </NButton>
-            </div>
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.timezone') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.timezoneHelp') }}
-              </NTooltip>
-            </template>
-            <NInput v-model:value="timezone" :placeholder="$t('settings.timezonePlaceholder')" style="width: 280px;" />
-          </NFormItem>
-          <NFormItem :label="$t('settings.language')">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <NSelect
-                v-model:value="language"
-                :options="languageOptions"
-                style="width: 200px;"
-                @update:value="handleLanguageChange"
-              />
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.languageHelp') }}
-              </NTooltip>
-            </div>
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.closeToTray') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.closeToTrayHelp') }}
-              </NTooltip>
-            </template>
-            <NSwitch v-model:value="closeToTray" @update:value="handleCloseToTrayChange" />
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.updateCheck') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.updateCheckHelp') }}
-              </NTooltip>
-            </template>
-            <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <NButton size="small" :loading="updateChecking" @click="checkForUpdates(false)">
-                  {{ $t('settings.checkNow') }}
-                </NButton>
-                <NButton
-                  v-if="updateInfo.releaseUrl"
-                  size="small"
-                  secondary
-                  @click="openReleasePage"
-                >
-                  {{ $t('settings.openReleasePage') }}
-                </NButton>
-              </div>
-              <NAlert
-                v-if="updateInfo.checked"
-                :type="updateInfo.error ? 'error' : updateInfo.hasUpdate ? 'warning' : 'success'"
-                :show-icon="false"
-              >
-                <template v-if="updateInfo.error">
-                  {{ $t('settings.updateCheckFailed') }}: {{ updateInfo.error }}
-                </template>
-                <template v-else-if="updateInfo.hasUpdate">
-                  {{ $t('settings.updateAvailableDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}
-                </template>
-                <template v-else>
-                  {{ $t('settings.noUpdateDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}
-                </template>
-              </NAlert>
-            </div>
-          </NFormItem>
-        </NForm>
-      </NCard>
-
-      <!-- LLM Config -->
-      <NCard :title="$t('settings.llmConfig')" style="background: #18181b; border: 1px solid #27272a;">
-        <template #header-extra>
-          <NTooltip trigger="hover">
-            <template #trigger><NTag size="small" round type="info" style="cursor: help;">{{ $t('settings.forwardTag') }}</NTag></template>
-            {{ $t('settings.forwardHelp') }}
-          </NTooltip>
-        </template>
-        <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.forwardMode') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.forwardModeHelp') }}
-              </NTooltip>
-            </template>
-            <NSelect
-              v-model:value="config.llm_forward_mode"
-              :options="forwardModeOptions"
-              style="width: 280px;"
-            />
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.provider') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.providerHelp') }}
-              </NTooltip>
-            </template>
-            <NSelect
-              v-model:value="config.llm_provider"
-              :options="providerOptions"
-              style="width: 280px;"
-            />
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.baseUrl') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.baseUrlHelp') }}
-              </NTooltip>
-            </template>
-            <NInput v-model:value="config.llm_base_url" :placeholder="providerUrlPlaceholder" />
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.apiKey') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.apiKeyHelp') }}
-              </NTooltip>
-            </template>
-            <NInput v-model:value="config.llm_api_key" type="password" show-password-on="click" placeholder="sk-..." />
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.modelName') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.modelNameHelp') }}
-              </NTooltip>
-            </template>
-            <div style="display: flex; gap: 8px; flex: 1;">
-              <NSelect
-                v-if="llmModels.length > 0"
-                v-model:value="config.llm_model"
-                :options="llmModels"
-                filterable
-                tag
-                :placeholder="providerModelPlaceholder"
-                style="flex: 1;"
-              />
-              <NInput v-else v-model:value="config.llm_model" :placeholder="providerModelPlaceholder" style="flex: 1;" />
-              <NButton size="small" :loading="fetchingLlm" @click="fetchModelList(config.llm_base_url, config.llm_api_key, 'llm')">
-                {{ $t('common.fetch') }}
-              </NButton>
-            </div>
-          </NFormItem>
-        </NForm>
-      </NCard>
-
-      <!-- Embedding Config -->
-      <NCard style="background: #18181b; border: 1px solid #27272a;">
-        <template #header>
-          {{ $t('settings.embeddingConfig') }}
-          <NTooltip trigger="hover">
-            <template #trigger><span class="help-icon">?</span></template>
-            {{ $t('settings.embeddingHelp') }}
-          </NTooltip>
-        </template>
-        <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
-          <NFormItem :label="$t('settings.enableEmbedding')">
-            <NSwitch v-model:value="config.embedding_enabled" />
-          </NFormItem>
-          <template v-if="config.embedding_enabled">
-            <NFormItem label="Base URL">
-              <NInput v-model:value="config.embedding_base_url" placeholder="https://ai.gitee.com/v1" />
-            </NFormItem>
-            <NFormItem label="API Key">
-              <NInput v-model:value="config.embedding_api_key" type="password" show-password-on="click" :placeholder="$t('settings.embeddingApiKeyPlaceholder')" />
-            </NFormItem>
-            <NFormItem :label="$t('settings.modelName')">
-              <div style="display: flex; gap: 8px; flex: 1;">
-                <NSelect
-                  v-if="embeddingModels.length > 0"
-                  v-model:value="config.embedding_model"
-                  :options="embeddingModels"
-                  filterable
-                  tag
-                  placeholder="qwen3-embedding-8b"
-                  style="flex: 1;"
-                />
-                <NInput v-else v-model:value="config.embedding_model" placeholder="qwen3-embedding-8b" style="flex: 1;" />
-                <NButton size="small" :loading="fetchingEmbedding" @click="fetchModelList(config.embedding_base_url, config.embedding_api_key, 'embedding')">
-                  {{ $t('common.fetch') }}
-                </NButton>
-              </div>
-            </NFormItem>
-            <NFormItem>
-              <template #label>
-                {{ $t('settings.dimension') }}
-                <NTooltip trigger="hover">
-                  <template #trigger><span class="help-icon">?</span></template>
-                  {{ $t('settings.dimensionHelp') }}
-                </NTooltip>
-              </template>
-              <NInputNumber v-model:value="config.embedding_dimension" :min="1" :max="8192" style="width: 200px;" placeholder="4096" />
-            </NFormItem>
-          </template>
-          <NDivider style="margin: 8px 0;" />
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.stateFillerConfig') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.stateFillerHelp') }}
-              </NTooltip>
-            </template>
-            <NSwitch v-model:value="config.state_filler_enabled" />
-          </NFormItem>
-          <template v-if="config.state_filler_enabled">
-            <NFormItem :label="$t('settings.fillMode')">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <NSelect v-model:value="config.state_filler_mode" :options="fillModeOptions" style="width: 260px;" />
-                <NTooltip trigger="hover">
-                  <template #trigger><span class="help-icon">?</span></template>
-                  {{ $t('settings.fillModeHelp') }}
-                </NTooltip>
-              </div>
-            </NFormItem>
-            <template v-if="config.state_filler_mode !== 'rule_only'">
-              <NFormItem label="Provider">
-                <NSelect v-model:value="config.state_filler_provider" :options="providerOptions" style="width: 280px;" />
+            <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+              <NFormItem :label="$t('settings.forwardMode')">
+                <NSelect v-model:value="config.llm_forward_mode" :options="forwardModeOptions" style="width: 280px;" />
+              </NFormItem>
+              <NFormItem :label="$t('settings.provider')">
+                <NSelect v-model:value="config.llm_provider" :options="providerOptions" style="width: 280px;" />
               </NFormItem>
               <NFormItem label="Base URL">
-                <NInput v-model:value="config.state_filler_base_url" :placeholder="$t('settings.reuseBaseUrlPlaceholder')" />
+                <NInput v-model:value="config.llm_base_url" :placeholder="providerUrlPlaceholder" />
               </NFormItem>
               <NFormItem label="API Key">
-                <NInput v-model:value="config.state_filler_api_key" type="password" show-password-on="click" :placeholder="$t('settings.reuseApiKeyPlaceholder')" />
+                <NInput v-model:value="config.llm_api_key" type="password" show-password-on="click" placeholder="sk-..." />
               </NFormItem>
               <NFormItem :label="$t('settings.modelName')">
                 <div style="display: flex; gap: 8px; flex: 1;">
-                  <NSelect
-                    v-if="stateFillerModels.length > 0"
-                    v-model:value="config.state_filler_model"
-                    :options="stateFillerModels"
-                    filterable
-                    tag
-                    :placeholder="$t('settings.cheapModelPlaceholder')"
-                    style="flex: 1;"
-                  />
-                  <NInput v-else v-model:value="config.state_filler_model" :placeholder="$t('settings.reuseModelPlaceholder')" style="flex: 1;" />
-                  <NButton size="small" :loading="fetchingStateFiller" @click="fetchModelList(config.state_filler_base_url || config.judge_base_url || config.llm_base_url, config.state_filler_api_key || config.judge_api_key || config.llm_api_key, 'state_filler')">
-                    {{ $t('common.fetch') }}
-                  </NButton>
+                  <NSelect v-if="llmModels.length > 0" v-model:value="config.llm_model" :options="llmModels" filterable tag :placeholder="providerModelPlaceholder" style="flex: 1;" />
+                  <NInput v-else v-model:value="config.llm_model" :placeholder="providerModelPlaceholder" style="flex: 1;" />
+                  <NButton size="small" :loading="fetchingLlm" @click="fetchModelList(config.llm_base_url, config.llm_api_key, 'llm')">{{ $t('common.fetch') }}</NButton>
                 </div>
               </NFormItem>
-              <NFormItem :label="$t('settings.minConfidence')">
-                <NInputNumber v-model:value="config.state_filler_min_confidence" :min="0" :max="1" :step="0.05" style="width: 200px;" />
-              </NFormItem>
-              <NFormItem :label="$t('settings.timeout')">
-                <NInputNumber v-model:value="config.state_filler_timeout_seconds" :min="5" :max="120" style="width: 200px;" />
-              </NFormItem>
-              <NFormItem label="Temperature">
-                <NInputNumber v-model:value="config.state_filler_temperature" :min="0" :max="1" :step="0.05" style="width: 200px;" />
-              </NFormItem>
-              <NFormItem :label="$t('settings.customPrompt')">
-                <NInput v-model:value="config.state_filler_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.stateFillerPromptPlaceholder')" />
-              </NFormItem>
-            </template>
-          </template>
-        </NForm>
-      </NCard>
+            </NForm>
+          </NCard>
 
-      <!-- Rerank Config -->
-      <NCard style="background: #18181b; border: 1px solid #27272a;">
-        <template #header>
-          {{ $t('settings.rerankConfig') }}
-          <NTooltip trigger="hover">
-            <template #trigger><span class="help-icon">?</span></template>
-            {{ $t('settings.rerankHelp') }}
-          </NTooltip>
-        </template>
-        <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
-          <NFormItem :label="$t('settings.enableRerank')">
-            <NSwitch v-model:value="config.rerank_enabled" />
-          </NFormItem>
-          <template v-if="config.rerank_enabled">
-            <NFormItem label="Base URL">
-              <NInput v-model:value="config.rerank_base_url" placeholder="https://ai.gitee.com/v1" />
-            </NFormItem>
-            <NFormItem label="API Key">
-              <NInput v-model:value="config.rerank_api_key" type="password" show-password-on="click" :placeholder="$t('settings.rerankApiKeyPlaceholder')" />
-            </NFormItem>
-            <NFormItem :label="$t('settings.modelName')">
-              <div style="display: flex; gap: 8px; flex: 1;">
-                <NSelect
-                  v-if="rerankModels.length > 0"
-                  v-model:value="config.rerank_model"
-                  :options="rerankModels"
-                  filterable
-                  tag
-                  placeholder="qwen3-reranker-8b"
-                  style="flex: 1;"
-                />
-                <NInput v-else v-model:value="config.rerank_model" placeholder="qwen3-reranker-8b" style="flex: 1;" />
-                <NButton size="small" :loading="fetchingRerank" @click="fetchModelList(config.rerank_base_url, config.rerank_api_key, 'rerank')">
-                  {{ $t('common.fetch') }}
-                </NButton>
-              </div>
-            </NFormItem>
-            <NFormItem>
-              <template #label>
-                {{ $t('settings.maxDocsPerBatch') }}
-                <NTooltip trigger="hover">
-                  <template #trigger><span class="help-icon">?</span></template>
-                  {{ $t('settings.maxDocsHelp') }}
-                </NTooltip>
+          <!-- Embedding Config -->
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>
+              <NSpace align="center">
+                <span>{{ $t('settings.embeddingConfig') }}</span>
+                <NButton quaternary size="tiny" @click="helpModal = 'embedding'"><span class="help-icon">?</span></NButton>
+              </NSpace>
+            </template>
+            <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+              <NFormItem :label="$t('settings.enableEmbedding')">
+                <NSwitch v-model:value="config.embedding_enabled" />
+              </NFormItem>
+              <template v-if="config.embedding_enabled">
+                <NFormItem label="Base URL">
+                  <NInput v-model:value="config.embedding_base_url" placeholder="https://ai.gitee.com/v1" />
+                </NFormItem>
+                <NFormItem label="API Key">
+                  <NInput v-model:value="config.embedding_api_key" type="password" show-password-on="click" :placeholder="$t('settings.embeddingApiKeyPlaceholder')" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.modelName')">
+                  <div style="display: flex; gap: 8px; flex: 1;">
+                    <NSelect v-if="embeddingModels.length > 0" v-model:value="config.embedding_model" :options="embeddingModels" filterable tag placeholder="qwen3-embedding-8b" style="flex: 1;" />
+                    <NInput v-else v-model:value="config.embedding_model" placeholder="qwen3-embedding-8b" style="flex: 1;" />
+                    <NButton size="small" :loading="fetchingEmbedding" @click="fetchModelList(config.embedding_base_url, config.embedding_api_key, 'embedding')">{{ $t('common.fetch') }}</NButton>
+                  </div>
+                </NFormItem>
+                <NFormItem :label="$t('settings.dimension')">
+                  <NInputNumber v-model:value="config.embedding_dimension" :min="1" :max="8192" style="width: 200px;" placeholder="4096" />
+                </NFormItem>
               </template>
-              <NInputNumber v-model:value="config.rerank_max_docs" :min="5" :max="100" style="width: 200px;" />
-            </NFormItem>
-          </template>
-        </NForm>
-      </NCard>
+            </NForm>
+          </NCard>
 
-      <!-- Memory Config -->
-      <NCard style="background: #18181b; border: 1px solid #27272a;">
-        <template #header>
-          {{ $t('settings.memoryConfig') }}
-          <NTooltip trigger="hover">
-            <template #trigger><span class="help-icon">?</span></template>
-            {{ $t('settings.memoryHelp') }}
-          </NTooltip>
-        </template>
-        <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
-          <NFormItem :label="$t('settings.enableMemory')">
-            <NSwitch v-model:value="config.memory_enabled" />
-          </NFormItem>
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.maxInjectChars') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.maxInjectCharsHelp') }}
-              </NTooltip>
+          <!-- Rerank Config -->
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>
+              <NSpace align="center">
+                <span>{{ $t('settings.rerankConfig') }}</span>
+                <NButton quaternary size="tiny" @click="helpModal = 'rerank'"><span class="help-icon">?</span></NButton>
+              </NSpace>
             </template>
-            <NInputNumber v-model:value="config.max_injected_chars" :min="500" :max="5000" style="width: 200px;" />
-          </NFormItem>
-          <NFormItem :label="$t('settings.maxRecall')">
-            <NInputNumber v-model:value="config.final_top_k" :min="1" :max="20" style="width: 200px;" />
-          </NFormItem>
-          <NDivider style="margin: 8px 0;" />
-          <NFormItem>
-            <template #label>
-              {{ $t('settings.memoryJudge') }}
-              <NTooltip trigger="hover">
-                <template #trigger><span class="help-icon">?</span></template>
-                {{ $t('settings.memoryJudgeHelp') }}
-              </NTooltip>
-            </template>
-            <NSwitch v-model:value="config.judge_enabled" />
-          </NFormItem>
-          <template v-if="config.judge_enabled">
-            <NFormItem :label="$t('settings.judgeMode')">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <NSelect v-model:value="config.judge_mode" :options="judgeModeOptions" style="width: 240px;" />
-                <NTooltip trigger="hover">
-                  <template #trigger><span class="help-icon">?</span></template>
-                  {{ $t('settings.judgeModeHelp') }}
-                </NTooltip>
-              </div>
-            </NFormItem>
-            <NFormItem label="Provider">
-              <NSelect v-model:value="config.judge_provider" :options="providerOptions" style="width: 280px;" />
-            </NFormItem>
-            <NFormItem label="Base URL">
-              <NInput v-model:value="config.judge_base_url" :placeholder="$t('settings.reuseLlmBaseUrl')" />
-            </NFormItem>
-            <NFormItem label="API Key">
-              <NInput v-model:value="config.judge_api_key" type="password" show-password-on="click" :placeholder="$t('settings.reuseLlmApiKey')" />
-            </NFormItem>
-            <NFormItem :label="$t('settings.modelName')">
-              <div style="display: flex; gap: 8px; flex: 1;">
-                <NSelect
-                  v-if="judgeModels.length > 0"
-                  v-model:value="config.judge_model"
-                  :options="judgeModels"
-                  filterable
-                  tag
-                  :placeholder="$t('settings.cheapModelPlaceholder')"
-                  style="flex: 1;"
-                />
-                <NInput v-else v-model:value="config.judge_model" :placeholder="$t('settings.reuseLlmModel')" style="flex: 1;" />
-                <NButton size="small" :loading="fetchingJudge" @click="fetchModelList(config.judge_base_url || config.llm_base_url, config.judge_api_key || config.llm_api_key, 'judge')">
-                  {{ $t('common.fetch') }}
-                </NButton>
-              </div>
-            </NFormItem>
-            <NFormItem :label="$t('settings.timeout')">
-              <NInputNumber v-model:value="config.judge_timeout_seconds" :min="5" :max="120" style="width: 200px;" />
-            </NFormItem>
-            <NFormItem label="Temperature">
-              <NInputNumber v-model:value="config.judge_temperature" :min="0" :max="1" :step="0.05" style="width: 200px;" />
-            </NFormItem>
-            <NFormItem>
-              <template #label>
-                {{ $t('settings.userRules') }}
-                <NTooltip trigger="hover">
-                  <template #trigger><span class="help-icon">?</span></template>
-                  {{ $t('settings.userRulesHelp') }}
-                </NTooltip>
+            <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+              <NFormItem :label="$t('settings.enableRerank')">
+                <NSwitch v-model:value="config.rerank_enabled" />
+              </NFormItem>
+              <template v-if="config.rerank_enabled">
+                <NFormItem label="Base URL">
+                  <NInput v-model:value="config.rerank_base_url" placeholder="https://ai.gitee.com/v1" />
+                </NFormItem>
+                <NFormItem label="API Key">
+                  <NInput v-model:value="config.rerank_api_key" type="password" show-password-on="click" :placeholder="$t('settings.rerankApiKeyPlaceholder')" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.modelName')">
+                  <div style="display: flex; gap: 8px; flex: 1;">
+                    <NSelect v-if="rerankModels.length > 0" v-model:value="config.rerank_model" :options="rerankModels" filterable tag placeholder="qwen3-reranker-8b" style="flex: 1;" />
+                    <NInput v-else v-model:value="config.rerank_model" placeholder="qwen3-reranker-8b" style="flex: 1;" />
+                    <NButton size="small" :loading="fetchingRerank" @click="fetchModelList(config.rerank_base_url, config.rerank_api_key, 'rerank')">{{ $t('common.fetch') }}</NButton>
+                  </div>
+                </NFormItem>
+                <NFormItem :label="$t('settings.maxDocsPerBatch')">
+                  <NInputNumber v-model:value="config.rerank_max_docs" :min="5" :max="100" style="width: 200px;" />
+                </NFormItem>
               </template>
-              <NInput v-model:value="config.judge_user_rules" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.userRulesPlaceholder')" />
-            </NFormItem>
-            <NFormItem :label="$t('settings.customPrompt')">
-              <NInput v-model:value="config.judge_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.judgePromptPlaceholder')" />
-            </NFormItem>
-          </template>
-        </NForm>
+            </NForm>
+          </NCard>
 
-        <NDivider style="margin: 16px 0;" />
-
-        <NSpace>
-          <NButton type="warning" size="small" @click="rebuildIndex">
-            {{ $t('settings.rebuildIndex') }}
-          </NButton>
+          <!-- State Filler Config -->
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>
+              <NSpace align="center">
+                <span>{{ $t('settings.stateFillerConfig') }}</span>
+                <NButton quaternary size="tiny" @click="helpModal = 'stateFiller'"><span class="help-icon">?</span></NButton>
+              </NSpace>
+            </template>
+            <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+              <NFormItem :label="$t('common.enabled')">
+                <NSwitch v-model:value="config.state_filler_enabled" />
+              </NFormItem>
+              <template v-if="config.state_filler_enabled">
+                <NFormItem label="Provider">
+                  <NSelect v-model:value="config.state_filler_provider" :options="providerOptions" style="width: 280px;" />
+                </NFormItem>
+                <NFormItem label="Base URL">
+                  <NInput v-model:value="config.state_filler_base_url" :placeholder="$t('settings.reuseBaseUrlPlaceholder')" />
+                </NFormItem>
+                <NFormItem label="API Key">
+                  <NInput v-model:value="config.state_filler_api_key" type="password" show-password-on="click" :placeholder="$t('settings.reuseApiKeyPlaceholder')" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.modelName')">
+                  <div style="display: flex; gap: 8px; flex: 1;">
+                    <NSelect v-if="stateFillerModels.length > 0" v-model:value="config.state_filler_model" :options="stateFillerModels" filterable tag :placeholder="$t('settings.cheapModelPlaceholder')" style="flex: 1;" />
+                    <NInput v-else v-model:value="config.state_filler_model" :placeholder="$t('settings.reuseModelPlaceholder')" style="flex: 1;" />
+                    <NButton size="small" :loading="fetchingStateFiller" @click="fetchModelList(config.state_filler_base_url || config.judge_base_url || config.llm_base_url, config.state_filler_api_key || config.judge_api_key || config.llm_api_key, 'state_filler')">{{ $t('common.fetch') }}</NButton>
+                  </div>
+                </NFormItem>
+                <NFormItem :label="$t('settings.minConfidence')">
+                  <NInputNumber v-model:value="config.state_filler_min_confidence" :min="0" :max="1" :step="0.05" style="width: 200px;" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.timeout')">
+                  <NInputNumber v-model:value="config.state_filler_timeout_seconds" :min="5" :max="120" style="width: 200px;" />
+                </NFormItem>
+                <NFormItem label="Temperature">
+                  <NInputNumber v-model:value="config.state_filler_temperature" :min="0" :max="1" :step="0.05" style="width: 200px;" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.customPrompt')">
+                  <NInput v-model:value="config.state_filler_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.stateFillerPromptPlaceholder')" />
+                </NFormItem>
+              </template>
+            </NForm>
+          </NCard>
         </NSpace>
-      </NCard>
+      </NTabPane>
 
-      <!-- Save -->
-      <NAlert type="info" style="background: rgba(167, 139, 250, 0.05); border-color: #27272a;">
+      <!-- Tab 2: 记忆配置 -->
+      <NTabPane name="memory" :tab="$t('settings.tabMemory')">
+        <NSpace vertical :size="16">
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>
+              <NSpace align="center">
+                <span>{{ $t('settings.memoryConfig') }}</span>
+                <NButton quaternary size="tiny" @click="helpModal = 'memory'"><span class="help-icon">?</span></NButton>
+              </NSpace>
+            </template>
+            <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+              <NFormItem :label="$t('settings.enableMemory')">
+                <NSwitch v-model:value="config.memory_enabled" />
+              </NFormItem>
+              <NFormItem :label="$t('settings.maxInjectChars')">
+                <NInputNumber v-model:value="config.max_injected_chars" :min="500" :max="5000" style="width: 200px;" />
+              </NFormItem>
+              <NFormItem :label="$t('settings.maxRecall')">
+                <NInputNumber v-model:value="config.final_top_k" :min="1" :max="20" style="width: 200px;" />
+              </NFormItem>
+              <NDivider style="margin: 8px 0;" />
+              <NFormItem :label="$t('settings.memoryJudge')">
+                <NSwitch v-model:value="config.judge_enabled" />
+              </NFormItem>
+              <template v-if="config.judge_enabled">
+                <NFormItem :label="$t('settings.judgeMode')">
+                  <NSelect v-model:value="config.judge_mode" :options="judgeModeOptions" style="width: 240px;" />
+                </NFormItem>
+                <NFormItem label="Provider">
+                  <NSelect v-model:value="config.judge_provider" :options="providerOptions" style="width: 280px;" />
+                </NFormItem>
+                <NFormItem label="Base URL">
+                  <NInput v-model:value="config.judge_base_url" :placeholder="$t('settings.reuseLlmBaseUrl')" />
+                </NFormItem>
+                <NFormItem label="API Key">
+                  <NInput v-model:value="config.judge_api_key" type="password" show-password-on="click" :placeholder="$t('settings.reuseLlmApiKey')" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.modelName')">
+                  <div style="display: flex; gap: 8px; flex: 1;">
+                    <NSelect v-if="judgeModels.length > 0" v-model:value="config.judge_model" :options="judgeModels" filterable tag :placeholder="$t('settings.cheapModelPlaceholder')" style="flex: 1;" />
+                    <NInput v-else v-model:value="config.judge_model" :placeholder="$t('settings.reuseLlmModel')" style="flex: 1;" />
+                    <NButton size="small" :loading="fetchingJudge" @click="fetchModelList(config.judge_base_url || config.llm_base_url, config.judge_api_key || config.llm_api_key, 'judge')">{{ $t('common.fetch') }}</NButton>
+                  </div>
+                </NFormItem>
+                <NFormItem :label="$t('settings.timeout')">
+                  <NInputNumber v-model:value="config.judge_timeout_seconds" :min="5" :max="120" style="width: 200px;" />
+                </NFormItem>
+                <NFormItem label="Temperature">
+                  <NInputNumber v-model:value="config.judge_temperature" :min="0" :max="1" :step="0.05" style="width: 200px;" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.userRules')">
+                  <NInput v-model:value="config.judge_user_rules" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.userRulesPlaceholder')" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.customPrompt')">
+                  <NInput v-model:value="config.judge_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.judgePromptPlaceholder')" />
+                </NFormItem>
+              </template>
+            </NForm>
+
+            <NDivider style="margin: 16px 0;" />
+            <NSpace>
+              <NButton type="warning" size="small" @click="rebuildIndex">{{ $t('settings.rebuildIndex') }}</NButton>
+            </NSpace>
+          </NCard>
+        </NSpace>
+      </NTabPane>
+
+      <!-- Tab 3: 服务配置 -->
+      <NTabPane name="server" :tab="$t('settings.tabServer')">
+        <NSpace vertical :size="16">
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>
+              <NSpace align="center">
+                <span>{{ $t('settings.serverConfig') }}</span>
+                <NButton quaternary size="tiny" @click="helpModal = 'server'"><span class="help-icon">?</span></NButton>
+              </NSpace>
+            </template>
+            <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+              <NFormItem :label="$t('settings.guiBackendUrl')">
+                <NInput v-model:value="backendUrl" placeholder="http://127.0.0.1:14514" style="width: 320px;" />
+              </NFormItem>
+              <NFormItem :label="$t('settings.localPort')">
+                <NInputNumber v-model:value="config.server_port" :min="1024" :max="65535" style="width: 200px;" />
+              </NFormItem>
+              <NFormItem :label="$t('settings.storageDir')">
+                <div style="display: flex; gap: 8px; flex: 1;">
+                  <NInput v-model:value="config.storage_root_dir" placeholder="./data" style="flex: 1;" />
+                  <NButton size="small" @click="pickFolder" :title="$t('settings.selectFolder')">📁</NButton>
+                </div>
+              </NFormItem>
+              <NFormItem :label="$t('settings.timezone')">
+                <NInput v-model:value="timezone" :placeholder="$t('settings.timezonePlaceholder')" style="width: 280px;" />
+              </NFormItem>
+              <NFormItem :label="$t('settings.language')">
+                <NSelect v-model:value="language" :options="languageOptions" style="width: 200px;" @update:value="handleLanguageChange" />
+              </NFormItem>
+              <NFormItem :label="$t('settings.closeToTray')">
+                <NSwitch v-model:value="closeToTray" @update:value="handleCloseToTrayChange" />
+              </NFormItem>
+              <NFormItem :label="$t('settings.updateCheck')">
+                <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <NButton size="small" :loading="updateChecking" @click="checkForUpdates(false)">{{ $t('settings.checkNow') }}</NButton>
+                    <NButton v-if="updateInfo.releaseUrl && updateInfo.checked" size="small" secondary @click="openReleasePage">{{ $t('settings.openReleasePage') }}</NButton>
+                  </div>
+                  <NAlert v-if="updateInfo.checked" :type="updateInfo.error ? 'error' : updateInfo.hasUpdate ? 'warning' : 'success'" :show-icon="false">
+                    <template v-if="updateInfo.error">{{ $t('settings.updateCheckFailed') }}: {{ updateInfo.error }}</template>
+                    <template v-else-if="updateInfo.hasUpdate">{{ $t('settings.updateAvailableDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}</template>
+                    <template v-else>{{ $t('settings.noUpdateDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}</template>
+                  </NAlert>
+                </div>
+              </NFormItem>
+            </NForm>
+          </NCard>
+        </NSpace>
+      </NTabPane>
+    </NTabs>
+
+    <!-- Save -->
+    <div style="margin-top: 16px;">
+      <NAlert type="info" style="background: rgba(167, 139, 250, 0.05); border-color: #27272a; margin-bottom: 12px;">
         {{ $t('settings.saveHint') }}
       </NAlert>
-
       <div style="text-align: right;">
         <NButton type="primary" @click="saveConfig">{{ $t('settings.saveConfig') }}</NButton>
       </div>
-    </NSpace>
+    </div>
+
+    <!-- Help Modals -->
+    <NModal :show="!!helpModal" preset="card" :title="$t('settings.helpTitle')" style="width: 600px; background: #18181b;" :mask-closable="true" @update:show="(v: boolean) => { if (!v) helpModal = '' }">
+      <div v-if="helpModal === 'llm'" class="help-content">
+        <p><strong>{{ $t('settings.forwardMode') }}</strong>: {{ $t('settings.forwardModeHelp') }}</p>
+        <p><strong>{{ $t('settings.provider') }}</strong>: {{ $t('settings.providerHelp') }}</p>
+        <p><strong>Base URL</strong>: {{ $t('settings.baseUrlHelp') }}</p>
+        <p><strong>API Key</strong>: {{ $t('settings.apiKeyHelp') }}</p>
+        <p><strong>{{ $t('settings.modelName') }}</strong>: {{ $t('settings.modelNameHelp') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'embedding'" class="help-content">
+        <p>{{ $t('settings.embeddingHelp') }}</p>
+        <p><strong>{{ $t('settings.dimension') }}</strong>: {{ $t('settings.dimensionHelp') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'rerank'" class="help-content">
+        <p>{{ $t('settings.rerankHelp') }}</p>
+        <p><strong>{{ $t('settings.maxDocsPerBatch') }}</strong>: {{ $t('settings.maxDocsHelp') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'stateFiller'" class="help-content">
+        <p>{{ $t('settings.stateFillerHelp') }}</p>
+        <p><strong>{{ $t('settings.fillMode') }}</strong>: {{ $t('settings.fillModeHelp') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'memory'" class="help-content">
+        <p>{{ $t('settings.memoryHelp') }}</p>
+        <p><strong>{{ $t('settings.maxInjectChars') }}</strong>: {{ $t('settings.maxInjectCharsHelp') }}</p>
+        <p><strong>{{ $t('settings.memoryJudge') }}</strong>: {{ $t('settings.memoryJudgeHelp') }}</p>
+        <p><strong>{{ $t('settings.judgeMode') }}</strong>: {{ $t('settings.judgeModeHelp') }}</p>
+        <p><strong>{{ $t('settings.userRules') }}</strong>: {{ $t('settings.userRulesHelp') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'server'" class="help-content">
+        <p><strong>{{ $t('settings.guiBackendUrl') }}</strong>: {{ $t('settings.guiBackendUrlHelp') }}</p>
+        <p><strong>{{ $t('settings.localPort') }}</strong>: {{ $t('settings.localPortHelp') }}</p>
+        <p><strong>{{ $t('settings.storageDir') }}</strong>: {{ $t('settings.storageDirHelp') }}</p>
+        <p><strong>{{ $t('settings.timezone') }}</strong>: {{ $t('settings.timezoneHelp') }}</p>
+        <p><strong>{{ $t('settings.language') }}</strong>: {{ $t('settings.languageHelp') }}</p>
+        <p><strong>{{ $t('settings.closeToTray') }}</strong>: {{ $t('settings.closeToTrayHelp') }}</p>
+        <p><strong>{{ $t('settings.updateCheck') }}</strong>: {{ $t('settings.updateCheckHelp') }}</p>
+      </div>
+    </NModal>
   </div>
 </template>
 
@@ -942,6 +777,15 @@ onMounted(() => {
 }
 .help-icon:hover {
   background: #52525b;
+  color: #e4e4e7;
+}
+.help-content p {
+  color: #a1a1aa;
+  font-size: 13px;
+  line-height: 1.8;
+  margin: 8px 0;
+}
+.help-content p strong {
   color: #e4e4e7;
 }
 </style>

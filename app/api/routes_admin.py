@@ -94,13 +94,24 @@ async def get_stats(request: Request):
     return result
 
 
-async def _fetch_models_from_remote(base_url: str, api_key: str):
-    """Fetch available models from a remote /v1/models endpoint."""
+async def _fetch_models_from_remote(base_url: str, api_key: str, provider: str | None = None):
+    """Fetch available models from a remote models endpoint."""
     if not api_key:
         return {"status": "error", "message": "未提供 API Key", "models": []}
 
-    url = base_url.rstrip("/") + "/models"
-    headers = {"Authorization": f"Bearer {api_key}"}
+    base_url = base_url.rstrip("/")
+    is_gemini = provider == "gemini" or "googleapis.com" in base_url or "generativelanguage" in base_url
+    is_anthropic = provider == "anthropic" or "anthropic.com" in base_url
+
+    if is_gemini:
+        url = base_url + "/models?key=" + api_key
+        headers = {}
+    elif is_anthropic:
+        url = base_url + "/models"
+        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
+    else:
+        url = base_url + "/models"
+        headers = {"Authorization": f"Bearer {api_key}"}
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -110,14 +121,21 @@ async def _fetch_models_from_remote(base_url: str, api_key: str):
                 return {"status": "error", "message": f"远端返回 HTTP {resp.status_code}: {body}", "models": []}
             data = resp.json()
 
-            # OpenAI format: { "data": [{"id": "model-name", ...}] }
             models = []
-            items = data.get("data", []) if isinstance(data, dict) else []
-            for item in items:
-                if isinstance(item, dict) and "id" in item:
-                    models.append(item["id"])
-                elif isinstance(item, str):
-                    models.append(item)
+            if is_gemini:
+                for item in data.get("models", []):
+                    if isinstance(item, dict) and "name" in item:
+                        name = item["name"]
+                        if name.startswith("models/"):
+                            name = name[7:]
+                        models.append(name)
+            else:
+                items = data.get("data", []) if isinstance(data, dict) else []
+                for item in items:
+                    if isinstance(item, dict) and "id" in item:
+                        models.append(item["id"])
+                    elif isinstance(item, str):
+                        models.append(item)
 
             return {"status": "ok", "models": sorted(models)}
     except httpx.TimeoutException:
@@ -129,7 +147,7 @@ async def _fetch_models_from_remote(base_url: str, api_key: str):
 @router.post("/admin/fetch-models")
 async def fetch_models(data: dict = Body(...)):
     """Fetch remote models without putting API keys in URLs."""
-    return await _fetch_models_from_remote(data.get("base_url", ""), data.get("api_key", ""))
+    return await _fetch_models_from_remote(data.get("base_url", ""), data.get("api_key", ""), data.get("provider"))
 
 
 @router.get("/admin/fetch-models")

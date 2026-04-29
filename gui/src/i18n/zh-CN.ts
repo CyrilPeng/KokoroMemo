@@ -28,7 +28,7 @@ export default {
     builtin: '内置',
     unnamed: '未命名',
     none: '无',
-    version: 'v0.2.1 · 本地长期记忆',
+    version: 'v0.2.3 · 本地长期记忆',
   },
   nav: {
     dashboard: '仪表盘',
@@ -294,6 +294,10 @@ export default {
   settings: {
     title: '设置',
     subtitle: '配置 KokoroMemo 服务参数',
+    tabModel: '模型配置',
+    tabMemory: '记忆配置',
+    tabServer: '服务配置',
+    helpTitle: '帮助说明',
     serverConfig: '服务配置',
     guiBackendUrl: 'GUI 后端地址',
     guiBackendUrlHelp: 'GUI 用这个地址访问 KokoroMemo 后端。如果你改了后端端口，请同步改成对应地址。',

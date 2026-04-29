@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.2.3 (2026-04-29)
+
+### 新增
+
+- **状态板注入预览** — 新增"注入预览"标签页，实时展示 AI 实际收到的状态板注入文本及字符预算占比
+- **Dashboard 统计面板** — 仪表盘新增已批准记忆数、待审核数、检索门控统计、7 日增长趋势和类型分布
+- **多语言 Prompt 支持** — 新建双语 prompt 注册表 (`app/core/prompts.py`)；新增 `language` 配置项（zh/en），切换所有系统 prompt 和触发关键词语言
+- **角色级自动配置** — 新增 `character_defaults` 表；角色可绑定默认模板和记忆库；新会话自动应用角色默认配置
+- **智能会话自动识别** — 新增 `conversation` 配置节；支持时间间隔和消息数量启发式检测新会话（默认关闭）
+- **记忆语义去重** — 记忆提取后增加向量相似度检查（阈值 0.92），自动跳过近似重复卡片
+- **Embedding 热切换框架** — 更换 embedding 模型后可后台异步重建索引，不中断服务；新增 `GET /admin/index-migration-status`
+- **WebSocket 实时推送** — 新增 `/ws` 端点和事件总线；记忆提取后自动推送 `card_approved` / `inbox_new` 事件
+- **SillyTavern 对话导入** — 新增 `POST /admin/import/sillytavern` 和 `POST /admin/import/{id}/extract-memories`；支持批量导入聊天并提取记忆
+- **记忆图谱数据接口** — 新增 `GET /admin/memory-graph` 返回卡片节点和关系边，供前端图谱可视化使用
+
+### 改进
+
+- Admin API 新增角色管理端点 (`GET /admin/characters`, `GET/POST /admin/characters/{id}/defaults`)
+- 前端 `api.ts` 新增 `createWebSocket` 工具函数
+- 检索门控触发关键词自动合并多语言列表
+
+### 修复
+
+- 修复 CI 发布工作流中 Windows Portable 目录未清理导致 `gh release upload` 失败
+
 ## v0.2.1 (2026-04-28)
 
 ### 新增

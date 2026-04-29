@@ -46,6 +46,8 @@ jobs:
             --include-package=aiosqlite \
             --include-package=pydantic \
             --include-package=yaml \
+            --include-package=websockets \
+            --include-package=dotenv \
             --output-filename=${{ matrix.target }} \
             app/main.py
         shell: bash
@@ -81,7 +83,7 @@ jobs:
             rust-target: aarch64-apple-darwin
             system: macOS
             arch: arm64
-            asset-kind: dmg
+            asset-kind: app
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -135,10 +137,10 @@ jobs:
         working-directory: gui
         run: npm run tauri build -- --target ${{ matrix.rust-target }} --bundles appimage --ci
 
-      - name: Build macOS DMG
+      - name: Build macOS app
         if: runner.os == 'macOS'
         working-directory: gui
-        run: npm run tauri build -- --target ${{ matrix.rust-target }} --bundles dmg --ci
+        run: npm run tauri build -- --target ${{ matrix.rust-target }} --bundles app --ci
 
       - name: Package Windows Portable.zip and MSI
         if: runner.os == 'Windows'
@@ -191,16 +193,20 @@ jobs:
           if [[ "${{ matrix.asset-kind }}" == "appimage" ]]; then
             source_asset="$(find "$bundle_dir" -name '*.AppImage' -type f | head -n 1)"
             target_asset="$asset_dir/KokoroMemo-$version-${{ matrix.system }}-${{ matrix.arch }}.AppImage"
+            if [[ -z "$source_asset" ]]; then
+              echo "No AppImage found under $bundle_dir" >&2
+              exit 1
+            fi
+            cp "$source_asset" "$target_asset"
           else
-            source_asset="$(find "$bundle_dir" -name '*.dmg' -type f | head -n 1)"
-            target_asset="$asset_dir/KokoroMemo-$version-${{ matrix.system }}-${{ matrix.arch }}.dmg"
+            source_app="$(find "$bundle_dir" -name '*.app' -type d | head -n 1)"
+            target_asset="$asset_dir/KokoroMemo-$version-${{ matrix.system }}-${{ matrix.arch }}.zip"
+            if [[ -z "$source_app" ]]; then
+              echo "No .app bundle found under $bundle_dir" >&2
+              exit 1
+            fi
+            (cd "$(dirname "$source_app")" && zip -r -y "$OLDPWD/$target_asset" "$(basename "$source_app")")
           fi
-
-          if [[ -z "$source_asset" ]]; then
-            echo "No bundle asset found under $bundle_dir" >&2
-            exit 1
-          fi
-          cp "$source_asset" "$target_asset"
 
       - name: Upload release asset artifact
         uses: actions/upload-artifact@v4

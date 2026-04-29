@@ -8,6 +8,14 @@ import re
 from dataclasses import dataclass
 
 from app.core.ids import generate_id
+from app.core.prompts import (
+    LONG_TERM_ROUTE_REASON,
+    RULE_CONTENT_TEMPLATES,
+    RULE_TITLES,
+    STATE_UPDATER_USER_MSG,
+    get_prompt,
+    get_text,
+)
 from app.memory.state_schema import ConversationStateItem, StateUpdate, StateUpdateResult
 from app.proxy.llm_providers import create_llm_provider
 from app.storage.sqlite_cards import enqueue_job, insert_inbox_item
@@ -30,6 +38,7 @@ class StateUpdaterContext:
     llm_api_key: str = ""
     llm_model: str = ""
     llm_timeout_seconds: int = 120
+    lang: str = "zh"
 
 
 async def update_conversation_state(
@@ -41,7 +50,7 @@ async def update_conversation_state(
     store = SQLiteStateStore(context.db_path)
     result = StateUpdateResult()
     try:
-        updates = rule_based_state_updates(user_message, assistant_message, context.min_confidence)
+        updates = rule_based_state_updates(user_message, assistant_message, context.min_confidence, context.lang)
         if context.mode in {"llm", "llm_first", "hybrid"}:
             updates.extend(await llm_state_updates(context, user_message, assistant_message))
         result.upserts = _dedupe_updates([u for u in updates if u.confidence >= context.min_confidence])
@@ -100,17 +109,19 @@ async def update_conversation_state(
     return result
 
 
-def rule_based_state_updates(user_message: str, assistant_message: str, min_confidence: float = 0.55) -> list[StateUpdate]:
+def rule_based_state_updates(user_message: str, assistant_message: str, min_confidence: float = 0.55, lang: str = "zh") -> list[StateUpdate]:
     """Extract a conservative first-pass hot-state from common Chinese role-play phrasing."""
     text = f"{user_message}\n{assistant_message}".strip()
     updates: list[StateUpdate] = []
+    titles = RULE_TITLES.get(lang, RULE_TITLES["zh"])
+    templates = RULE_CONTENT_TEMPLATES.get(lang, RULE_CONTENT_TEMPLATES["zh"])
     location = _extract_location(text)
     if location:
         updates.append(StateUpdate(
             category="location",
             item_key="current_location",
-            title="当前位置",
-            content=f"当前地点/目标地点：{location}",
+            title=titles["location"],
+            content=templates["location"].format(value=location),
             confidence=0.72,
             priority=85,
             reason="location_rule",
@@ -118,8 +129,8 @@ def rule_based_state_updates(user_message: str, assistant_message: str, min_conf
         updates.append(StateUpdate(
             category="scene",
             item_key="current_scene",
-            title="当前场景",
-            content=f"当前对话正在围绕「{location}」推进。",
+            title=titles["scene"],
+            content=templates["scene"].format(value=location),
             confidence=0.65,
             priority=80,
             reason="scene_from_location_rule",
@@ -130,7 +141,7 @@ def rule_based_state_updates(user_message: str, assistant_message: str, min_conf
         updates.append(StateUpdate(
             category="main_quest",
             item_key="current_goal",
-            title="当前目标",
+            title=titles["goal"],
             content=quest,
             confidence=0.68,
             priority=78,
@@ -142,7 +153,7 @@ def rule_based_state_updates(user_message: str, assistant_message: str, min_conf
         updates.append(StateUpdate(
             category="promise",
             item_key=_stable_key("promise", promise),
-            title="未完成承诺",
+            title=titles["promise"],
             content=promise,
             confidence=0.74,
             priority=82,
@@ -154,7 +165,7 @@ def rule_based_state_updates(user_message: str, assistant_message: str, min_conf
         updates.append(StateUpdate(
             category="boundary",
             item_key=_stable_key("boundary", boundary),
-            title="稳定边界",
+            title=titles["boundary"],
             content=boundary,
             confidence=0.82,
             priority=95,
@@ -183,8 +194,8 @@ async def llm_state_updates(
         "model": context.llm_model,
         "temperature": 0,
         "messages": [
-            {"role": "system", "content": _STATE_UPDATER_PROMPT},
-            {"role": "user", "content": f"用户：{user_message}\n助手：{assistant_message}"},
+            {"role": "system", "content": get_prompt("state_updater", context.lang)},
+            {"role": "user", "content": get_text(STATE_UPDATER_USER_MSG, context.lang, user=user_message, assistant=assistant_message)},
         ],
     }
     response = await provider.chat(body, context.llm_timeout_seconds)
@@ -232,7 +243,7 @@ async def _route_long_term_candidates(
             "content": update.content,
             "importance": 0.75 if update.category == "boundary" else 0.65,
             "confidence": update.confidence,
-            "evidence_text": f"用户：{user_message}\n助手：{assistant_message}"[:1000],
+            "evidence_text": get_text(STATE_UPDATER_USER_MSG, context.lang, user=user_message, assistant=assistant_message)[:1000],
             "source": "state_updater",
         }
         await insert_inbox_item(
@@ -245,7 +256,7 @@ async def _route_long_term_candidates(
             conversation_id=context.conversation_id,
             suggested_action="approve",
             risk_level="medium" if update.category == "boundary" else "low",
-            reason="状态板条目可能具有长期价值，需人工审核",
+            reason=get_text(LONG_TERM_ROUTE_REASON, context.lang),
         )
 
 
@@ -328,10 +339,3 @@ def _parse_json_object(text: str) -> dict:
     if not isinstance(payload, dict):
         return {"upserts": []}
     return payload
-
-
-_STATE_UPDATER_PROMPT = """你是 KokoroMemo 的会话状态板维护器。
-只输出 JSON，不要解释。JSON 结构：
-{"upserts":[{"category":"scene|location|main_quest|side_quest|promise|open_loop|relationship|boundary|preference|item|world_state|recent_summary|mood|key_person","item_key":"稳定短键","item_value":"给模型看的当前状态","priority":50,"confidence":0.8,"reason":"简短原因"}],"resolved_item_ids":[]}
-只记录当前会话热状态；不要把助手单方面编造的长期事实写入状态。boundary/preference 只在用户明确表达时输出。
-"""

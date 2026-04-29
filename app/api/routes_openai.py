@@ -37,6 +37,18 @@ from app.storage.sqlite_state import SQLiteStateStore, init_state_db
 
 logger = logging.getLogger("kokoromemo.proxy")
 
+
+def _extra_trigger_keywords(cfg) -> list[str]:
+    """Return additional trigger keywords for languages other than the config default."""
+    from app.core.prompts import TRIGGER_KEYWORDS
+    lang = cfg.language
+    extra = []
+    for k, words in TRIGGER_KEYWORDS.items():
+        if k != lang:
+            extra.extend(words)
+    return extra
+
+
 router = APIRouter()
 
 
@@ -102,6 +114,7 @@ async def chat_completions(request: Request):
                     max_items_per_section=cfg.memory.hot_context.max_items_per_section,
                 ),
                 state_template,
+                lang=cfg.language,
             )
             if state_text:
                 injected_messages = inject_state_board(injected_messages, state_text)
@@ -127,7 +140,7 @@ async def chat_completions(request: Request):
                         vector_search_on_new_session=cfg.memory.retrieval_gate.vector_search_on_new_session,
                         vector_search_every_n_turns=cfg.memory.retrieval_gate.vector_search_every_n_turns,
                         vector_search_when_state_confidence_below=cfg.memory.retrieval_gate.vector_search_when_state_confidence_below,
-                        trigger_keywords=cfg.memory.retrieval_gate.trigger_keywords,
+                        trigger_keywords=cfg.memory.retrieval_gate.trigger_keywords + _extra_trigger_keywords(cfg),
                         skip_when_latest_user_text_chars_below=cfg.memory.retrieval_gate.skip_when_latest_user_text_chars_below,
                         skip_when_state_is_sufficient=cfg.memory.retrieval_gate.skip_when_state_is_sufficient,
                     )
@@ -316,6 +329,7 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
                                 llm_api_key=cfg.llm.get_api_key(),
                                 llm_model=cfg.llm.model,
                                 llm_timeout_seconds=cfg.llm.timeout_seconds,
+                                lang=cfg.language,
                             ),
                             user_msg,
                             assistant_text,
@@ -339,6 +353,7 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
                                 min_confidence=cfg.memory.state_updater.min_confidence,
                                 prompt=cfg.memory.state_updater.prompt,
                             ),
+                            lang=cfg.language,
                         )
                 except Exception as e:
                     logger.warning("State updater failed: %s", e)
@@ -388,6 +403,7 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
             min_importance=cfg.memory.extraction.min_importance,
             min_confidence=cfg.memory.extraction.min_confidence,
             judge_config=judge_config,
+            lang=cfg.language,
         )
     except Exception as e:
         logger.warning("Memory extraction failed: %s", e)

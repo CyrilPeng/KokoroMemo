@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from app.core.prompts import (
+    HOT_CONTEXT_HEADER,
+    HOT_CONTEXT_INTRO,
+    HOT_CONTEXT_TEMPLATE_INTRO,
+    get_text,
+)
 from app.memory.state_schema import (
     STATE_CATEGORY_LABELS,
     STATE_CATEGORIES,
@@ -13,20 +19,18 @@ from app.memory.state_schema import (
 )
 
 
-HOT_CONTEXT_HEADER = "【KokoroMemo 会话状态板】"
-
-
 def render_state_board(
     items: list[ConversationStateItem],
     options: StateRenderOptions,
     template: StateBoardTemplate | None = None,
+    lang: str = "zh",
 ) -> str:
     """Render active state items grouped by category within a character budget."""
     if not items or options.max_chars <= 0:
         return ""
 
     if template and template.tabs:
-        rendered = _render_template_board(items, options, template)
+        rendered = _render_template_board(items, options, template, lang)
         if rendered:
             return rendered
 
@@ -45,7 +49,9 @@ def render_state_board(
     if not grouped:
         return ""
 
-    lines = [HOT_CONTEXT_HEADER, "以下是当前会话的热状态，仅用于保持当前剧情与互动连续性："]
+    header = get_text(HOT_CONTEXT_HEADER, lang)
+    intro = get_text(HOT_CONTEXT_INTRO, lang)
+    lines = [header, intro]
     for category in section_order:
         category_items = grouped.get(category, [])
         if not category_items:
@@ -76,15 +82,15 @@ def _render_template_board(
     items: list[ConversationStateItem],
     options: StateRenderOptions,
     template: StateBoardTemplate,
+    lang: str = "zh",
 ) -> str:
     by_field = {item.field_id: item for item in items if item.status == "active" and item.field_id and item.content.strip()}
     if not by_field:
         return ""
 
-    lines = [
-        HOT_CONTEXT_HEADER,
-        f"当前状态板模板：{template.name}。以下内容用于保持当前剧情、任务和互动连续性：",
-    ]
+    header = get_text(HOT_CONTEXT_HEADER, lang)
+    intro = get_text(HOT_CONTEXT_TEMPLATE_INTRO, lang, name=template.name)
+    lines = [header, intro]
     for tab in sorted(template.tabs, key=lambda item: (item.sort_order, item.label)):
         section_lines: list[str] = []
         for field in sorted(tab.fields, key=lambda item: (item.sort_order, item.label)):

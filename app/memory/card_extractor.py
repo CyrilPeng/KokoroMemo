@@ -32,6 +32,7 @@ async def extract_and_route(
     min_importance: float = 0.45,
     min_confidence: float = 0.55,
     judge_config: MemoryJudgeConfigView | None = None,
+    lang: str = "zh",
 ) -> None:
     """Extract candidate memory cards and route through review policy.
 
@@ -53,6 +54,7 @@ async def extract_and_route(
             judge_config,
             min_importance=min_importance,
             min_confidence=min_confidence,
+            lang=lang,
         )
     except Exception as e:
         logger.warning("Memory judge failed: %s", e)

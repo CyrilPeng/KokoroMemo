@@ -284,6 +284,7 @@ class CompatibilityConfig:
 
 @dataclass
 class AppConfig:
+    language: str = "zh"
     server: ServerConfig = field(default_factory=ServerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)

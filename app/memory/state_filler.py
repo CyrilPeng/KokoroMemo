@@ -7,6 +7,13 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.prompts import (
+    STATE_FILLER_EMPTY,
+    STATE_FILLER_TEMPLATE_HEADER,
+    STATE_FILLER_USER_MSG,
+    get_prompt,
+    get_text,
+)
 from app.memory.state_schema import ConversationStateItem, StateBoardField, StateBoardTemplate
 from app.proxy.llm_providers import create_llm_provider
 from app.storage.sqlite_state import SQLiteStateStore
@@ -47,6 +54,7 @@ async def fill_conversation_state(
     user_message: str,
     assistant_message: str,
     config: StateFillerConfigView,
+    lang: str = "zh",
     user_id: str | None = None,
     character_id: str | None = None,
     turn_id: str | None = None,
@@ -71,20 +79,21 @@ async def fill_conversation_state(
     current_items = await store.list_active_items(conversation_id)
     locked_field_ids = {item.field_id for item in current_items if item.user_locked and item.field_id}
     current_by_field = {item.field_id: item for item in current_items if item.field_id}
-    prompt = _build_prompt(config.prompt, template, fields, current_by_field)
+    prompt = _build_prompt(config.prompt, template, fields, current_by_field, lang)
     provider = create_llm_provider(
         provider=config.provider,
         base_url=config.base_url,
         api_key=config.api_key,
         model=config.model,
     )
+    user_content = get_text(STATE_FILLER_USER_MSG, lang, user=user_message, assistant=assistant_message)
     response = await provider.chat(
         {
             "model": config.model,
             "temperature": config.temperature,
             "messages": [
                 {"role": "system", "content": prompt},
-                {"role": "user", "content": f"用户发言：{user_message}\n助手回复：{assistant_message}"},
+                {"role": "user", "content": user_content},
             ],
         },
         config.timeout_seconds,
@@ -156,19 +165,22 @@ def _build_prompt(
     template: StateBoardTemplate,
     fields: list[StateBoardField],
     current_by_field: dict[str | None, ConversationStateItem],
+    lang: str = "zh",
 ) -> str:
     if custom_prompt.strip():
         base = custom_prompt.strip()
     else:
-        base = DEFAULT_STATE_FILLER_PROMPT
+        base = get_prompt("state_filler", lang)
+    empty_text = get_text(STATE_FILLER_EMPTY, lang)
     field_lines = []
     for field in fields:
         current = current_by_field.get(field.field_id)
         current_text = current.content if current else field.default_value
         field_lines.append(
-            f"- field_key={field.field_key}; label={field.label}; description={field.description}; current={current_text or '空'}"
+            f"- field_key={field.field_key}; label={field.label}; description={field.description}; current={current_text or empty_text}"
         )
-    return f"{base}\n\n状态板模板：{template.name}\n可填写字段：\n" + "\n".join(field_lines)
+    header = get_text(STATE_FILLER_TEMPLATE_HEADER, lang, name=template.name)
+    return f"{base}{header}" + "\n".join(field_lines)
 
 
 def _parse_json(text: str) -> dict[str, Any]:
@@ -221,15 +233,3 @@ def _category_for_field(field_key: str) -> str:
         "world_state": "world_state",
     }
     return mapping.get(field_key, "scene")
-
-
-DEFAULT_STATE_FILLER_PROMPT = """你是 KokoroMemo 的会话状态板填表 API。你只根据当前一轮用户发言与助手回复，更新明确变化的状态板字段。只输出 JSON，不要解释。
-输出格式：{"updates":[{"field_key":"字段 key","value":"应写入状态板的简洁中文内容","confidence":0.0,"reason":"简短原因"}]}
-规则：
-1. 只能填写“可填写字段”中列出的 field_key，不要创造新字段。
-2. 只在对话明确表达、确认或强烈暗示状态变化时更新；不确定则不输出。
-3. 用户要求角色身份、扮演方式、固定句尾、口癖、语气规则时，优先写入 speech_habit；如果模板有 roleplay_persona 字段，也要写入角色身份/扮演设定。
-4. 例如“你是一只猫娘，每句话末尾加上喵~”应写入 speech_habit=“角色以猫娘方式说话，每句话末尾加上‘喵~’”。
-5. value 写成当前状态，不要写推理过程。
-6. 如果当前值仍然正确且没有变化，可以不输出。
-7. 不处理长期记忆卡片，只维护当前会话热状态。"""

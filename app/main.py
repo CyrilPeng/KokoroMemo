@@ -46,9 +46,11 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI app."""
     from app.api.routes_admin import router as admin_router
     from app.api.routes_openai import router as openai_router
+    from app.api.routes_ws import router as ws_router
 
     app.include_router(admin_router)
     app.include_router(openai_router)
+    app.include_router(ws_router)
 
     @app.middleware("http")
     async def admin_auth_middleware(request, call_next):

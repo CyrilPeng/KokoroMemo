@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -18,6 +19,7 @@ _embedding_provider: EmbeddingProvider | None = None
 _embedding_signature: tuple | None = None
 _lancedb_store: LanceDBStore | None = None
 _lancedb_signature: tuple | None = None
+_index_migration_status: dict | None = None
 
 
 def reset_services() -> None:
@@ -27,6 +29,53 @@ def reset_services() -> None:
     _embedding_signature = None
     _lancedb_store = None
     _lancedb_signature = None
+
+
+def get_index_migration_status() -> dict | None:
+    """Return current index migration status if one is in progress."""
+    return _index_migration_status
+
+
+def start_index_migration(cfg: AppConfig, old_model: str, old_dimension: int) -> None:
+    """Start a background index rebuild for a new embedding model."""
+    global _index_migration_status
+    _index_migration_status = {
+        "status": "running",
+        "old_model": old_model,
+        "old_dimension": old_dimension,
+        "new_model": cfg.embedding.model,
+        "new_dimension": cfg.embedding.dimension,
+        "progress": 0,
+        "total": 0,
+        "error": None,
+    }
+    asyncio.create_task(_run_index_migration(cfg))
+
+
+async def _run_index_migration(cfg: AppConfig) -> None:
+    """Background task: rebuild vector index with new embedding model."""
+    global _index_migration_status
+    try:
+        from app.storage.rebuild_v2 import rebuild_vector_index_v2
+        result = await rebuild_vector_index_v2(cfg)
+        _index_migration_status = {
+            "status": "completed",
+            "new_model": cfg.embedding.model,
+            "new_dimension": cfg.embedding.dimension,
+            "progress": result.get("synced", 0),
+            "total": result.get("total", 0),
+            "error": None,
+        }
+        reset_services()
+        logger.info("Index migration completed: %s", result)
+    except Exception as e:
+        _index_migration_status = {
+            "status": "failed",
+            "new_model": cfg.embedding.model,
+            "new_dimension": cfg.embedding.dimension,
+            "error": str(e),
+        }
+        logger.error("Index migration failed: %s", e)
 
 
 def _safe_index_name(model: str, dimension: int) -> str:

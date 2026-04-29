@@ -678,6 +678,18 @@ async def rebuild_index():
     return result
 
 
+@router.get("/admin/index-migration-status")
+async def get_index_migration_status_api(request: Request):
+    """Check the status of an ongoing or completed index migration."""
+    _require_admin(request)
+    from app.core.services import get_index_migration_status
+
+    status = get_index_migration_status()
+    if not status:
+        return {"status": "idle", "message": "No migration in progress"}
+    return status
+
+
 # --- Inbox API ---
 
 @router.get("/admin/inbox")

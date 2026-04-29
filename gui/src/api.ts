@@ -14,3 +14,14 @@ export async function apiFetch(path: string, init?: RequestInit) {
   const base = getServerUrl()
   return fetch(`${base}${path}`, init)
 }
+
+export function createWebSocket(onMessage: (data: any) => void): WebSocket {
+  const base = getServerUrl().replace(/^http/, 'ws')
+  const ws = new WebSocket(`${base}/ws`)
+  ws.onmessage = (event) => {
+    try {
+      onMessage(JSON.parse(event.data))
+    } catch {}
+  }
+  return ws
+}

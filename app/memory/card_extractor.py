@@ -1,4 +1,4 @@
-"""Card-based memory extraction. Produces candidates → inbox or direct approve."""
+"""Card-based memory extraction. Produces candidates -> inbox or direct approve."""
 
 from __future__ import annotations
 
@@ -132,6 +132,7 @@ async def extract_and_route(
                 try:
                     await sync_card_vector(db_path, card_id, embedding_provider, lancedb_store)
                     logger.info("Auto-approved card: %s (type=%s)", card_id, mem.memory_type)
+                    await _emit_card_event("card_approved", card_id, mem)
                 except Exception as e:
                     await enqueue_card_vector_sync(db_path, card_id, str(e))
                     logger.warning("Vector sync failed for card %s: %s", card_id, e)
@@ -156,6 +157,7 @@ async def extract_and_route(
                 library_id=library_id,
             )
             logger.info("Card sent to inbox: %s (type=%s, risk=%s)", inbox_id, mem.memory_type, risk_level)
+            await _emit_card_event("inbox_new", inbox_id, mem)
 
         else:
             # Rejected by policy, discard
@@ -190,3 +192,17 @@ async def _is_semantic_duplicate(embedding_provider, lancedb_store, user_id: str
     except Exception:
         pass
     return False
+
+
+async def _emit_card_event(event_type: str, card_id: str, mem) -> None:
+    """Emit a WebSocket event for card extraction activity."""
+    try:
+        from app.core.events import emit
+        await emit(event_type, {
+            "card_id": card_id,
+            "content": mem.content[:100],
+            "memory_type": mem.memory_type,
+            "importance": mem.importance,
+        })
+    except Exception:
+        pass

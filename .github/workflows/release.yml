@@ -46,6 +46,8 @@ jobs:
             --include-package=aiosqlite \
             --include-package=pydantic \
             --include-package=yaml \
+            --include-package=websockets \
+            --include-package=dotenv \
             --output-filename=${{ matrix.target }} \
             app/main.py
         shell: bash

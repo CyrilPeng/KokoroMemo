@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic } from 'naive-ui'
-import { useI18n } from 'vue-i18n'
 import { apiFetch, getServerUrl } from '../api'
-
-const { t } = useI18n()
 const health = ref<any>(null)
 const stats = ref<any>(null)
 const loading = ref(true)
@@ -142,9 +139,9 @@ onMounted(() => {
             </NGridItem>
             <NGridItem span="4 m:1">
               <NCard style="background: #18181b; border: 1px solid #27272a;">
-                <NStatistic :label="$t('dashboard.dailyGrowth7d')" :value="stats.daily_growth?.length ? stats.daily_growth.reduce((s, d) => s + d.count, 0) : 0" />
+                <NStatistic :label="$t('dashboard.dailyGrowth7d')" :value="stats.daily_growth?.length ? stats.daily_growth.reduce((s: number, d: any) => s + d.count, 0) : 0" />
                 <div v-if="stats.daily_growth?.length" style="color: #52525b; font-size: 12px; margin-top: 4px;">
-                  {{ stats.daily_growth.map(d => d.count).join(' → ') }}
+                  {{ stats.daily_growth.map((d: any) => d.count).join(' \u2192 ') }}
                 </div>
               </NCard>
             </NGridItem>

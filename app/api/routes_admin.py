@@ -45,6 +45,55 @@ async def health():
     }
 
 
+@router.get("/admin/stats")
+async def get_stats(request: Request):
+    """Return memory system statistics for the dashboard."""
+    _require_admin(request)
+    import aiosqlite
+    from app.core.state import get_config
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    result: dict = {}
+
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            cursor = await db.execute("SELECT status, COUNT(*) FROM memory_cards GROUP BY status")
+            result["cards_by_status"] = dict(await cursor.fetchall())
+
+            cursor = await db.execute(
+                "SELECT card_type, COUNT(*) FROM memory_cards WHERE status='approved' GROUP BY card_type"
+            )
+            result["cards_by_type"] = dict(await cursor.fetchall())
+
+            cursor = await db.execute("SELECT COUNT(*) FROM memory_inbox WHERE status='pending'")
+            row = await cursor.fetchone()
+            result["inbox_pending"] = row[0] if row else 0
+
+            cursor = await db.execute(
+                "SELECT vector_synced, COUNT(*) FROM memory_cards WHERE status='approved' GROUP BY vector_synced"
+            )
+            result["sync_status"] = dict(await cursor.fetchall())
+
+            cursor = await db.execute(
+                "SELECT date(created_at) as day, COUNT(*) FROM memory_cards "
+                "WHERE status='approved' AND created_at >= datetime('now', '-7 days') "
+                "GROUP BY day ORDER BY day"
+            )
+            result["daily_growth"] = [{"date": r[0], "count": r[1]} for r in await cursor.fetchall()]
+
+            cursor = await db.execute(
+                "SELECT should_retrieve, COUNT(*) FROM retrieval_decisions "
+                "WHERE created_at >= datetime('now', '-24 hours') GROUP BY should_retrieve"
+            )
+            result["gate_stats_24h"] = dict(await cursor.fetchall())
+    except Exception:
+        result.setdefault("cards_by_status", {})
+        result.setdefault("inbox_pending", 0)
+
+    return result
+
+
 async def _fetch_models_from_remote(base_url: str, api_key: str):
     """Fetch available models from a remote /v1/models endpoint."""
     if not api_key:
@@ -1015,6 +1064,39 @@ async def delete_conversation_state_item(item_id: str, request: Request):
 
     await SQLiteStateStore(get_config().storage.sqlite.memory_db).delete_item(item_id, "manual_delete")
     return {"status": "ok"}
+
+
+@router.get("/admin/conversations/{conversation_id}/state/preview")
+async def preview_state_board(conversation_id: str, request: Request):
+    """Return the rendered state board text as it would be injected into the LLM prompt."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.memory.state_renderer import render_state_board
+    from app.memory.state_schema import StateRenderOptions
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    cfg = get_config()
+    store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+    items = await store.list_active_items(conversation_id)
+    template = await store.get_conversation_template(conversation_id)
+    hot = cfg.memory.hot_context
+    text = render_state_board(
+        items,
+        StateRenderOptions(
+            max_chars=hot.max_chars,
+            include_sections=hot.include_sections,
+            section_order=hot.section_order,
+            max_items_per_section=hot.max_items_per_section,
+        ),
+        template,
+        lang=cfg.language,
+    )
+    return {
+        "preview": text,
+        "char_count": len(text),
+        "max_chars": hot.max_chars,
+        "item_count": len(items),
+    }
 
 
 @router.post("/admin/conversations/{conversation_id}/state/rebuild")

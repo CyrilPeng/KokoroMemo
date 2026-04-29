@@ -58,6 +58,8 @@ const presetForm = ref({ name: '', description: '' })
 const showCopyModal = ref(false)
 const copyForm = ref({ target_conversation_id: '', copy_mounts: true })
 const showInitWizard = ref(false)
+const previewData = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0 })
+const previewLoading = ref(false)
 const wizardForm = ref({ library_ids: ['lib_default'] as string[], write_library_id: 'lib_default', template_id: 'tpl_roleplay_general' })
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? `(${t('common.builtin')})` : ''}`, value: item.template_id })))
@@ -138,6 +140,18 @@ async function fetchAll() {
     message.error(t('state.messages.loadFailed', { error: e.message || e }))
   }
   loading.value = false
+}
+
+async function fetchPreview() {
+  if (!ensureConversationId()) return
+  previewLoading.value = true
+  try {
+    const resp = await apiFetch(`/admin/conversations/${conversationId.value}/state/preview`, { headers: authHeaders() })
+    previewData.value = await resp.json()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+  previewLoading.value = false
 }
 
 async function saveFullConfig() {
@@ -818,6 +832,25 @@ onMounted(() => {
         </NTabPane>
         <NTabPane name="gate" :tab="$t('state.tabs.gate')"><NDataTable :columns="decisionColumns" :data="decisions" :pagination="{ pageSize: 12 }" /></NTabPane>
         <NTabPane name="events" :tab="$t('state.tabs.events')"><NDataTable :columns="eventColumns" :data="events" :pagination="{ pageSize: 12 }" /></NTabPane>
+        <NTabPane name="preview" :tab="$t('state.tabs.preview')">
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>
+              <NSpace align="center" justify="space-between" style="width: 100%;">
+                <span>{{ $t('state.previewTitle') }}</span>
+                <NSpace align="center">
+                  <NTag :type="previewData.char_count > previewData.max_chars * 0.9 ? 'warning' : 'success'" size="small">
+                    {{ previewData.char_count }} / {{ previewData.max_chars }} chars
+                  </NTag>
+                  <NButton size="small" @click="fetchPreview" :loading="previewLoading">{{ $t('common.load') }}</NButton>
+                </NSpace>
+              </NSpace>
+            </template>
+            <div v-if="!previewData.preview && !previewLoading" style="color: #71717a; text-align: center; padding: 32px;">
+              {{ $t('state.previewEmpty') }}
+            </div>
+            <pre v-else style="white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.6; color: #e4e4e7; background: #09090b; padding: 16px; border-radius: 6px; max-height: 600px; overflow-y: auto; margin: 0;">{{ previewData.preview }}</pre>
+          </NCard>
+        </NTabPane>
       </NTabs>
     </NSpin>
 

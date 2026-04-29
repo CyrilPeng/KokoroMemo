@@ -1,11 +1,30 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton } from 'naive-ui'
+import { ref, computed, onMounted } from 'vue'
+import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import { apiFetch, getServerUrl } from '../api'
 
+const { t } = useI18n()
 const health = ref<any>(null)
+const stats = ref<any>(null)
 const loading = ref(true)
 const serverUrl = ref(getServerUrl())
+
+const totalApproved = computed(() => stats.value?.cards_by_status?.approved || 0)
+const inboxPending = computed(() => stats.value?.inbox_pending || 0)
+const totalCards = computed(() => {
+  if (!stats.value?.cards_by_status) return 0
+  return Object.values(stats.value.cards_by_status as Record<string, number>).reduce((a: number, b: number) => a + b, 0)
+})
+const gateTotal = computed(() => {
+  if (!stats.value?.gate_stats_24h) return 0
+  return Object.values(stats.value.gate_stats_24h as Record<string, number>).reduce((a: number, b: number) => a + b, 0)
+})
+const gateSkipRate = computed(() => {
+  if (!gateTotal.value) return '-'
+  const skipped = (stats.value?.gate_stats_24h?.[0] || stats.value?.gate_stats_24h?.['0']) || 0
+  return Math.round((skipped / gateTotal.value) * 100) + '%'
+})
 
 async function fetchHealth() {
   loading.value = true
@@ -19,7 +38,19 @@ async function fetchHealth() {
   loading.value = false
 }
 
-onMounted(fetchHealth)
+async function fetchStats() {
+  try {
+    const resp = await apiFetch('/admin/stats')
+    stats.value = await resp.json()
+  } catch (e) {
+    stats.value = null
+  }
+}
+
+onMounted(() => {
+  fetchHealth()
+  fetchStats()
+})
 </script>
 
 <template>
@@ -87,6 +118,47 @@ onMounted(fetchHealth)
             {{ health.llm?.model || $t('common.notConfigured') }}
           </div>
         </NCard>
+
+        <!-- Stats Section -->
+        <div v-if="stats" style="margin-top: 24px;">
+          <h2 style="font-size: 16px; font-weight: 600; color: #e4e4e7; margin-bottom: 12px;">{{ $t('dashboard.statsTitle') }}</h2>
+          <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
+            <NGridItem span="4 m:1">
+              <NCard style="background: #18181b; border: 1px solid #27272a;">
+                <NStatistic :label="$t('dashboard.totalMemories')" :value="totalApproved" />
+                <div style="color: #52525b; font-size: 12px; margin-top: 4px;">{{ $t('dashboard.totalAll') }} {{ totalCards }}</div>
+              </NCard>
+            </NGridItem>
+            <NGridItem span="4 m:1">
+              <NCard style="background: #18181b; border: 1px solid #27272a;">
+                <NStatistic :label="$t('dashboard.inboxPending')" :value="inboxPending" />
+              </NCard>
+            </NGridItem>
+            <NGridItem span="4 m:1">
+              <NCard style="background: #18181b; border: 1px solid #27272a;">
+                <NStatistic :label="$t('dashboard.gateRequests24h')" :value="gateTotal" />
+                <div style="color: #52525b; font-size: 12px; margin-top: 4px;">{{ $t('dashboard.skipRate') }} {{ gateSkipRate }}</div>
+              </NCard>
+            </NGridItem>
+            <NGridItem span="4 m:1">
+              <NCard style="background: #18181b; border: 1px solid #27272a;">
+                <NStatistic :label="$t('dashboard.dailyGrowth7d')" :value="stats.daily_growth?.length ? stats.daily_growth.reduce((s, d) => s + d.count, 0) : 0" />
+                <div v-if="stats.daily_growth?.length" style="color: #52525b; font-size: 12px; margin-top: 4px;">
+                  {{ stats.daily_growth.map(d => d.count).join(' → ') }}
+                </div>
+              </NCard>
+            </NGridItem>
+          </NGrid>
+
+          <NCard v-if="stats.cards_by_type && Object.keys(stats.cards_by_type).length" style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
+            <div style="color: #71717a; font-size: 13px; margin-bottom: 8px;">{{ $t('dashboard.cardsByType') }}</div>
+            <NSpace>
+              <NTag v-for="(count, type) in stats.cards_by_type" :key="type" size="small" round>
+                {{ type }}: {{ count }}
+              </NTag>
+            </NSpace>
+          </NCard>
+        </div>
       </div>
 
       <NCard v-else style="background: #18181b; border: 1px solid #27272a;">

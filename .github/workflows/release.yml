@@ -162,6 +162,7 @@ jobs:
           }
 
           Compress-Archive -Path $folderPath -DestinationPath (Join-Path $assetDir "KokoroMemo-$version-Windows-Portable.zip") -Force
+          Remove-Item -Recurse -Force $folderPath
 
           $msiDir = "gui/src-tauri/target/${{ matrix.rust-target }}/release/bundle/msi"
           if (!(Test-Path $msiDir)) {

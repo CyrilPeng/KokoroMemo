@@ -22,6 +22,7 @@ import {
   NTabs,
   NTag,
   NTooltip,
+  useDialog,
   useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -29,6 +30,7 @@ import { apiFetch } from '../api'
 
 const { t } = useI18n()
 const message = useMessage()
+const dialog = useDialog()
 const loading = ref(false)
 const conversationId = ref('')
 const adminToken = ref('')
@@ -48,6 +50,7 @@ const showFillModal = ref(false)
 const editingItem = ref<any | null>(null)
 const isCustomField = ref(false)
 const customFieldName = ref('')
+const customItemKey = ref('')
 const currentTabId = ref('')
 const editForm = ref({ field_id: '', item_value: '', priority: 70, confidence: 0.8, user_locked: false, linked_card_ids: '' })
 const templateJson = ref('')
@@ -66,6 +69,11 @@ const showInitWizard = ref(false)
 const previewData = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0 })
 const previewLoading = ref(false)
 const wizardForm = ref({ library_ids: ['lib_default'] as string[], write_library_id: 'lib_default', template_id: 'tpl_roleplay_general' })
+const showAddTabModal = ref(false)
+const showRenameTabModal = ref(false)
+const renamingTab = ref<any>(null)
+const renameTabLabel = ref('')
+const newTabLabel = ref('')
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? `(${t('common.builtin')})` : ''}`, value: item.template_id })))
 const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
@@ -247,6 +255,161 @@ async function changeTemplate() {
   fetchAll()
 }
 
+async function ensureCustomTemplate(): Promise<boolean> {
+  if (!currentTemplate.value?.is_builtin) return true
+  try {
+    const resp = await apiFetch(`/admin/state/templates/${currentTemplate.value.template_id}/clone`, { method: 'POST', headers: authHeaders(true) })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message)
+    const newId = data.template_id
+    if (conversationId.value) {
+      await apiFetch(`/admin/conversations/${conversationId.value}/state/template`, {
+        method: 'POST', headers: authHeaders(true),
+        body: JSON.stringify({ template_id: newId }),
+      })
+    }
+    const tplResp = await apiFetch(`/admin/state/templates/${newId}`, { headers: authHeaders() })
+    if (tplResp.ok) {
+      currentTemplate.value = await tplResp.json()
+      selectedTemplateId.value = newId
+    }
+    message.success(t('state.messages.clonedForEdit'))
+    return true
+  } catch (e: any) {
+    message.error(e.message || String(e))
+    return false
+  }
+}
+
+async function saveTemplateFromCurrent(): Promise<string | null> {
+  const tpl = currentTemplate.value
+  if (!tpl) return null
+  const payload = {
+    template_id: tpl.template_id,
+    name: tpl.name,
+    description: tpl.description || '',
+    is_builtin: false,
+    tabs: (tpl.tabs || []).map((tab: any, index: number) => ({
+      tab_id: tab.tab_id || undefined,
+      tab_key: tab.tab_key || `tab_${Date.now()}_${index}`,
+      label: tab.label,
+      description: tab.description || '',
+      sort_order: index,
+      fields: (tab.fields || []).map((field: any, fi: number) => ({
+        field_id: field.field_id || undefined,
+        field_key: field.field_key,
+        label: field.label,
+        field_type: field.field_type || 'multiline',
+        description: field.description || '',
+        ai_writable: field.ai_writable ?? true,
+        include_in_prompt: field.include_in_prompt ?? true,
+        sort_order: fi,
+        default_value: field.default_value || '',
+        options: field.options || {},
+        status: field.status || 'active',
+      })),
+    })),
+  }
+  const resp = await apiFetch('/admin/state/templates', { method: 'POST', headers: authHeaders(true), body: JSON.stringify(payload) })
+  const data = await resp.json()
+  if (data.status !== 'ok') throw new Error(data.message)
+  return data.template_id
+}
+
+async function addTab() {
+  const label = newTabLabel.value.trim()
+  if (!label) return
+  if (!await ensureCustomTemplate()) return
+  currentTemplate.value.tabs.push({
+    tab_id: null,
+    template_id: currentTemplate.value.template_id,
+    tab_key: `tab_${Date.now()}`,
+    label,
+    description: '',
+    sort_order: currentTemplate.value.tabs.length,
+    fields: [],
+  })
+  try {
+    const newId = await saveTemplateFromCurrent()
+    if (newId) currentTemplate.value.template_id = newId
+    showAddTabModal.value = false
+    newTabLabel.value = ''
+    message.success(t('state.messages.tabAdded'))
+    await fetchAll()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
+function openRenameTab(tab: any) {
+  renamingTab.value = tab
+  renameTabLabel.value = tab.label
+  showRenameTabModal.value = true
+}
+
+async function renameTab() {
+  const label = renameTabLabel.value.trim()
+  if (!label || !renamingTab.value) return
+  if (!await ensureCustomTemplate()) return
+  try {
+    const tplId = currentTemplate.value.template_id
+    const tabId = renamingTab.value.tab_id
+    if (tabId) {
+      const resp = await apiFetch(`/admin/state/templates/${tplId}/tabs/${tabId}`, {
+        method: 'PATCH', headers: authHeaders(true),
+        body: JSON.stringify({ label }),
+      })
+      const data = await resp.json()
+      if (data.status !== 'ok') throw new Error(data.message)
+    }
+    showRenameTabModal.value = false
+    renamingTab.value = null
+    message.success(t('state.messages.tabRenamed'))
+    await fetchAll()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
+async function deleteTab(tab: any) {
+  const itemCount = tab.item_count || 0
+  const content = itemCount > 0
+    ? t('state.messages.confirmDeleteTab', { name: tab.label, count: itemCount })
+    : t('state.messages.confirmDeleteTabEmpty', { name: tab.label })
+  dialog.warning({
+    title: t('state.deleteTab'),
+    content,
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      if (!await ensureCustomTemplate()) return
+      const idx = currentTemplate.value.tabs.findIndex((t: any) => t.tab_id === tab.tab_id)
+      if (idx < 0) return
+      currentTemplate.value.tabs.splice(idx, 1)
+      try {
+        const newId = await saveTemplateFromCurrent()
+        if (newId) currentTemplate.value.template_id = newId
+        message.success(t('state.messages.tabDeleted'))
+        await fetchAll()
+      } catch (e: any) {
+        message.error(e.message || String(e))
+      }
+    },
+  })
+}
+
+function handleTabAction(key: string, tab: any) {
+  if (key === 'rename') openRenameTab(tab)
+  else if (key === 'delete') deleteTab(tab)
+}
+
+function tabActionOptions(tab: any) {
+  return [
+    { label: t('state.renameTab'), key: 'rename' },
+    { label: t('state.deleteTab'), key: 'delete' },
+  ]
+}
+
 function openCreateModal(field?: any) {
   editingItem.value = null
   isCustomField.value = false
@@ -260,6 +423,7 @@ function openCreateModalForTab(tab: any) {
   editingItem.value = null
   isCustomField.value = true
   customFieldName.value = ''
+  customItemKey.value = ''
   currentTabId.value = tab.tab_id || ''
   editForm.value = { field_id: '', item_value: '', priority: 70, confidence: 0.8, user_locked: false, linked_card_ids: '' }
   showEditModal.value = true
@@ -267,10 +431,12 @@ function openCreateModalForTab(tab: any) {
 
 function openEditModal(row: any, field?: any) {
   editingItem.value = row
-  isCustomField.value = false
-  customFieldName.value = ''
+  const fid = row.field_id || field?.field_id || ''
+  isCustomField.value = !fid && !!row.item_key
+  customFieldName.value = (!fid && !!row.item_key) ? (row.title || row.item_key || '') : ''
+  customItemKey.value = (!fid && !!row.item_key && row.item_key !== row.title) ? row.item_key : ''
   editForm.value = {
-    field_id: row.field_id || field?.field_id || '',
+    field_id: fid,
     item_value: row.item_value || row.content || '',
     priority: row.priority ?? 70,
     confidence: row.confidence ?? 0.8,
@@ -285,6 +451,7 @@ async function saveItem() {
   const field = findField(editForm.value.field_id)
   const useCustom = isCustomField.value && !field
   const customName = customFieldName.value.trim()
+  const customKey = customItemKey.value.trim()
   if (useCustom && !customName) {
     message.warning(t('state.messages.inputFieldName'))
     return
@@ -293,9 +460,9 @@ async function saveItem() {
     template_id: currentTemplate.value?.template_id,
     tab_id: field?.tab_id || currentTabId.value || undefined,
     field_id: field?.field_id || undefined,
-    field_key: field?.field_key || customName,
+    field_key: field?.field_key || customKey || customName,
     category: useCustom ? 'custom' : categoryForField(field?.field_key),
-    item_key: field?.field_key || customName,
+    item_key: field?.field_key || customKey || customName,
     title: field?.label || customName,
     item_value: editForm.value.item_value,
     priority: editForm.value.priority,
@@ -557,13 +724,22 @@ async function confirmSavePreset() {
 }
 
 async function deletePreset(presetId: string) {
-  const resp = await apiFetch(`/admin/memory-mount-presets/${presetId}`, { method: 'DELETE', headers: authHeaders() })
-  const data = await resp.json()
-  if (data.status === 'ok') {
-    if (selectedPresetId.value === presetId) selectedPresetId.value = null
-    message.success(t('state.messages.presetDeleted'))
-    await fetchPresets()
-  }
+  const preset = presets.value.find((p) => p.preset_id === presetId)
+  dialog.warning({
+    title: t('common.delete'),
+    content: t('state.messages.confirmDeletePreset', { name: preset?.name || presetId }),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      const resp = await apiFetch(`/admin/memory-mount-presets/${presetId}`, { method: 'DELETE', headers: authHeaders() })
+      const data = await resp.json()
+      if (data.status === 'ok') {
+        if (selectedPresetId.value === presetId) selectedPresetId.value = null
+        message.success(t('state.messages.presetDeleted'))
+        await fetchPresets()
+      }
+    },
+  })
 }
 
 async function exportSinglePreset(presetId: string) {
@@ -731,7 +907,7 @@ function saveLocalInputs() {
 const boardColumns = [
   { title: t('state.column.field'), key: 'label', width: 160, render: (row: any) => row.field
     ? h('div', [h('div', row.field.label), h('div', { class: 'km-muted' }, row.field.field_key)])
-    : h('div', [h('div', row.item?.title || row.item?.item_key || '—'), h('div', { class: 'km-muted' }, row.item?.item_key)]) },
+    : h('div', [h('div', row.item?.title || row.item?.item_key || '—'), row.item?.title && row.item?.title !== row.item?.item_key ? h('div', { class: 'km-muted' }, row.item?.item_key) : null]) },
   { title: t('state.column.value'), key: 'value', ellipsis: { tooltip: true }, render: (row: any) => row.item?.item_value || row.item?.content || row.field?.default_value || '—' },
   { title: t('state.column.confidence'), key: 'confidence', width: 90, render: (row: any) => row.item ? Number(row.item.confidence).toFixed(2) : '—' },
   { title: t('state.column.priority'), key: 'priority', width: 80, render: (row: any) => row.item?.priority ?? '—' },
@@ -908,20 +1084,31 @@ onMounted(async () => {
     <NSpin :show="loading">
       <NTabs type="line" animated>
         <NTabPane name="board" :tab="$t('state.tabs.board')">
-          <NTabs v-if="currentTemplate" type="card" animated>
-            <NTabPane v-for="tab in currentTemplate.tabs" :key="tab.tab_id" :name="tab.tab_id" :tab="tab.label">
-              <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 12px;">
-                <template #header>
-                  <NSpace align="center"><span>{{ tab.label }}</span><NTag size="small">{{ $t('state.fieldCount', { count: tab.fields?.length || 0 }) }}</NTag></NSpace>
+          <div v-if="currentTemplate" style="position: relative;">
+            <NTabs type="card" animated>
+              <NTabPane v-for="tab in currentTemplate.tabs" :key="tab.tab_id" :name="tab.tab_id">
+                <template #tab>
+                  <NSpace :size="4" align="center" :wrap="false">
+                    <span>{{ tab.label }}</span>
+                    <NDropdown :options="tabActionOptions(tab)" @select="(key: string) => handleTabAction(key, tab)" trigger="click" size="small">
+                      <NButton text size="tiny" @click.stop style="font-size: 14px; padding: 0 2px;">⋮</NButton>
+                    </NDropdown>
+                  </NSpace>
                 </template>
-                <p style="color: #71717a; margin-top: 0;">{{ tab.description || $t('state.noDescription') }}</p>
-                <NDataTable :columns="boardColumns" :data="fieldRows(tab)" :pagination="false" />
-                <div style="margin-top: 8px;">
-                  <NButton quaternary size="small" @click="openCreateModalForTab(tab)">➕ {{ $t('state.actions.addNew') }}</NButton>
-                </div>
-              </NCard>
-            </NTabPane>
-          </NTabs>
+                <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 12px;">
+                  <template #header>
+                    <NSpace align="center"><span>{{ tab.label }}</span><NTag size="small">{{ $t('state.fieldCount', { count: tab.fields?.length || 0 }) }}</NTag></NSpace>
+                  </template>
+                  <p style="color: #71717a; margin-top: 0;">{{ tab.description || $t('state.noDescription') }}</p>
+                  <NDataTable :columns="boardColumns" :data="fieldRows(tab)" :pagination="false" />
+                  <div style="margin-top: 8px;">
+                    <NButton quaternary size="small" @click="openCreateModalForTab(tab)">➕ {{ $t('state.actions.addNew') }}</NButton>
+                  </div>
+                </NCard>
+              </NTabPane>
+            </NTabs>
+            <NButton quaternary size="small" @click="newTabLabel = ''; showAddTabModal = true" class="add-tab-btn">+ {{ $t('state.addTab') }}</NButton>
+          </div>
           <NCard v-if="legacyItems.length" :title="$t('state.legacyItems')" style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
             <NDataTable :columns="legacyColumns" :data="legacyItems" :pagination="{ pageSize: 8 }" />
           </NCard>
@@ -954,6 +1141,7 @@ onMounted(async () => {
     <NModal v-model:show="showEditModal" preset="card" :title="isCustomField && !editForm.field_id ? $t('state.addStateItem') : $t('state.editStateItem')" style="width: 620px; background: #18181b;">
       <NForm label-placement="top">
         <NFormItem v-if="isCustomField && !editForm.field_id" :label="$t('state.fieldName')"><NInput v-model:value="customFieldName" :placeholder="$t('state.fieldNamePlaceholder')" /></NFormItem>
+        <NFormItem v-if="isCustomField && !editForm.field_id" :label="$t('state.fieldKey')"><NInput v-model:value="customItemKey" :placeholder="$t('state.fieldKeyPlaceholder')" /></NFormItem>
         <NFormItem v-else :label="$t('state.fieldLabel')"><NSelect v-model:value="editForm.field_id" :options="fieldOptions" filterable /></NFormItem>
         <NFormItem :label="$t('state.content')"><NInput v-model:value="editForm.item_value" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
         <NGrid :cols="3" :x-gap="12">
@@ -1034,6 +1222,22 @@ onMounted(async () => {
         <NFormItem :label="$t('state.copyMounts')"><NSwitch v-model:value="copyForm.copy_mounts" /></NFormItem>
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showCopyModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="confirmCopy">{{ $t('state.copy') }}</NButton></NSpace></template>
+    </NModal>
+
+    <!-- 添加标签页 Modal -->
+    <NModal v-model:show="showAddTabModal" preset="card" :title="$t('state.addTab')" style="width: 400px; background: #18181b;">
+      <NForm label-placement="top">
+        <NFormItem :label="$t('state.tabLabel')"><NInput v-model:value="newTabLabel" :placeholder="$t('state.tabLabelPlaceholder')" @keyup.enter="addTab" /></NFormItem>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showAddTabModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="addTab">{{ $t('common.confirm') }}</NButton></NSpace></template>
+    </NModal>
+
+    <!-- 重命名标签页 Modal -->
+    <NModal v-model:show="showRenameTabModal" preset="card" :title="$t('state.renameTab')" style="width: 400px; background: #18181b;">
+      <NForm label-placement="top">
+        <NFormItem :label="$t('state.tabLabel')"><NInput v-model:value="renameTabLabel" :placeholder="$t('state.tabLabelPlaceholder')" @keyup.enter="renameTab" /></NFormItem>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showRenameTabModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="renameTab">{{ $t('common.confirm') }}</NButton></NSpace></template>
     </NModal>
   </div>
 </template>

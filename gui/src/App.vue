@@ -10,6 +10,7 @@ import {
   NMenu,
   NIcon,
   NMessageProvider,
+  NDialogProvider,
   darkTheme,
 } from 'naive-ui'
 import type { MenuOption, GlobalThemeOverrides } from 'naive-ui'
@@ -92,6 +93,7 @@ const themeOverrides: GlobalThemeOverrides = {
 <template>
   <NConfigProvider :theme="darkTheme" :theme-overrides="themeOverrides">
     <NMessageProvider>
+      <NDialogProvider>
       <NLayout has-sider style="height: 100vh; background: #0f0f11;">
         <NLayoutSider
           bordered
@@ -120,6 +122,7 @@ const themeOverrides: GlobalThemeOverrides = {
           <RouterView />
         </NLayoutContent>
       </NLayout>
+      </NDialogProvider>
     </NMessageProvider>
   </NConfigProvider>
 </template>

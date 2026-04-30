@@ -975,15 +975,19 @@ async def list_state_templates(request: Request):
 
 @router.get("/admin/state/templates/{template_id}")
 async def get_state_template(template_id: str, request: Request):
-    """Get a full state board template."""
+    """Get a full state board template with item counts per tab."""
     _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_state import SQLiteStateStore
 
-    template = await SQLiteStateStore(get_config().storage.sqlite.memory_db).get_template(template_id)
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    template = await store.get_template(template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    return _template_to_dict(template)
+    result = _template_to_dict(template)
+    for tab_dict in result.get("tabs", []):
+        tab_dict["item_count"] = await store.count_items_for_tab(tab_dict["tab_id"])
+    return result
 
 
 @router.post("/admin/state/templates")
@@ -1006,6 +1010,45 @@ async def delete_state_template(template_id: str, request: Request):
 
     ok = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_template_status(template_id, "deleted")
     return {"status": "ok" if ok else "error", "message": None if ok else "内置模板不能删除或模板不存在"}
+
+
+@router.post("/admin/state/templates/{template_id}/clone")
+async def clone_state_template(template_id: str, request: Request):
+    """Clone a template (used to create a custom copy of a built-in template)."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    new_id = await SQLiteStateStore(get_config().storage.sqlite.memory_db).clone_template(template_id)
+    if not new_id:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"status": "ok", "template_id": new_id}
+
+
+@router.patch("/admin/state/templates/{template_id}/tabs/{tab_id}")
+async def rename_state_template_tab(template_id: str, tab_id: str, request: Request, data: dict = Body(...)):
+    """Rename a tab in a state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    new_label = data.get("label", "").strip()
+    if not new_label:
+        raise HTTPException(status_code=400, detail="label is required")
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    template = await store.get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    tab_found = False
+    for tab in template.tabs:
+        if tab.tab_id == tab_id:
+            tab.label = new_label
+            tab_found = True
+            break
+    if not tab_found:
+        raise HTTPException(status_code=404, detail="Tab not found")
+    await store.save_template(template)
+    return {"status": "ok"}
 
 
 @router.get("/admin/conversations/{conversation_id}/state/template")

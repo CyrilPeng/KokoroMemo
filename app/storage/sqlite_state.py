@@ -565,8 +565,65 @@ class SQLiteStateStore:
                             field.default_value, json.dumps(field.options or {}, ensure_ascii=False), field.status,
                         ),
                     )
+            # Clean up orphaned tabs (tabs removed from the template payload)
+            keep_tab_ids = {tab.tab_id for tab in template.tabs if tab.tab_id}
+            existing_cursor = await db.execute(
+                "SELECT tab_id FROM state_board_tabs WHERE template_id = ?", (template_id,)
+            )
+            existing_tab_ids = {row[0] for row in await existing_cursor.fetchall()}
+            orphan_tab_ids = existing_tab_ids - keep_tab_ids
+            for orphan_id in orphan_tab_ids:
+                await db.execute(
+                    "UPDATE conversation_state_items SET tab_id = NULL, field_id = NULL WHERE tab_id = ? AND status = 'active'",
+                    (orphan_id,),
+                )
+                await db.execute(
+                    "UPDATE state_board_fields SET status = 'deleted', updated_at = datetime('now','localtime') WHERE tab_id = ?",
+                    (orphan_id,),
+                )
+                await db.execute("DELETE FROM state_board_tabs WHERE tab_id = ?", (orphan_id,))
             await db.commit()
         return template_id
+
+    async def clone_template(self, source_template_id: str) -> str | None:
+        """Clone a template with all its tabs and fields. Returns the new template_id."""
+        source = await self.get_template(source_template_id)
+        if not source:
+            return None
+        new_id = generate_id("tpl_copy_")
+        cloned_tabs: list[StateBoardTab] = []
+        for tab in source.tabs:
+            cloned_fields: list[StateBoardField] = []
+            for field in tab.fields:
+                cloned_fields.append(StateBoardField(
+                    field_id=None, template_id=new_id, tab_id="",
+                    field_key=field.field_key, label=field.label, field_type=field.field_type,
+                    description=field.description, ai_writable=field.ai_writable,
+                    include_in_prompt=field.include_in_prompt, sort_order=field.sort_order,
+                    default_value=field.default_value, options=field.options, status=field.status,
+                ))
+            cloned_tabs.append(StateBoardTab(
+                tab_id=None, template_id=new_id, tab_key=tab.tab_key,
+                label=tab.label, description=tab.description, sort_order=tab.sort_order,
+                fields=cloned_fields,
+            ))
+        new_template = StateBoardTemplate(
+            template_id=new_id, name=f"{source.name} (副本)", description=source.description,
+            is_builtin=False, status="active", tabs=cloned_tabs,
+        )
+        await self.save_template(new_template)
+        return new_id
+
+    async def count_items_for_tab(self, tab_id: str) -> int:
+        """Return the number of active state items linked to a tab."""
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM conversation_state_items WHERE tab_id = ? AND status = 'active'",
+                (tab_id,),
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else 0
 
     async def update_template_status(self, template_id: str, status: str) -> bool:
         await self.init_schema()

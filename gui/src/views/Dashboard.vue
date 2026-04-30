@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic } from 'naive-ui'
 import { apiFetch, getServerUrl } from '../api'
@@ -50,6 +50,15 @@ onMounted(() => {
   fetchHealth()
   fetchStats()
 })
+
+function onWsEvent(e: any) {
+  const data = e.detail
+  if (data?.event === 'inbox_new' || data?.event === 'card_approved') {
+    fetchStats()
+  }
+}
+onMounted(() => window.addEventListener('kokoromemo:event', onWsEvent))
+onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 </script>
 
 <template>

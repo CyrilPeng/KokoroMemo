@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NModal,
   NPagination, NPopconfirm, NSelect, NSpace, NSpin, NTag, useMessage,
@@ -138,6 +138,15 @@ function handleStatusChange(val: string) {
 }
 
 onMounted(fetchInbox)
+
+function onWsEvent(e: any) {
+  const data = e.detail
+  if (data?.event === 'inbox_new' || data?.event === 'card_approved') {
+    fetchInbox()
+  }
+}
+onMounted(() => window.addEventListener('kokoromemo:event', onWsEvent))
+onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 </script>
 
 <template>

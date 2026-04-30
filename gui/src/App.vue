@@ -2,6 +2,7 @@
 import { computed, h, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import EventBridge from './components/EventBridge.vue'
 import {
   NConfigProvider,
   NLayout,
@@ -21,6 +22,7 @@ import {
   BulbOutline,
   ReaderOutline,
   MailOutline,
+  PersonOutline,
   SettingsOutline,
   LogoGithub,
 } from '@vicons/ionicons5'
@@ -38,6 +40,7 @@ const menuOptions = computed<MenuOption[]>(() => [
   { label: t('nav.memories'), key: '/memories', icon: renderIcon(BulbOutline) },
   { label: t('nav.inbox'), key: '/inbox', icon: renderIcon(MailOutline) },
   { label: t('nav.state'), key: '/state', icon: renderIcon(ReaderOutline) },
+  { label: t('nav.characters'), key: '/characters', icon: renderIcon(PersonOutline) },
   { label: t('nav.settings'), key: '/settings', icon: renderIcon(SettingsOutline) },
 ])
 
@@ -96,6 +99,7 @@ const themeOverrides: GlobalThemeOverrides = {
   <NConfigProvider :theme="darkTheme" :theme-overrides="themeOverrides">
     <NMessageProvider>
       <NDialogProvider>
+      <EventBridge />
       <NLayout has-sider style="height: 100vh; background: #0f0f11;">
         <NLayoutSider
           bordered

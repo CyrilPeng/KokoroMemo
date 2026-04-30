@@ -159,6 +159,50 @@ async def list_characters(db_path: str) -> list[dict]:
         ]
 
 
+async def discover_characters(db_path: str) -> list[dict]:
+    """Discover characters from conversations and merge with defaults.
+
+    The `characters` table is currently never populated by code; characters are
+    only known implicitly through the `character_id` column on conversations.
+    This helper derives a per-character summary from conversations and merges
+    in the configured defaults from `character_defaults`.
+    """
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """
+            SELECT
+              c.character_id AS character_id,
+              MAX(c.last_seen_at) AS last_seen_at,
+              MIN(c.first_seen_at) AS first_seen_at,
+              COUNT(*) AS conversation_count,
+              cd.template_id AS template_id,
+              cd.library_ids_json AS library_ids_json,
+              cd.write_library_id AS write_library_id,
+              cd.auto_apply AS auto_apply
+            FROM conversations c
+            LEFT JOIN character_defaults cd ON c.character_id = cd.character_id
+            WHERE c.character_id IS NOT NULL AND c.character_id != ''
+            GROUP BY c.character_id
+            ORDER BY MAX(c.last_seen_at) DESC
+            """
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "character_id": row["character_id"],
+                "conversation_count": row["conversation_count"],
+                "first_seen_at": row["first_seen_at"],
+                "last_seen_at": row["last_seen_at"],
+                "template_id": row["template_id"],
+                "library_ids": json.loads(row["library_ids_json"]) if row["library_ids_json"] else None,
+                "write_library_id": row["write_library_id"],
+                "auto_apply": bool(row["auto_apply"]) if row["auto_apply"] is not None else None,
+            }
+            for row in rows
+        ]
+
+
 async def list_conversations(db_path: str, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
     """List recent conversations ordered by last_seen_at descending."""
     async with aiosqlite.connect(db_path) as db:

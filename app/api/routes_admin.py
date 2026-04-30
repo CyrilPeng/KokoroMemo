@@ -408,6 +408,18 @@ async def list_characters_api(request: Request):
     return {"items": items}
 
 
+@router.get("/admin/discovered-characters")
+async def discover_characters_api(request: Request):
+    """Discover characters from conversations and merge default configs."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import discover_characters
+
+    cfg = get_config()
+    items = await discover_characters(cfg.storage.sqlite.app_db)
+    return {"items": items}
+
+
 @router.get("/admin/characters/{character_id}/defaults")
 async def get_character_defaults_api(character_id: str, request: Request):
     """Get default config for a character."""

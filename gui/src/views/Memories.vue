@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import {
-  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NModal,
+  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NInputNumber, NModal,
   NPagination, NPopconfirm, NSelect, NSlider, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -275,6 +276,87 @@ function triggerImportLibrary() {
   input.click()
 }
 
+const showSillyTavernModal = ref(false)
+const showExtractModal = ref(false)
+const sillyTavernImporting = ref(false)
+const stForm = ref({ content: '', filename: '', character_id: '' })
+const extractForm = ref({ conversation_id: '', character_id: '', max_pairs: 50, turns_imported: 0 })
+const router = useRouter()
+
+function openSillyTavernImport() {
+  stForm.value = { content: '', filename: '', character_id: '' }
+  showSillyTavernModal.value = true
+}
+
+function pickSillyTavernFile() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.jsonl,.json,.txt'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+    stForm.value.filename = file.name
+    stForm.value.content = await file.text()
+  }
+  input.click()
+}
+
+async function confirmSillyTavernImport() {
+  if (!stForm.value.content.trim()) {
+    message.warning(t('memories.stPickFile'))
+    return
+  }
+  sillyTavernImporting.value = true
+  try {
+    const resp = await apiFetch('/admin/import/sillytavern', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: stForm.value.content,
+        character_id: stForm.value.character_id || undefined,
+      }),
+    })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || t('memories.importFailedShort'))
+    showSillyTavernModal.value = false
+    extractForm.value = {
+      conversation_id: data.conversation_id,
+      character_id: data.character_name || stForm.value.character_id || '',
+      max_pairs: 50,
+      turns_imported: data.turns_imported || 0,
+    }
+    showExtractModal.value = true
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+  sillyTavernImporting.value = false
+}
+
+async function confirmExtract() {
+  try {
+    const resp = await apiFetch(`/admin/import/${extractForm.value.conversation_id}/extract-memories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        character_id: extractForm.value.character_id || undefined,
+        max_pairs: extractForm.value.max_pairs,
+      }),
+    })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || t('memories.extractFailed'))
+    showExtractModal.value = false
+    message.success(t('memories.stExtractDone', { extracted: data.extracted_pairs, total: data.total_pairs }))
+    router.push('/inbox')
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
+function skipExtract() {
+  showExtractModal.value = false
+  message.success(t('memories.stImportedNoExtract'))
+}
+
 onMounted(fetchMemories)
 </script>
 
@@ -300,6 +382,7 @@ onMounted(fetchMemories)
           <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="deleteLibrary"><template #trigger><NButton size="small" type="error" quaternary :disabled="!selectedLibraryId">{{ $t('memories.deleteLibrary') }}</NButton></template>{{ $t('memories.deleteLibraryConfirm') }}</NPopconfirm>
           <NButton size="small" :disabled="!selectedLibraryId" @click="exportLibrary">{{ $t('memories.exportLibrary') }}</NButton>
           <NButton size="small" @click="triggerImportLibrary">{{ $t('memories.importLibrary') }}</NButton>
+          <NButton size="small" @click="openSillyTavernImport">{{ $t('memories.importSillyTavern') }}</NButton>
           <NButton size="small" @click="fetchMemories" quaternary style="color: #71717a;">{{ $t('common.refresh') }}</NButton>
         </NSpace>
       </NSpace>
@@ -335,6 +418,45 @@ onMounted(fetchMemories)
     <NModal v-model:show="showPresetModal" preset="card" :title="$t('memories.saveAsPresetTitle')" style="width: 560px; background: #18181b;">
       <NForm label-placement="top"><NFormItem :label="$t('memories.presetName')"><NInput v-model:value="presetForm.name" /></NFormItem><NFormItem :label="$t('memories.sourceLibraries')"><NSelect v-model:value="presetForm.source_library_ids" multiple :options="libraryEditOptions" /></NFormItem><NFormItem :label="$t('memories.description')"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" /></NFormItem></NForm>
       <template #action><NSpace justify="end"><NButton @click="showPresetModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="savePreset">{{ $t('memories.saveAs') }}</NButton></NSpace></template>
+    </NModal>
+
+    <NModal v-model:show="showSillyTavernModal" preset="card" :title="$t('memories.importSillyTavern')" style="width: 560px; background: #18181b;">
+      <NForm label-placement="top">
+        <NFormItem :label="$t('memories.stFile')">
+          <NSpace :wrap="false">
+            <NButton @click="pickSillyTavernFile">{{ $t('memories.stPickFileButton') }}</NButton>
+            <span v-if="stForm.filename" style="color: #d4d4d8; font-size: 13px; align-self: center;">{{ stForm.filename }}</span>
+            <span v-else style="color: #71717a; font-size: 13px; align-self: center;">{{ $t('memories.stNoFile') }}</span>
+          </NSpace>
+        </NFormItem>
+        <NFormItem :label="$t('memories.stCharacterId')">
+          <NInput v-model:value="stForm.character_id" :placeholder="$t('memories.stCharacterIdPlaceholder')" />
+        </NFormItem>
+        <p style="color: #71717a; font-size: 12px; margin: 0;">{{ $t('memories.stHint') }}</p>
+      </NForm>
+      <template #action>
+        <NSpace justify="end">
+          <NButton @click="showSillyTavernModal = false">{{ $t('common.cancel') }}</NButton>
+          <NButton type="primary" :loading="sillyTavernImporting" @click="confirmSillyTavernImport">{{ $t('memories.stImport') }}</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="showExtractModal" preset="card" :title="$t('memories.stExtractTitle')" style="width: 480px; background: #18181b;">
+      <p style="color: #d4d4d8; font-size: 14px; margin-top: 0;">
+        {{ $t('memories.stExtractDesc', { count: extractForm.turns_imported }) }}
+      </p>
+      <NForm label-placement="top">
+        <NFormItem :label="$t('memories.stMaxPairs')">
+          <NInputNumber v-model:value="extractForm.max_pairs" :min="1" :max="500" style="width: 100%;" />
+        </NFormItem>
+      </NForm>
+      <template #action>
+        <NSpace justify="end">
+          <NButton @click="skipExtract">{{ $t('memories.stSkipExtract') }}</NButton>
+          <NButton type="primary" @click="confirmExtract">{{ $t('memories.stRunExtract') }}</NButton>
+        </NSpace>
+      </template>
     </NModal>
   </div>
 </template>

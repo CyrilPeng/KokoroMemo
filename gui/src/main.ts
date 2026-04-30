@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/dashboard', component: () => import('./views/Dashboard.vue') },
     { path: '/memories', component: () => import('./views/Memories.vue') },
     { path: '/inbox', component: () => import('./views/Inbox.vue') },
+    { path: '/characters', component: () => import('./views/Characters.vue') },
     { path: '/state', component: () => import('./views/ConversationState.vue') },
     { path: '/settings', component: () => import('./views/Settings.vue') },
   ],

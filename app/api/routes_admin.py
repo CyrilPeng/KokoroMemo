@@ -502,6 +502,17 @@ async def list_conversations_api(
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
+@router.delete("/admin/conversations/{conversation_id}")
+async def delete_conversation_api(conversation_id: str):
+    """Delete a conversation record."""
+    from app.core.state import get_config
+    from app.storage.sqlite_app import delete_conversation
+
+    cfg = get_config()
+    ok = await delete_conversation(cfg.storage.sqlite.app_db, conversation_id)
+    return {"status": "ok" if ok else "error", "message": None if ok else "会话不存在"}
+
+
 @router.get("/admin/conversations/{conversation_id}/memory-mounts")
 async def get_conversation_memory_mounts_api(conversation_id: str):
     """Get mounted long-term memory libraries for a conversation."""

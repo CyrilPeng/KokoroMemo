@@ -54,6 +54,7 @@ const stateItemCount = ref(0)
 const isNewSession = ref(false)
 const recentConversations = ref<any[]>([])
 const presets = ref<any[]>([])
+const selectedPresetId = ref<string | null>(null)
 const showPresetModal = ref(false)
 const presetForm = ref({ name: '', description: '' })
 const showCopyModal = ref(false)
@@ -83,6 +84,16 @@ const itemByField = computed(() => {
   return data
 })
 const legacyItems = computed(() => stateItems.value.filter((item) => !item.field_id))
+const presetOptions = computed(() => presets.value.map((item) => ({ label: item.name, value: item.preset_id })))
+const templateMenuOptions = computed(() => [
+  { label: t('state.create'), key: 'create' },
+  { label: t('common.export'), key: 'export' },
+  { label: t('common.import'), key: 'import' },
+])
+const presetManageOptions = computed(() => [
+  { label: t('state.importPreset'), key: 'import' },
+  { label: t('state.exportAllPresets'), key: 'exportAll' },
+])
 
 function ensureConversationId() {
   if (!conversationId.value.trim()) {
@@ -152,6 +163,22 @@ async function fetchAll() {
     message.error(t('state.messages.loadFailed', { error: e.message || e }))
   }
   loading.value = false
+}
+
+async function deleteConversation() {
+  if (!conversationId.value.trim()) return
+  const resp = await apiFetch(`/admin/conversations/${conversationId.value}`, { method: 'DELETE', headers: authHeaders() })
+  const data = await resp.json()
+  if (data.status === 'ok') {
+    message.success(t('state.messages.conversationDeleted'))
+    conversationId.value = ''
+    stateItems.value = []
+    stateItemCount.value = 0
+    configLoaded.value = false
+    await fetchConversations()
+  } else {
+    message.error(data.message || t('common.deleteFailed'))
+  }
 }
 
 async function fetchPreview() {
@@ -441,6 +468,23 @@ function applyPreset(preset: any) {
   }
 }
 
+function applyPresetById(presetId: string) {
+  selectedPresetId.value = presetId
+  const preset = presets.value.find((item) => item.preset_id === presetId)
+  if (preset) applyPreset(preset)
+}
+
+function handleTemplateMenuAction(key: string) {
+  if (key === 'create') openTemplateModal()
+  else if (key === 'export') exportTemplate()
+  else if (key === 'import') triggerImportTemplate()
+}
+
+function handlePresetManageAction(key: string) {
+  if (key === 'import') triggerImportPreset()
+  else if (key === 'exportAll') exportAllPresets()
+}
+
 async function saveAsPreset() {
   if (!mountedLibraryIds.value.length) {
     message.warning(t('state.messages.presetSelectFirst'))
@@ -476,18 +520,9 @@ async function deletePreset(presetId: string) {
   const resp = await apiFetch(`/admin/memory-mount-presets/${presetId}`, { method: 'DELETE', headers: authHeaders() })
   const data = await resp.json()
   if (data.status === 'ok') {
+    if (selectedPresetId.value === presetId) selectedPresetId.value = null
     message.success(t('state.messages.presetDeleted'))
     await fetchPresets()
-  }
-}
-
-function handlePresetAction(key: string, preset: any) {
-  if (key === 'apply') {
-    applyPreset(preset)
-  } else if (key === 'export') {
-    exportSinglePreset(preset.preset_id)
-  } else if (key === 'delete') {
-    deletePreset(preset.preset_id)
   }
 }
 
@@ -697,14 +732,18 @@ onMounted(() => {
       <p style="color: #71717a; font-size: 14px;">{{ $t('state.subtitle') }}</p>
     </div>
 
-    <!-- 会话配置面板 -->
-    <NCard :title="$t('state.configCard')" style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+    <!-- 卡片 1：会话选择 -->
+    <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
       <NGrid :cols="4" :x-gap="12" :y-gap="12" responsive="screen" item-responsive>
         <NGridItem span="4 m:2">
           <NFormItem :label="$t('state.conversationId')" label-placement="top" style="margin-bottom: 0;">
             <NSpace :wrap="false">
               <NSelect v-model:value="conversationId" :options="conversationOptions" filterable tag :placeholder="$t('state.selectConversation')" style="width: 320px;" @blur="saveLocalInputs" />
               <NButton type="primary" @click="fetchAll">{{ $t('common.load') }}</NButton>
+              <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="deleteConversation">
+                <template #trigger><NButton type="error" quaternary :disabled="!conversationId.trim()">{{ $t('common.delete') }}</NButton></template>
+                {{ $t('state.deleteConversationConfirm') }}
+              </NPopconfirm>
             </NSpace>
           </NFormItem>
         </NGridItem>
@@ -713,65 +752,8 @@ onMounted(() => {
             <NInput v-model:value="adminToken" type="password" :placeholder="$t('state.adminTokenPlaceholder')" style="width: 220px;" @blur="saveLocalInputs" />
           </NFormItem>
         </NGridItem>
-
-        <NGridItem span="4 m:2">
-          <NFormItem :label="$t('state.stateTemplate')" label-placement="top" style="margin-bottom: 0;">
-            <NSpace :wrap="false">
-              <NSelect v-model:value="selectedTemplateId" :options="templateOptions" :placeholder="$t('state.selectTemplate')" style="width: 260px;" />
-              <NButton @click="changeTemplate" :disabled="!configLoaded">{{ $t('state.switch') }}</NButton>
-              <NButton @click="openTemplateModal">{{ $t('state.create') }}</NButton>
-              <NButton @click="exportTemplate" :disabled="!selectedTemplateId">{{ $t('common.export') }}</NButton>
-              <NButton @click="triggerImportTemplate">{{ $t('common.import') }}</NButton>
-            </NSpace>
-          </NFormItem>
-        </NGridItem>
-        <NGridItem span="4 m:2">
-          <NFormItem :label="$t('state.writeTarget')" label-placement="top" style="margin-bottom: 0;">
-            <NSelect v-model:value="writeLibraryId" :options="memoryLibraryOptions.filter((item) => mountedLibraryIds.includes(item.value))" :placeholder="$t('state.writeTargetPlaceholder')" style="width: 220px;" />
-          </NFormItem>
-        </NGridItem>
-
-        <NGridItem span="4">
-          <NFormItem :label="$t('state.mountLibraries')" label-placement="top" style="margin-bottom: 0;">
-            <NSelect
-              :value="mountedLibraryIds"
-              multiple
-              filterable
-              :options="memoryLibraryOptions"
-              :placeholder="$t('state.mountLibrariesPlaceholder')"
-              @update:value="handleMountedLibrariesChange"
-            />
-          </NFormItem>
-        </NGridItem>
-
-        <NGridItem span="4">
-          <NFormItem :label="$t('state.mountPresets')" label-placement="top" style="margin-bottom: 0;">
-            <NSpace align="center" :wrap="true">
-              <NDropdown
-                v-for="preset in presets"
-                :key="preset.preset_id"
-                trigger="click"
-                :options="[
-                  { label: t('state.presetActions.apply'), key: 'apply' },
-                  { label: t('state.presetActions.export'), key: 'export' },
-                  { type: 'divider', key: 'd1' },
-                  { label: t('state.presetActions.delete'), key: 'delete' },
-                ]"
-                @select="(key: string) => handlePresetAction(key, preset)"
-              >
-                <NButton size="small" quaternary type="info">{{ preset.name }}</NButton>
-              </NDropdown>
-              <NButton size="small" dashed @click="saveAsPreset" :disabled="!mountedLibraryIds.length">{{ $t('state.saveAsPreset') }}</NButton>
-              <NButton size="small" dashed @click="triggerImportPreset">{{ $t('state.importPreset') }}</NButton>
-              <NButton size="small" dashed @click="exportAllPresets" :disabled="!presets.length">{{ $t('state.exportAllPresets') }}</NButton>
-            </NSpace>
-          </NFormItem>
-        </NGridItem>
       </NGrid>
-
-      <!-- 会话状态摘要 -->
-      <NDivider style="margin: 12px 0;" />
-      <NSpace align="center" justify="space-between" :wrap="true">
+      <div style="margin-top: 12px;">
         <NSpace align="center" :wrap="true">
           <NTag v-if="isNewSession" type="warning" size="small">{{ $t('state.newSession') }}</NTag>
           <NTag v-else type="success" size="small">{{ $t('state.configured') }}</NTag>
@@ -783,26 +765,60 @@ onMounted(() => {
             {{ $t('state.stateItems') }}<strong style="color: #e4e4e7;">{{ stateItemCount }}</strong>
           </span>
         </NSpace>
-        <NSpace>
-          <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">{{ $t('state.saveConfig') }}</NButton>
-          <NButton @click="openCopyModal" :disabled="!stateItemCount">{{ $t('state.copyToNew') }}</NButton>
-          <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="resetState">
-            <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.resetToEmpty') }}</NButton></template>
-            {{ $t('state.resetConfirm') }}
-          </NPopconfirm>
-          <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="clearState">
-            <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.clearState') }}</NButton></template>
-            {{ $t('state.clearConfirm') }}
-          </NPopconfirm>
-        </NSpace>
-      </NSpace>
+      </div>
     </NCard>
 
-    <!-- 操作按钮栏 -->
-    <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+    <!-- 卡片 2：会话配置 -->
+    <NCard :title="$t('state.configCard')" style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+      <NForm label-placement="left" label-width="120" :show-feedback="false" style="gap: 14px; display: flex; flex-direction: column;">
+        <NFormItem :label="$t('state.stateTemplate')">
+          <NSpace :wrap="false">
+            <NSelect v-model:value="selectedTemplateId" :options="templateOptions" :placeholder="$t('state.selectTemplate')" style="width: 260px;" />
+            <NButton @click="changeTemplate" :disabled="!configLoaded">{{ $t('state.switch') }}</NButton>
+            <NDropdown :options="templateMenuOptions" @select="handleTemplateMenuAction">
+              <NButton>{{ $t('state.templateMore') }}</NButton>
+            </NDropdown>
+          </NSpace>
+        </NFormItem>
+        <NFormItem :label="$t('state.mountLibraries')">
+          <NSelect
+            :value="mountedLibraryIds"
+            multiple
+            filterable
+            :options="memoryLibraryOptions"
+            :placeholder="$t('state.mountLibrariesPlaceholder')"
+            @update:value="handleMountedLibrariesChange"
+          />
+        </NFormItem>
+        <NFormItem :label="$t('state.writeTarget')">
+          <NSelect v-model:value="writeLibraryId" :options="memoryLibraryOptions.filter((item) => mountedLibraryIds.includes(item.value))" :placeholder="$t('state.writeTargetPlaceholder')" style="width: 260px;" />
+        </NFormItem>
+        <NFormItem :label="$t('state.mountPresets')">
+          <NSpace :wrap="false" style="width: 100%;">
+            <NSelect v-model:value="selectedPresetId" :options="presetOptions" :placeholder="$t('state.presetPlaceholder')" style="flex: 1; min-width: 200px;" @update:value="applyPresetById" />
+            <NButton size="small" @click="saveAsPreset" :disabled="!mountedLibraryIds.length">{{ $t('state.saveAsPreset') }}</NButton>
+            <NButton size="small" @click="exportSinglePreset(selectedPresetId!)" :disabled="!selectedPresetId">{{ $t('common.export') }}</NButton>
+            <NButton size="small" type="error" quaternary @click="deletePreset(selectedPresetId!)" :disabled="!selectedPresetId">{{ $t('common.delete') }}</NButton>
+            <NDropdown :options="presetManageOptions" @select="handlePresetManageAction">
+              <NButton size="small">{{ $t('state.managePresets') }}</NButton>
+            </NDropdown>
+          </NSpace>
+        </NFormItem>
+      </NForm>
+      <NDivider style="margin: 14px 0;" />
       <NSpace align="center" :wrap="true">
+        <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">{{ $t('state.saveConfig') }}</NButton>
         <NButton @click="showFillModal = true" :disabled="!configLoaded">{{ $t('state.manualFill') }}</NButton>
         <NButton @click="rebuildFromCards" :disabled="!configLoaded">{{ $t('state.projectFromMemory') }}</NButton>
+        <NButton @click="openCopyModal" :disabled="!stateItemCount">{{ $t('state.copyToNew') }}</NButton>
+        <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="resetState">
+          <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.resetToEmpty') }}</NButton></template>
+          {{ $t('state.resetConfirm') }}
+        </NPopconfirm>
+        <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="clearState">
+          <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.clearState') }}</NButton></template>
+          {{ $t('state.clearConfirm') }}
+        </NPopconfirm>
         <NTooltip trigger="hover">
           <template #trigger><span class="help-icon">?</span></template>
           {{ $t('state.fillHelp') }}

@@ -183,3 +183,14 @@ async def list_conversations(db_path: str, limit: int = 50, offset: int = 0) -> 
             for row in rows
         ]
         return items, total
+
+
+async def delete_conversation(db_path: str, conversation_id: str) -> bool:
+    """Delete a conversation record from app.sqlite."""
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            "DELETE FROM conversations WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        await db.commit()
+        return cursor.rowcount > 0

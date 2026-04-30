@@ -51,7 +51,7 @@ class EmbeddingConfig:
     base_url: str = "https://ai.gitee.com/v1"
     api_key: str = ""
     api_key_env: str = "MODELARK_API_KEY"
-    model: str = "qwen3-embedding-8b"
+    model: str = "Qwen3-Embedding-8B"
     dimension: int = 4096
     timeout_seconds: int = 8
     batch_size: int = 16
@@ -70,7 +70,7 @@ class RerankConfig:
     base_url: str = "https://ai.gitee.com/v1"
     api_key: str = ""
     api_key_env: str = "MODELARK_API_KEY"
-    model: str = "qwen3-reranker-8b"
+    model: str = "Qwen3-Reranker-8B"
     timeout_seconds: int = 8
     candidate_top_k: int = 30
     final_top_k: int = 8
@@ -319,6 +319,7 @@ def _merge_dataclass(dc: Any, data: dict) -> Any:
 def load_config(config_path: str | Path | None = None) -> AppConfig:
     """Load config from YAML file, falling back to defaults."""
     cfg = AppConfig()
+    default_root = cfg.storage.root_dir
 
     if config_path is None:
         candidates = ["config.yaml", "config.local.yaml", "config.example.yaml"]
@@ -331,5 +332,22 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         with open(config_path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
         _merge_dataclass(cfg, raw)
+
+    # When root_dir changed but child paths still point to old default,
+    # re-derive them relative to the new root_dir.
+    if cfg.storage.root_dir != default_root:
+        prefix = default_root.rstrip("/") + "/"
+        if cfg.storage.sqlite.app_db.startswith(prefix):
+            cfg.storage.sqlite.app_db = str(
+                Path(cfg.storage.root_dir) / Path(cfg.storage.sqlite.app_db).relative_to(default_root)
+            )
+        if cfg.storage.sqlite.memory_db.startswith(prefix):
+            cfg.storage.sqlite.memory_db = str(
+                Path(cfg.storage.root_dir) / Path(cfg.storage.sqlite.memory_db).relative_to(default_root)
+            )
+        if cfg.storage.lancedb.path.startswith(prefix):
+            cfg.storage.lancedb.path = str(
+                Path(cfg.storage.root_dir) / Path(cfg.storage.lancedb.path).relative_to(default_root)
+            )
 
     return cfg

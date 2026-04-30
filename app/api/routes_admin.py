@@ -272,7 +272,25 @@ async def save_config(data: dict = Body(...)):
     if "memory" in data:
         existing.setdefault("memory", {}).update(data["memory"])
     if "storage" in data:
+        new_root = data["storage"].get("root_dir")
         existing.setdefault("storage", {}).update(data["storage"])
+
+        # When root_dir changes, update child paths in YAML to stay consistent
+        if new_root and new_root != old_root_dir:
+            default_root = "./data"
+            default_prefix = default_root + "/"
+            storage = existing["storage"]
+            sqlite = storage.get("sqlite", {})
+            for key in ("app_db", "memory_db"):
+                val = sqlite.get(key, "")
+                if val.startswith(default_prefix):
+                    suffix = val[len(default_prefix):]
+                    sqlite[key] = str(Path(new_root) / suffix)
+            lancedb = storage.get("lancedb", {})
+            ldb_val = lancedb.get("path", "")
+            if ldb_val.startswith(default_prefix):
+                suffix = ldb_val[len(default_prefix):]
+                lancedb["path"] = str(Path(new_root) / suffix)
 
     # Write to config.yaml
     out_path = Path("config.yaml")
@@ -293,21 +311,10 @@ async def save_config(data: dict = Body(...)):
     )
 
     if needs_restart:
-        import asyncio
-        import os
-        import sys
         import logging
-
         logger = logging.getLogger("kokoromemo")
         logger.info("配置变更需要重启服务（存储目录或端口已更改）")
-
-        async def _delayed_restart():
-            await asyncio.sleep(1)  # Give response time to reach client
-            logger.info("正在重启服务...")
-            os.execv(sys.executable, [sys.executable] + sys.argv)
-
-        asyncio.get_event_loop().create_task(_delayed_restart())
-        return {"status": "ok", "message": "配置已保存，服务正在重启..."}
+        return {"status": "restart_required", "message": "配置已保存，正在重启服务..."}
 
     return {"status": "ok", "message": "配置已保存并生效"}
 
@@ -1157,12 +1164,12 @@ async def resolve_conversation_state_item(item_id: str, request: Request, data: 
 
 @router.delete("/admin/state/{item_id}")
 async def delete_conversation_state_item(item_id: str, request: Request):
-    """Soft-delete a hot-state item."""
+    """Permanently delete a hot-state item."""
     _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_state import SQLiteStateStore
 
-    await SQLiteStateStore(get_config().storage.sqlite.memory_db).delete_item(item_id, "manual_delete")
+    await SQLiteStateStore(get_config().storage.sqlite.memory_db).hard_delete_item(item_id)
     return {"status": "ok"}
 
 

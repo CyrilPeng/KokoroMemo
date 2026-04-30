@@ -1183,48 +1183,47 @@ permissive_auto：尽量自动通过，但仍保留撤回能力
 
 ## 管理界面
 
-前端管理界面用于查看和管理长期记忆。
+前端管理界面（Vue 3 + Naive UI）提供完整的记忆和状态管理功能。
 
-常见功能包括：
+### 仪表盘
+- 服务状态概览（后端、Embedding、Rerank 状态）
+- 已批准记忆数、待审核数、检索门控统计
+- 7 日增长趋势和类型分布
 
-```text
-查看会话
-查看完整对话
-查看记忆卡片
-审核记忆收件箱
-编辑记忆卡片
-拒绝候选记忆
-废弃旧记忆
-查看卡片关系
-查看层级摘要
-重建向量索引
-查看任务队列
-检查 Provider 状态
-```
+### 记忆管理
+- 按记忆库筛选、按作用域筛选
+- 记忆卡片 CRUD（新建、编辑、删除）
+- 记忆库管理（创建、编辑、删除、导入、导出）
+- 挂载预设管理
 
-开发环境下打开：
+### 会话状态板
+- **会话选择器** — 下拉列表显示最近会话，支持搜索和手动输入 ID
+- **会话配置** — 模板切换、记忆库挂载、写入目标、挂载预设（下拉应用/导出/删除）
+- **操作按钮** — 保存配置、手动 AI 填表、从记忆投射、复制到新会话、重置、清空
+- **状态板** — 按模板标签页分组显示字段，支持编辑、锁定、完成、删除
+- **检索门控** — 查看每次请求的检索决策记录
+- **事件日志** — 审计所有状态变更
+- **注入预览** — 实时查看注入到 AI 提示词中的状态板文本和字符用量
 
-```text
-http://localhost:5173
-```
+### 设置
+- **模型配置** — 对话大模型、记忆判断模型、Embedding、Rerank
+- **状态板填表** — 填表模型独立配置
+- **记忆配置** — 长期记忆参数
+- **服务配置** — 端口、时区、语言、更新检测
 
-桌面窗口调试：
+开发环境：
 
 ```bash
-cd gui
-npm run tauri dev
+cd gui && npm run dev    # 前端 http://localhost:5173
+cd gui && npm run tauri dev  # 桌面窗口
 ```
 
-发行版桌面窗口会自动启动后端；源码调试时如果没有 sidecar，Tauri 会回退到 `python -m app.main`。Windows CI 发行构建会把后端二进制内嵌到 `KokoroMemo.exe`，并禁用外部 sidecar，保证 Portable 和 MSI 都是单 exe 后端启动模型。
-
-桌面端还包含：
-
-```text
-关闭窗口默认最小化到托盘
-托盘菜单支持显示窗口和退出应用
-设置页支持开关“关闭后最小化到托盘”
-设置页支持 GitHub Release 更新检测
-```
+桌面端功能：
+- 自动启动后端
+- 关闭窗口最小化到系统托盘
+- 托盘菜单（显示窗口 / 退出）
+- GitHub Release 更新检测
+- 侧边栏 GitHub 仓库入口
 
 ---
 
@@ -1390,95 +1389,92 @@ scope
 ```text
 kokoromemo/
   README.md
-  pyproject.toml
+  CHANGELOG.md
   requirements.txt
   config.example.yaml
-  .env.example
+  dev.cmd
 
   app/
-    main.py
+    main.py                         # FastAPI 入口
 
     api/
-      routes_openai.py
-      routes_admin.py
-      routes_review.py
-      routes_memory.py
-      routes_health.py
+      routes_openai.py              # OpenAI-compatible 代理端点
+      routes_admin.py               # 管理 API（记忆、状态板、配置、会话等）
+      routes_ws.py                  # WebSocket 实时事件推送
 
     core/
-      config.py
-      logging.py
-      errors.py
-      ids.py
-      time.py
-      security.py
+      config.py                     # YAML 配置加载与数据模型
+      state.py                      # 全局配置状态管理
+      services.py                   # 单例服务工厂（Embedding、LanceDB）
+      events.py                     # 进程内异步事件总线
+      ids.py                        # ID 生成工具
+      logging.py                    # 日志设置
+      prompts.py                    # 双语 Prompt 注册表
+      variables.py                  # 模板变量替换
+      time_util.py                  # 时区感知时间工具
 
     proxy/
-      request_parser.py
-      conversation_resolver.py
-      llm_forwarder.py
-      stream_forwarder.py
-      response_collector.py
+      request_parser.py             # 请求解析（提取 user/character/conversation）
+      llm_providers.py              # 多 Provider LLM 抽象（4 种后端）
 
     memory/
-      card_schema.py
-      card_service.py
-      inbox_service.py
-      query_builder.py
-      retrieval_orchestrator.py
-      retriever_vector.py
-      retriever_tag.py
-      retriever_graph.py
-      retriever_summary.py
-      retriever_recent.py
-      scorer.py
-      injector.py
-      extractor.py
-      review_policy.py
-      conflict.py
-      graph_linker.py
-      hierarchy.py
-      dedupe.py
+      card_retriever.py             # 多路径检索编排
+      card_extractor.py             # 记忆提取 + 审核路由
+      card_injector.py              # 分层卡片注入
+      judge.py                      # LLM 记忆判断/提取
+      review_policy.py              # 半自动审核策略
+      retrieval_gate.py             # 按需召回门控
+      query_builder.py              # 构建检索查询
+      state_schema.py               # 状态板数据模型（14 类别）
+      state_renderer.py             # 状态板渲染为注入文本
+      state_injector.py             # 注入状态板到消息
+      state_filler.py               # LLM 驱动状态板模板填充
+      state_updater.py              # 后台状态维护
+      state_projector.py            # 记忆卡片投影为状态项
+      graph.py                      # 记忆卡片关系图操作
+      summaries.py                  # 层级摘要管理
 
     providers/
-      embedding_base.py
-      embedding_modelark.py
+      embedding_base.py             # Embedding 抽象接口
       embedding_openai_compatible.py
-      rerank_base.py
-      rerank_modelark.py
+      embedding_dummy.py
+      rerank_base.py                # Rerank 抽象接口
+      rerank_openai_compatible.py
       rerank_none.py
-      llm_openai_compatible.py
 
     storage/
-      sqlite_app.py
-      sqlite_conversation.py
-      sqlite_memory.py
-      sqlite_graph.py
-      sqlite_summary.py
-      lancedb_store.py
-      migrations.py
-      rebuild.py
+      sqlite_app.py                 # App 数据库（用户、角色、会话）
+      sqlite_cards.py               # 记忆卡片、收件箱、边、库、挂载
+      sqlite_conversation.py        # 逐会话对话日志
+      sqlite_memory.py              # 记忆相关表
+      sqlite_state.py               # 状态板存储
+      lancedb_store.py              # 向量存储封装
+      vector_sync.py                # 卡片到向量同步
 
-    jobs/
-      queue.py
-      worker.py
-      memory_extract_job.py
-      vector_sync_job.py
-      vector_rebuild_job.py
-      graph_link_job.py
-      hierarchy_summary_job.py
+    importers/
+      sillytavern.py                # SillyTavern JSONL 对话导入
 
   gui/
     src/
+      main.ts                       # Vue 应用入口
+      App.vue                       # 根布局（侧边栏导航 + GitHub 入口）
+      api.ts                        # API 客户端
+      views/
+        Dashboard.vue               # 仪表盘
+        Memories.vue                # 记忆管理
+        ConversationState.vue       # 会话状态板
+        Settings.vue                # 设置（4 标签页）
+      i18n/
+        zh-CN.ts                    # 中文
+        en-US.ts                    # 英文
     src-tauri/
+      src/main.rs                   # Tauri 桌面应用入口
+      tauri.conf.json               # 应用配置
 
   tests/
-    test_openai_proxy.py
-    test_streaming.py
-    test_memory_card.py
-    test_memory_inbox.py
-    test_graph_edges.py
-    test_lancedb_store.py
+
+  .github/workflows/
+    release.yml                     # CI/CD 三平台构建发布
 ```
 
 ---

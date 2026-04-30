@@ -1021,7 +1021,7 @@ onMounted(() => {
     <!-- 复制到新会话 Modal -->
     <NModal v-model:show="showCopyModal" preset="card" :title="$t('state.copyTitle')" style="width: 480px; background: #18181b;">
       <NForm label-placement="top">
-        <NFormItem :label="$t('state.targetConversationId')"><NInput v-model:value="copyForm.target_conversation_id" :placeholder="$t('state.inputNewId')" /></NFormItem>
+        <NFormItem :label="$t('state.targetConversationId')"><NSelect v-model:value="copyForm.target_conversation_id" :options="conversationOptions" filterable tag :placeholder="$t('state.inputNewId')" /></NFormItem>
         <NFormItem :label="$t('state.copyMounts')"><NSwitch v-model:value="copyForm.copy_mounts" /></NFormItem>
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showCopyModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="confirmCopy">{{ $t('state.copy') }}</NButton></NSpace></template>

@@ -790,6 +790,14 @@ class SQLiteStateStore:
     async def delete_item(self, item_id: str, reason: str | None = None) -> None:
         await self.set_item_status(item_id, "deleted", reason=reason)
 
+    async def hard_delete_item(self, item_id: str) -> None:
+        """Permanently remove an item and its events from the database."""
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM conversation_state_events WHERE item_id = ?", (item_id,))
+            await db.execute("DELETE FROM conversation_state_items WHERE item_id = ?", (item_id,))
+            await db.commit()
+
     async def set_item_status(self, item_id: str, status: str, reason: str | None = None) -> None:
         await self.init_schema()
         event_type = "resolved" if status == "resolved" else status

@@ -46,6 +46,9 @@ const showEditModal = ref(false)
 const showTemplateModal = ref(false)
 const showFillModal = ref(false)
 const editingItem = ref<any | null>(null)
+const isCustomField = ref(false)
+const customFieldName = ref('')
+const currentTabId = ref('')
 const editForm = ref({ field_id: '', item_value: '', priority: 70, confidence: 0.8, user_locked: false, linked_card_ids: '' })
 const templateJson = ref('')
 const fillForm = ref({ user_message: '', assistant_message: '' })
@@ -83,7 +86,7 @@ const itemByField = computed(() => {
   }
   return data
 })
-const legacyItems = computed(() => stateItems.value.filter((item) => !item.field_id))
+const legacyItems = computed(() => stateItems.value.filter((item) => !item.field_id && !item.tab_id))
 const presetOptions = computed(() => presets.value.map((item) => ({ label: item.name, value: item.preset_id })))
 const templateMenuOptions = computed(() => [
   { label: t('state.create'), key: 'create' },
@@ -246,12 +249,26 @@ async function changeTemplate() {
 
 function openCreateModal(field?: any) {
   editingItem.value = null
+  isCustomField.value = false
+  customFieldName.value = ''
+  currentTabId.value = ''
   editForm.value = { field_id: field?.field_id || '', item_value: '', priority: 70, confidence: 0.8, user_locked: false, linked_card_ids: '' }
+  showEditModal.value = true
+}
+
+function openCreateModalForTab(tab: any) {
+  editingItem.value = null
+  isCustomField.value = true
+  customFieldName.value = ''
+  currentTabId.value = tab.tab_id || ''
+  editForm.value = { field_id: '', item_value: '', priority: 70, confidence: 0.8, user_locked: false, linked_card_ids: '' }
   showEditModal.value = true
 }
 
 function openEditModal(row: any, field?: any) {
   editingItem.value = row
+  isCustomField.value = false
+  customFieldName.value = ''
   editForm.value = {
     field_id: row.field_id || field?.field_id || '',
     item_value: row.item_value || row.content || '',
@@ -266,14 +283,20 @@ function openEditModal(row: any, field?: any) {
 async function saveItem() {
   if (!ensureConversationId()) return
   const field = findField(editForm.value.field_id)
+  const useCustom = isCustomField.value && !field
+  const customName = customFieldName.value.trim()
+  if (useCustom && !customName) {
+    message.warning(t('state.messages.inputFieldName'))
+    return
+  }
   const body = JSON.stringify({
     template_id: currentTemplate.value?.template_id,
-    tab_id: field?.tab_id,
-    field_id: field?.field_id,
-    field_key: field?.field_key,
-    category: categoryForField(field?.field_key),
-    item_key: field?.field_key,
-    title: field?.label,
+    tab_id: field?.tab_id || currentTabId.value || undefined,
+    field_id: field?.field_id || undefined,
+    field_key: field?.field_key || customName,
+    category: useCustom ? 'custom' : categoryForField(field?.field_key),
+    item_key: field?.field_key || customName,
+    title: field?.label || customName,
     item_value: editForm.value.item_value,
     priority: editForm.value.priority,
     confidence: editForm.value.confidence,
@@ -306,6 +329,12 @@ async function saveItem() {
 async function resolveItem(row: any) {
   await apiFetch(`/admin/state/${row.item_id}/resolve`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ reason: t('state.messages.done') }) })
   message.success(t('state.messages.markedDone'))
+  fetchAll()
+}
+
+async function resetItem(row: any) {
+  await apiFetch(`/admin/state/${row.item_id}`, { method: 'PATCH', headers: authHeaders(true), body: JSON.stringify({ item_value: '', content: '' }) })
+  message.success(t('state.messages.stateItemSaved'))
   fetchAll()
 }
 
@@ -665,8 +694,22 @@ function categoryForField(fieldKey?: string) {
   return map[fieldKey || ''] || 'scene'
 }
 
+const customItemsByTab = computed(() => {
+  const map: Record<string, any[]> = {}
+  for (const item of stateItems.value) {
+    if (!item.field_id && item.status === 'active' && item.tab_id) {
+      ;(map[item.tab_id] ??= []).push(item)
+    }
+  }
+  return map
+})
+
 function fieldRows(tab: any) {
-  return (tab.fields || []).map((field: any) => ({ field, item: itemByField.value[field.field_id] || null }))
+  const rows = (tab.fields || []).map((field: any) => ({ field, item: itemByField.value[field.field_id] || null }))
+  for (const item of customItemsByTab.value[tab.tab_id] || []) {
+    rows.push({ field: null, item })
+  }
+  return rows
 }
 
 function hButton(label: string, onClick: () => void) {
@@ -686,15 +729,17 @@ function saveLocalInputs() {
 }
 
 const boardColumns = [
-  { title: t('state.column.field'), key: 'label', width: 160, render: (row: any) => h('div', [h('div', row.field.label), h('div', { class: 'km-muted' }, row.field.field_key)]) },
-  { title: t('state.column.value'), key: 'value', ellipsis: { tooltip: true }, render: (row: any) => row.item?.item_value || row.item?.content || row.field.default_value || '—' },
+  { title: t('state.column.field'), key: 'label', width: 160, render: (row: any) => row.field
+    ? h('div', [h('div', row.field.label), h('div', { class: 'km-muted' }, row.field.field_key)])
+    : h('div', [h('div', row.item?.title || row.item?.item_key || '—'), h('div', { class: 'km-muted' }, row.item?.item_key)]) },
+  { title: t('state.column.value'), key: 'value', ellipsis: { tooltip: true }, render: (row: any) => row.item?.item_value || row.item?.content || row.field?.default_value || '—' },
   { title: t('state.column.confidence'), key: 'confidence', width: 90, render: (row: any) => row.item ? Number(row.item.confidence).toFixed(2) : '—' },
   { title: t('state.column.priority'), key: 'priority', width: 80, render: (row: any) => row.item?.priority ?? '—' },
   { title: t('state.column.linkedCards'), key: 'linked_cards', width: 120, render: (row: any) => row.item?.linked_card_ids?.length ? h(NTag, { size: 'small', type: 'info' }, { default: () => `${row.item.linked_card_ids.length}` }) : '—' },
   { title: t('state.column.source'), key: 'source', width: 120, render: (row: any) => row.item?.source || '—' },
   { title: t('state.column.updatedAt'), key: 'updated_at', width: 170, render: (row: any) => row.item?.updated_at || '—' },
   { title: t('state.column.locked'), key: 'locked', width: 80, render: (row: any) => row.item?.user_locked ? h(NTag, { size: 'small', type: 'warning' }, { default: () => t('state.column.locked') }) : '—' },
-  { title: t('state.column.actions'), key: 'actions', width: 180, render: (row: any) => row.item ? [hButton(t('state.actions.edit'), () => openEditModal(row.item, row.field)), hButton(t('state.actions.done'), () => resolveItem(row.item)), hButton(t('state.actions.delete'), () => deleteItem(row.item))] : hButton(t('state.actions.fill'), () => openCreateModal(row.field)) },
+  { title: t('state.column.actions'), key: 'actions', width: 180, render: (row: any) => row.item ? [hButton(t('state.actions.edit'), () => openEditModal(row.item, row.field)), hButton(t('state.actions.reset'), () => resetItem(row.item)), hButton(t('state.actions.delete'), () => deleteItem(row.item))] : hButton(t('state.actions.fill'), () => openCreateModal(row.field)) },
 ]
 
 const legacyColumns = [
@@ -704,7 +749,7 @@ const legacyColumns = [
   { title: t('state.column.priority'), key: 'priority', width: 80 },
   { title: t('state.column.status'), key: 'status', width: 90, render: (row: any) => h(NTag, { size: 'small', type: row.status === 'active' ? 'success' : row.status === 'resolved' ? 'warning' : 'default' }, { default: () => row.status }) },
   { title: t('state.column.source'), key: 'source', width: 120 },
-  { title: t('state.column.actions'), key: 'actions', width: 180, render: (row: any) => [hButton(t('state.actions.edit'), () => openEditModal(row)), hButton(t('state.actions.done'), () => resolveItem(row)), hButton(t('state.actions.delete'), () => deleteItem(row))] },
+  { title: t('state.column.actions'), key: 'actions', width: 180, render: (row: any) => [hButton(t('state.actions.edit'), () => openEditModal(row)), hButton(t('state.actions.reset'), () => resetItem(row)), hButton(t('state.actions.delete'), () => deleteItem(row))] },
 ]
 
 const decisionColumns = [
@@ -862,6 +907,9 @@ onMounted(() => {
                 </template>
                 <p style="color: #71717a; margin-top: 0;">{{ tab.description || $t('state.noDescription') }}</p>
                 <NDataTable :columns="boardColumns" :data="fieldRows(tab)" :pagination="false" />
+                <div style="margin-top: 8px;">
+                  <NButton quaternary size="small" @click="openCreateModalForTab(tab)">➕ {{ $t('state.actions.addNew') }}</NButton>
+                </div>
               </NCard>
             </NTabPane>
           </NTabs>
@@ -894,9 +942,10 @@ onMounted(() => {
     </NSpin>
 
     <!-- 编辑状态项 Modal -->
-    <NModal v-model:show="showEditModal" preset="card" :title="$t('state.editStateItem')" style="width: 620px; background: #18181b;">
+    <NModal v-model:show="showEditModal" preset="card" :title="isCustomField && !editForm.field_id ? $t('state.addStateItem') : $t('state.editStateItem')" style="width: 620px; background: #18181b;">
       <NForm label-placement="top">
-        <NFormItem :label="$t('state.fieldLabel')"><NSelect v-model:value="editForm.field_id" :options="fieldOptions" filterable /></NFormItem>
+        <NFormItem v-if="isCustomField && !editForm.field_id" :label="$t('state.fieldName')"><NInput v-model:value="customFieldName" :placeholder="$t('state.fieldNamePlaceholder')" /></NFormItem>
+        <NFormItem v-else :label="$t('state.fieldLabel')"><NSelect v-model:value="editForm.field_id" :options="fieldOptions" filterable /></NFormItem>
         <NFormItem :label="$t('state.content')"><NInput v-model:value="editForm.item_value" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
         <NGrid :cols="3" :x-gap="12">
           <NGridItem><NFormItem :label="$t('state.priority')"><NInputNumber v-model:value="editForm.priority" :min="0" :max="100" style="width: 100%;" /></NFormItem></NGridItem>

@@ -739,7 +739,11 @@ const boardColumns = [
   { title: t('state.column.source'), key: 'source', width: 120, render: (row: any) => row.item?.source || '—' },
   { title: t('state.column.updatedAt'), key: 'updated_at', width: 170, render: (row: any) => row.item?.updated_at || '—' },
   { title: t('state.column.locked'), key: 'locked', width: 80, render: (row: any) => row.item?.user_locked ? h(NTag, { size: 'small', type: 'warning' }, { default: () => t('state.column.locked') }) : '—' },
-  { title: t('state.column.actions'), key: 'actions', width: 180, render: (row: any) => row.item ? [hButton(t('state.actions.edit'), () => openEditModal(row.item, row.field)), hButton(t('state.actions.reset'), () => resetItem(row.item)), hButton(t('state.actions.delete'), () => deleteItem(row.item))] : hButton(t('state.actions.fill'), () => openCreateModal(row.field)) },
+  { title: t('state.column.actions'), key: 'actions', width: 220, render: (row: any) => row.item ? [
+    hButton(t('state.actions.edit'), () => openEditModal(row.item, row.field)),
+    h(NPopconfirm, { onPositiveClick: () => resetItem(row.item) }, { trigger: () => hButton(t('state.actions.reset'), () => {}), default: () => t('state.messages.confirmReset') }),
+    h(NPopconfirm, { onPositiveClick: () => deleteItem(row.item) }, { trigger: () => hButton(t('state.actions.delete'), () => {}), default: () => t('state.messages.confirmDelete') }),
+  ] : hButton(t('state.actions.fill'), () => openCreateModal(row.field)) },
 ]
 
 const legacyColumns = [
@@ -749,7 +753,11 @@ const legacyColumns = [
   { title: t('state.column.priority'), key: 'priority', width: 80 },
   { title: t('state.column.status'), key: 'status', width: 90, render: (row: any) => h(NTag, { size: 'small', type: row.status === 'active' ? 'success' : row.status === 'resolved' ? 'warning' : 'default' }, { default: () => row.status }) },
   { title: t('state.column.source'), key: 'source', width: 120 },
-  { title: t('state.column.actions'), key: 'actions', width: 180, render: (row: any) => [hButton(t('state.actions.edit'), () => openEditModal(row)), hButton(t('state.actions.reset'), () => resetItem(row)), hButton(t('state.actions.delete'), () => deleteItem(row))] },
+  { title: t('state.column.actions'), key: 'actions', width: 220, render: (row: any) => [
+    hButton(t('state.actions.edit'), () => openEditModal(row)),
+    h(NPopconfirm, { onPositiveClick: () => resetItem(row) }, { trigger: () => hButton(t('state.actions.reset'), () => {}), default: () => t('state.messages.confirmReset') }),
+    h(NPopconfirm, { onPositiveClick: () => deleteItem(row) }, { trigger: () => hButton(t('state.actions.delete'), () => {}), default: () => t('state.messages.confirmDelete') }),
+  ] },
 ]
 
 const decisionColumns = [

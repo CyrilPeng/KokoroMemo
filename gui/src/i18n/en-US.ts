@@ -268,6 +268,8 @@ export default {
       templateSwitched: 'State template switched',
       stateItemSaved: 'State item saved',
       markedDone: 'Marked as done',
+      confirmReset: 'Reset this item? The value will be cleared.',
+      confirmDelete: 'Delete this item? It will be permanently removed.',
       itemDeleted: 'Deleted',
       projected: 'Projected {count} long-term cards',
       clearFailed: 'Clear failed',

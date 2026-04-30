@@ -268,6 +268,8 @@ export default {
       templateSwitched: '状态板模板已切换',
       stateItemSaved: '状态项已保存',
       markedDone: '已标记完成',
+      confirmReset: '确认重置此词条？值将被清空。',
+      confirmDelete: '确认删除此词条？将彻底移除。',
       itemDeleted: '已删除',
       projected: '已投影 {count} 条长期卡片',
       clearFailed: '清空失败',

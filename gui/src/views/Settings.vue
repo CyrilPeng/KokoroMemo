@@ -5,7 +5,7 @@ import {
   NButton, NSpace, NDivider, NAlert, NSelect,
   NTabs, NTabPane, NModal, useMessage,
 } from 'naive-ui'
-import { apiFetch, getServerUrl, setServerUrl } from '../api'
+import { apiFetch, getServerUrl, setServerUrl, resolveBackendUrl } from '../api'
 import { useI18n } from 'vue-i18n'
 import { setLanguage, getLanguage } from '../i18n'
 import { invoke } from '@tauri-apps/api/core'
@@ -190,13 +190,13 @@ const config = ref({
   embedding_provider: 'modelark',
   embedding_base_url: '',
   embedding_api_key: '',
-  embedding_model: 'qwen3-embedding-8b',
+  embedding_model: 'Qwen3-Embedding-8B',
   embedding_dimension: 4096,
   rerank_enabled: false,
   rerank_provider: 'modelark',
   rerank_base_url: '',
   rerank_api_key: '',
-  rerank_model: 'qwen3-reranker-8b',
+  rerank_model: 'Qwen3-Reranker-8B',
   rerank_max_docs: 20,
   memory_enabled: true,
   max_injected_chars: 1500,
@@ -403,6 +403,17 @@ async function saveConfig() {
     const data = await resp.json()
     if (data.status === 'ok') {
       message.success(data.message || t('settings.configSaved'))
+    } else if (data.status === 'restart_required') {
+      message.success(data.message || '配置已保存，正在重启服务...')
+      try {
+        await invoke('restart_backend')
+        // Re-resolve port — it may have changed after restart
+        const newUrl = await resolveBackendUrl()
+        backendUrl.value = newUrl
+        message.success('服务已重启')
+      } catch (e) {
+        message.warning('自动重启失败，请手动重启服务')
+      }
     } else {
       message.error(data.message || t('common.saveFailed'))
     }
@@ -494,8 +505,8 @@ onMounted(() => {
                 </NFormItem>
                 <NFormItem :label="$t('settings.modelName')">
                   <div style="display: flex; gap: 8px; flex: 1;">
-                    <NSelect v-if="embeddingModels.length > 0" v-model:value="config.embedding_model" :options="embeddingModels" filterable tag placeholder="qwen3-embedding-8b" style="flex: 1;" />
-                    <NInput v-else v-model:value="config.embedding_model" placeholder="qwen3-embedding-8b" style="flex: 1;" />
+                    <NSelect v-if="embeddingModels.length > 0" v-model:value="config.embedding_model" :options="embeddingModels" filterable tag placeholder="Qwen3-Embedding-8B" style="flex: 1;" />
+                    <NInput v-else v-model:value="config.embedding_model" placeholder="Qwen3-Embedding-8B" style="flex: 1;" />
                     <NButton size="small" :loading="fetchingEmbedding" @click="fetchModelList(config.embedding_base_url, config.embedding_api_key, 'embedding')">{{ $t('common.fetch') }}</NButton>
                   </div>
                 </NFormItem>
@@ -527,8 +538,8 @@ onMounted(() => {
                 </NFormItem>
                 <NFormItem :label="$t('settings.modelName')">
                   <div style="display: flex; gap: 8px; flex: 1;">
-                    <NSelect v-if="rerankModels.length > 0" v-model:value="config.rerank_model" :options="rerankModels" filterable tag placeholder="qwen3-reranker-8b" style="flex: 1;" />
-                    <NInput v-else v-model:value="config.rerank_model" placeholder="qwen3-reranker-8b" style="flex: 1;" />
+                    <NSelect v-if="rerankModels.length > 0" v-model:value="config.rerank_model" :options="rerankModels" filterable tag placeholder="Qwen3-Reranker-8B" style="flex: 1;" />
+                    <NInput v-else v-model:value="config.rerank_model" placeholder="Qwen3-Reranker-8B" style="flex: 1;" />
                     <NButton size="small" :loading="fetchingRerank" @click="fetchModelList(config.rerank_base_url, config.rerank_api_key, 'rerank')">{{ $t('common.fetch') }}</NButton>
                   </div>
                 </NFormItem>

@@ -81,12 +81,25 @@ fn show_main_window(app: &tauri::AppHandle) {
 }
 
 fn backend_work_dir(_app: &tauri::AppHandle) -> PathBuf {
-    let dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(PathBuf::from))
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let _ = fs::create_dir_all(&dir);
-    dir
+    #[cfg(debug_assertions)]
+    {
+        // In debug mode, Python backend runs from the project root (two levels up from src-tauri)
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir
+            .parent()
+            .and_then(|path| path.parent())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(PathBuf::from))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let _ = fs::create_dir_all(&dir);
+        dir
+    }
 }
 
 #[cfg(all(windows, kokoromemo_embedded_backend))]
@@ -131,6 +144,8 @@ fn spawn_embedded_backend(app: &tauri::AppHandle, work_dir: &PathBuf) -> std::io
 fn spawn_backend(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         let work_dir = backend_work_dir(&app);
+        // Remove stale .port file so get_backend_port won't read old value
+        let _ = fs::remove_file(work_dir.join(".port"));
 
         #[cfg(all(windows, kokoromemo_embedded_backend))]
         {
@@ -204,6 +219,37 @@ fn kill_backend(app: &tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+async fn restart_backend(app: tauri::AppHandle) -> Result<String, String> {
+    kill_backend(&app);
+    // Wait for port release
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    spawn_backend(app.clone());
+    Ok("backend restarting".to_string())
+}
+
+#[tauri::command]
+async fn get_backend_port(app: tauri::AppHandle) -> Result<u16, String> {
+    let work_dir = backend_work_dir(&app);
+    let port_file = work_dir.join(".port");
+    // Poll for .port file — backend may still be starting
+    for _ in 0..30 {
+        if let Ok(content) = fs::read_to_string(&port_file) {
+            if let Ok(port) = content.trim().parse::<u16>() {
+                if port > 0 {
+                    // Verify the port is actually listening
+                    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+                    if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)).is_ok() {
+                        return Ok(port);
+                    }
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    Err("backend .port file not found or port not listening after 6s".to_string())
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .manage(AppState::default())
@@ -260,7 +306,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             greet,
             set_close_to_tray,
-            get_close_to_tray
+            get_close_to_tray,
+            restart_backend,
+            get_backend_port
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

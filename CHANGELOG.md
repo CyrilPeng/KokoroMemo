@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.1 (2026-05-01)
+
+### 修复
+
+- 修复 v0.5.0 CI 构建在 `vue-tsc -b` 严格模式下的 TypeScript 编译错误（NMessage 不支持 onClick、NInputNumber 回调签名、未使用的 svgRef/resolveItem/router import）
+- 清理项目内残留的死代码与遗留兼容文件：旧 memories 数据流（sqlite_memory.py / rebuild.py / retriever.py / injector.py）、空 jobs 包、Vite 脚手架 HelloWorld.vue、`fetch_models_legacy` 兼容端点、graph.py 三个未使用的辅助函数
+- 修复 `test_hot_context` 把双语 dict 当字符串使用导致的测试失败
+
 ## v0.5.0 (2026-05-01)
 
 ### 新增

@@ -3,7 +3,9 @@ import { ref, computed, onMounted } from 'vue'
 import {
   NCard, NForm, NFormItem, NInput, NSwitch, NInputNumber,
   NButton, NSpace, NDivider, NAlert, NSelect,
-  NTabs, NTabPane, NModal, useMessage,
+  NTabs, NTabPane, NModal, NCollapse, NCollapseItem,
+  NDynamicTags, NSlider,
+  useMessage,
 } from 'naive-ui'
 import { apiFetch, getServerUrl, setServerUrl, resolveBackendUrl } from '../api'
 import { useI18n } from 'vue-i18n'
@@ -221,6 +223,46 @@ const config = ref({
   state_filler_temperature: 0,
   state_filler_min_confidence: 0.55,
   state_filler_prompt: '',
+  // Advanced — conversation auto-detection
+  conv_auto_gap: 0,
+  conv_detect_prompt_change: false,
+  conv_detect_count_reset: false,
+  // Advanced — memory top-level
+  inject_enabled: true,
+  extraction_enabled: true,
+  max_recent_turns_for_query: 6,
+  vector_top_k: 30,
+  // Advanced — scopes
+  scope_global: true,
+  scope_character: true,
+  scope_conversation: true,
+  // Advanced — extraction
+  ext_min_importance: 0.45,
+  ext_min_confidence: 0.55,
+  ext_after_each_turn: true,
+  ext_fallback_rule_based: true,
+  // Advanced — scoring weights
+  score_vector: 0.55,
+  score_importance: 0.20,
+  score_recency: 0.10,
+  score_scope: 0.10,
+  score_confidence: 0.05,
+  // Advanced — retrieval gate
+  rg_enabled: true,
+  rg_mode: 'auto',
+  rg_on_new_session: true,
+  rg_every_n_turns: 6,
+  rg_state_conf_below: 0.65,
+  rg_trigger_keywords: [] as string[],
+  rg_skip_chars_below: 4,
+  rg_skip_when_state_sufficient: true,
+  // Advanced — hot context
+  hc_enabled: true,
+  hc_inject_always: true,
+  hc_max_chars: 1200,
+  hc_include_sections: {} as Record<string, boolean>,
+  hc_section_order: [] as string[],
+  hc_max_items: {} as Record<string, number>,
 })
 
 const forwardModeOptions = computed(() => [
@@ -234,6 +276,27 @@ const providerOptions = computed(() => [
   { label: 'Anthropic Claude', value: 'anthropic' },
   { label: 'Google Gemini', value: 'gemini' },
 ])
+
+const HOT_CONTEXT_SECTION_KEYS = [
+  'boundary', 'scene', 'location', 'key_person', 'relationship',
+  'main_quest', 'side_quest', 'promise', 'open_loop', 'item',
+  'world_state', 'recent_summary', 'mood', 'preference',
+]
+
+const retrievalGateModes = computed(() => [
+  { label: t('settings.adv.gateModeAuto'), value: 'auto' },
+  { label: t('settings.adv.gateModeAlways'), value: 'always' },
+  { label: t('settings.adv.gateModeNever'), value: 'never' },
+  { label: t('settings.adv.gateModeKeyword'), value: 'keyword_only' },
+])
+
+const scoringTotal = computed(() => {
+  return (config.value.score_vector || 0)
+    + (config.value.score_importance || 0)
+    + (config.value.score_recency || 0)
+    + (config.value.score_scope || 0)
+    + (config.value.score_confidence || 0)
+})
 
 const judgeModeOptions = computed(() => [
   { label: t('settings.judgeModeModel'), value: 'model_only' },
@@ -328,6 +391,45 @@ async function loadConfig() {
       config.value.state_filler_temperature = data.memory?.state_updater?.temperature ?? 0
       config.value.state_filler_min_confidence = data.memory?.state_updater?.min_confidence ?? 0.55
       config.value.state_filler_prompt = data.memory?.state_updater?.prompt || ''
+      // Advanced
+      config.value.conv_auto_gap = data.conversation?.auto_new_session_gap_minutes ?? 0
+      config.value.conv_detect_prompt_change = data.conversation?.detect_system_prompt_change ?? false
+      config.value.conv_detect_count_reset = data.conversation?.detect_message_count_reset ?? false
+      config.value.inject_enabled = data.memory?.inject_enabled ?? true
+      config.value.extraction_enabled = data.memory?.extraction_enabled ?? true
+      config.value.max_recent_turns_for_query = data.memory?.max_recent_turns_for_query ?? 6
+      config.value.vector_top_k = data.memory?.vector_top_k ?? 30
+      const scopes = data.memory?.scopes || {}
+      config.value.scope_global = scopes.include_global ?? true
+      config.value.scope_character = scopes.include_character ?? true
+      config.value.scope_conversation = scopes.include_conversation ?? true
+      const ext = data.memory?.extraction || {}
+      config.value.ext_min_importance = ext.min_importance ?? 0.45
+      config.value.ext_min_confidence = ext.min_confidence ?? 0.55
+      config.value.ext_after_each_turn = ext.extract_after_each_turn ?? true
+      config.value.ext_fallback_rule_based = ext.fallback_rule_based ?? true
+      const sc = data.memory?.scoring || {}
+      config.value.score_vector = sc.vector_weight ?? 0.55
+      config.value.score_importance = sc.importance_weight ?? 0.20
+      config.value.score_recency = sc.recency_weight ?? 0.10
+      config.value.score_scope = sc.scope_weight ?? 0.10
+      config.value.score_confidence = sc.confidence_weight ?? 0.05
+      const rg = data.memory?.retrieval_gate || {}
+      config.value.rg_enabled = rg.enabled ?? true
+      config.value.rg_mode = rg.mode || 'auto'
+      config.value.rg_on_new_session = rg.vector_search_on_new_session ?? true
+      config.value.rg_every_n_turns = rg.vector_search_every_n_turns ?? 6
+      config.value.rg_state_conf_below = rg.vector_search_when_state_confidence_below ?? 0.65
+      config.value.rg_trigger_keywords = Array.isArray(rg.trigger_keywords) ? [...rg.trigger_keywords] : []
+      config.value.rg_skip_chars_below = rg.skip_when_latest_user_text_chars_below ?? 4
+      config.value.rg_skip_when_state_sufficient = rg.skip_when_state_is_sufficient ?? true
+      const hc = data.memory?.hot_context || {}
+      config.value.hc_enabled = hc.enabled ?? true
+      config.value.hc_inject_always = hc.inject_always ?? true
+      config.value.hc_max_chars = hc.max_chars ?? 1200
+      config.value.hc_include_sections = { ...(hc.include_sections || {}) }
+      config.value.hc_section_order = Array.isArray(hc.section_order) ? [...hc.section_order] : []
+      config.value.hc_max_items = { ...(hc.max_items_per_section || {}) }
     }
   } catch (e) {
     // use defaults
@@ -363,8 +465,48 @@ async function saveConfig() {
       },
       memory: {
         enabled: config.value.memory_enabled,
+        inject_enabled: config.value.inject_enabled,
+        extraction_enabled: config.value.extraction_enabled,
+        max_recent_turns_for_query: config.value.max_recent_turns_for_query,
+        vector_top_k: config.value.vector_top_k,
         max_injected_chars: config.value.max_injected_chars,
         final_top_k: config.value.final_top_k,
+        scopes: {
+          include_global: config.value.scope_global,
+          include_character: config.value.scope_character,
+          include_conversation: config.value.scope_conversation,
+        },
+        scoring: {
+          vector_weight: config.value.score_vector,
+          importance_weight: config.value.score_importance,
+          recency_weight: config.value.score_recency,
+          scope_weight: config.value.score_scope,
+          confidence_weight: config.value.score_confidence,
+        },
+        extraction: {
+          min_importance: config.value.ext_min_importance,
+          min_confidence: config.value.ext_min_confidence,
+          extract_after_each_turn: config.value.ext_after_each_turn,
+          fallback_rule_based: config.value.ext_fallback_rule_based,
+        },
+        retrieval_gate: {
+          enabled: config.value.rg_enabled,
+          mode: config.value.rg_mode,
+          vector_search_on_new_session: config.value.rg_on_new_session,
+          vector_search_every_n_turns: config.value.rg_every_n_turns,
+          vector_search_when_state_confidence_below: config.value.rg_state_conf_below,
+          trigger_keywords: config.value.rg_trigger_keywords,
+          skip_when_latest_user_text_chars_below: config.value.rg_skip_chars_below,
+          skip_when_state_is_sufficient: config.value.rg_skip_when_state_sufficient,
+        },
+        hot_context: {
+          enabled: config.value.hc_enabled,
+          inject_always: config.value.hc_inject_always,
+          max_chars: config.value.hc_max_chars,
+          include_sections: config.value.hc_include_sections,
+          section_order: config.value.hc_section_order,
+          max_items_per_section: config.value.hc_max_items,
+        },
         judge: {
           enabled: config.value.judge_enabled,
           provider: config.value.judge_provider,
@@ -394,6 +536,11 @@ async function saveConfig() {
       },
     }
     payload.llm.api_key = config.value.llm_api_key
+    payload.conversation = {
+      auto_new_session_gap_minutes: config.value.conv_auto_gap,
+      detect_system_prompt_change: config.value.conv_detect_prompt_change,
+      detect_message_count_reset: config.value.conv_detect_count_reset,
+    }
 
     const resp = await apiFetch('/admin/config', {
       method: 'POST',
@@ -717,6 +864,140 @@ onMounted(() => {
           </NCard>
         </NSpace>
       </NTabPane>
+
+      <NTabPane name="advanced" :tab="$t('settings.tabAdvanced')">
+        <NSpace vertical :size="16">
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>
+              <NSpace align="center">
+                <span>{{ $t('settings.adv.title') }}</span>
+                <NButton quaternary size="tiny" @click="helpModal = 'advanced'"><span class="help-icon">?</span></NButton>
+              </NSpace>
+            </template>
+            <p style="color: #71717a; font-size: 13px; margin-top: 0;">{{ $t('settings.adv.subtitle') }}</p>
+
+            <NCollapse :default-expanded-names="[]" arrow-placement="left">
+              <NCollapseItem :title="$t('settings.adv.conversation')" name="conversation">
+                <NForm label-placement="left" label-width="240" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+                  <NFormItem :label="$t('settings.adv.convAutoGap')">
+                    <NInputNumber v-model:value="config.conv_auto_gap" :min="0" :max="1440" style="width: 200px;" />
+                    <span style="color: #71717a; font-size: 12px; margin-left: 12px;">{{ $t('settings.adv.convAutoGapHint') }}</span>
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.convDetectPrompt')">
+                    <NSwitch v-model:value="config.conv_detect_prompt_change" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.convDetectCount')">
+                    <NSwitch v-model:value="config.conv_detect_count_reset" />
+                  </NFormItem>
+                </NForm>
+              </NCollapseItem>
+
+              <NCollapseItem :title="$t('settings.adv.memoryTop')" name="memoryTop">
+                <NForm label-placement="left" label-width="240" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+                  <NFormItem :label="$t('settings.adv.injectEnabled')">
+                    <NSwitch v-model:value="config.inject_enabled" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.extractionEnabled')">
+                    <NSwitch v-model:value="config.extraction_enabled" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.maxRecentTurns')">
+                    <NInputNumber v-model:value="config.max_recent_turns_for_query" :min="1" :max="50" style="width: 200px;" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.vectorTopK')">
+                    <NInputNumber v-model:value="config.vector_top_k" :min="1" :max="200" style="width: 200px;" />
+                  </NFormItem>
+                </NForm>
+              </NCollapseItem>
+
+              <NCollapseItem :title="$t('settings.adv.scopes')" name="scopes">
+                <NForm label-placement="left" label-width="240" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+                  <NFormItem :label="$t('settings.adv.scopeGlobal')"><NSwitch v-model:value="config.scope_global" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.scopeCharacter')"><NSwitch v-model:value="config.scope_character" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.scopeConversation')"><NSwitch v-model:value="config.scope_conversation" /></NFormItem>
+                </NForm>
+              </NCollapseItem>
+
+              <NCollapseItem :title="$t('settings.adv.extraction')" name="extraction">
+                <NForm label-placement="left" label-width="240" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+                  <NFormItem :label="$t('settings.adv.extMinImportance')">
+                    <NSlider v-model:value="config.ext_min_importance" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="width: 240px;" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.extMinConfidence')">
+                    <NSlider v-model:value="config.ext_min_confidence" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="width: 240px;" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.extAfterEachTurn')">
+                    <NSwitch v-model:value="config.ext_after_each_turn" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.extFallbackRules')">
+                    <NSwitch v-model:value="config.ext_fallback_rule_based" />
+                  </NFormItem>
+                </NForm>
+              </NCollapseItem>
+
+              <NCollapseItem :title="$t('settings.adv.scoring')" name="scoring">
+                <p style="color: #71717a; font-size: 12px; margin-top: 0;">{{ $t('settings.adv.scoringHint', { total: scoringTotal.toFixed(2) }) }}</p>
+                <NForm label-placement="left" label-width="240" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+                  <NFormItem :label="$t('settings.adv.scoreVector')"><NSlider v-model:value="config.score_vector" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="width: 320px;" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.scoreImportance')"><NSlider v-model:value="config.score_importance" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="width: 320px;" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.scoreRecency')"><NSlider v-model:value="config.score_recency" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="width: 320px;" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.scoreScope')"><NSlider v-model:value="config.score_scope" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="width: 320px;" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.scoreConfidence')"><NSlider v-model:value="config.score_confidence" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="width: 320px;" /></NFormItem>
+                </NForm>
+              </NCollapseItem>
+
+              <NCollapseItem :title="$t('settings.adv.retrievalGate')" name="gate">
+                <NForm label-placement="left" label-width="240" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+                  <NFormItem :label="$t('settings.adv.gateEnabled')"><NSwitch v-model:value="config.rg_enabled" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.gateMode')">
+                    <NSelect v-model:value="config.rg_mode" :options="retrievalGateModes" style="width: 220px;" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.gateOnNewSession')"><NSwitch v-model:value="config.rg_on_new_session" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.gateEveryNTurns')">
+                    <NInputNumber v-model:value="config.rg_every_n_turns" :min="0" :max="50" style="width: 200px;" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.gateStateConfBelow')">
+                    <NSlider v-model:value="config.rg_state_conf_below" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="width: 240px;" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.gateTriggerKeywords')">
+                    <NDynamicTags v-model:value="config.rg_trigger_keywords" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.gateSkipCharsBelow')">
+                    <NInputNumber v-model:value="config.rg_skip_chars_below" :min="0" :max="200" style="width: 200px;" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.gateSkipWhenSufficient')"><NSwitch v-model:value="config.rg_skip_when_state_sufficient" /></NFormItem>
+                </NForm>
+              </NCollapseItem>
+
+              <NCollapseItem :title="$t('settings.adv.hotContext')" name="hotContext">
+                <NForm label-placement="left" label-width="240" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+                  <NFormItem :label="$t('settings.adv.hcEnabled')"><NSwitch v-model:value="config.hc_enabled" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.hcInjectAlways')"><NSwitch v-model:value="config.hc_inject_always" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.hcMaxChars')">
+                    <NInputNumber v-model:value="config.hc_max_chars" :min="100" :max="10000" :step="100" style="width: 200px;" />
+                  </NFormItem>
+                  <NFormItem :label="$t('settings.adv.hcSections')">
+                    <div style="display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 6px 12px; flex: 1;">
+                      <div v-for="key in HOT_CONTEXT_SECTION_KEYS" :key="key" style="display: flex; align-items: center; gap: 8px;">
+                        <NSwitch
+                          :value="config.hc_include_sections[key] !== false"
+                          @update:value="(v: boolean) => { config.hc_include_sections[key] = v }"
+                          size="small"
+                        />
+                        <span style="color: #d4d4d8; font-size: 13px; min-width: 90px;">{{ $t(`settings.adv.section.${key}`) }}</span>
+                        <NInputNumber
+                          :value="config.hc_max_items[key] ?? 5"
+                          @update:value="(v: number) => { config.hc_max_items[key] = v ?? 5 }"
+                          :min="0" :max="50" size="small" style="width: 90px;"
+                        />
+                      </div>
+                    </div>
+                  </NFormItem>
+                </NForm>
+              </NCollapseItem>
+            </NCollapse>
+          </NCard>
+        </NSpace>
+      </NTabPane>
     </NTabs>
 
     <!-- Save -->
@@ -769,6 +1050,16 @@ onMounted(() => {
         <p><strong>{{ $t('settings.language') }}</strong>: {{ $t('settings.languageHelp') }}</p>
         <p><strong>{{ $t('settings.closeToTray') }}</strong>: {{ $t('settings.closeToTrayHelp') }}</p>
         <p><strong>{{ $t('settings.updateCheck') }}</strong>: {{ $t('settings.updateCheckHelp') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'advanced'" class="help-content">
+        <p>{{ $t('settings.adv.help.intro') }}</p>
+        <p><strong>{{ $t('settings.adv.conversation') }}</strong>: {{ $t('settings.adv.help.conversation') }}</p>
+        <p><strong>{{ $t('settings.adv.memoryTop') }}</strong>: {{ $t('settings.adv.help.memoryTop') }}</p>
+        <p><strong>{{ $t('settings.adv.scopes') }}</strong>: {{ $t('settings.adv.help.scopes') }}</p>
+        <p><strong>{{ $t('settings.adv.extraction') }}</strong>: {{ $t('settings.adv.help.extraction') }}</p>
+        <p><strong>{{ $t('settings.adv.scoring') }}</strong>: {{ $t('settings.adv.help.scoring') }}</p>
+        <p><strong>{{ $t('settings.adv.retrievalGate') }}</strong>: {{ $t('settings.adv.help.retrievalGate') }}</p>
+        <p><strong>{{ $t('settings.adv.hotContext') }}</strong>: {{ $t('settings.adv.help.hotContext') }}</p>
       </div>
     </NModal>
   </div>

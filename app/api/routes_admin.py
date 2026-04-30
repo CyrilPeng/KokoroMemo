@@ -193,8 +193,48 @@ async def get_current_config():
         },
         "memory": {
             "enabled": cfg.memory.enabled,
+            "inject_enabled": cfg.memory.inject_enabled,
+            "extraction_enabled": cfg.memory.extraction_enabled,
+            "max_recent_turns_for_query": cfg.memory.max_recent_turns_for_query,
+            "vector_top_k": cfg.memory.vector_top_k,
             "final_top_k": cfg.memory.final_top_k,
             "max_injected_chars": cfg.memory.max_injected_chars,
+            "scopes": {
+                "include_global": cfg.memory.scopes.include_global,
+                "include_character": cfg.memory.scopes.include_character,
+                "include_conversation": cfg.memory.scopes.include_conversation,
+            },
+            "scoring": {
+                "vector_weight": cfg.memory.scoring.vector_weight,
+                "importance_weight": cfg.memory.scoring.importance_weight,
+                "recency_weight": cfg.memory.scoring.recency_weight,
+                "scope_weight": cfg.memory.scoring.scope_weight,
+                "confidence_weight": cfg.memory.scoring.confidence_weight,
+            },
+            "extraction": {
+                "min_importance": cfg.memory.extraction.min_importance,
+                "min_confidence": cfg.memory.extraction.min_confidence,
+                "extract_after_each_turn": cfg.memory.extraction.extract_after_each_turn,
+                "fallback_rule_based": cfg.memory.extraction.fallback_rule_based,
+            },
+            "hot_context": {
+                "enabled": cfg.memory.hot_context.enabled,
+                "inject_always": cfg.memory.hot_context.inject_always,
+                "max_chars": cfg.memory.hot_context.max_chars,
+                "include_sections": dict(cfg.memory.hot_context.include_sections),
+                "section_order": list(cfg.memory.hot_context.section_order),
+                "max_items_per_section": dict(cfg.memory.hot_context.max_items_per_section),
+            },
+            "retrieval_gate": {
+                "enabled": cfg.memory.retrieval_gate.enabled,
+                "mode": cfg.memory.retrieval_gate.mode,
+                "vector_search_on_new_session": cfg.memory.retrieval_gate.vector_search_on_new_session,
+                "vector_search_every_n_turns": cfg.memory.retrieval_gate.vector_search_every_n_turns,
+                "vector_search_when_state_confidence_below": cfg.memory.retrieval_gate.vector_search_when_state_confidence_below,
+                "trigger_keywords": list(cfg.memory.retrieval_gate.trigger_keywords),
+                "skip_when_latest_user_text_chars_below": cfg.memory.retrieval_gate.skip_when_latest_user_text_chars_below,
+                "skip_when_state_is_sufficient": cfg.memory.retrieval_gate.skip_when_state_is_sufficient,
+            },
             "judge": {
                 "enabled": cfg.memory.judge.enabled,
                 "provider": cfg.memory.judge.provider,
@@ -233,6 +273,11 @@ async def get_current_config():
             "api_key_set": bool(llm_key),
             "model": cfg.llm.model,
         },
+        "conversation": {
+            "auto_new_session_gap_minutes": cfg.conversation.auto_new_session_gap_minutes,
+            "detect_system_prompt_change": cfg.conversation.detect_system_prompt_change,
+            "detect_message_count_reset": cfg.conversation.detect_message_count_reset,
+        },
     }
 
 
@@ -260,7 +305,14 @@ async def save_config(data: dict = Body(...)):
     old_root_dir = cfg.storage.root_dir
     old_port = cfg.server.port
 
-    # Merge incoming data into existing config
+    # Merge incoming data into existing config (deep merge for nested dicts)
+    def _deep_merge(target: dict, src: dict) -> None:
+        for k, v in src.items():
+            if isinstance(v, dict) and isinstance(target.get(k), dict):
+                _deep_merge(target[k], v)
+            else:
+                target[k] = v
+
     if "server" in data:
         existing.setdefault("server", {}).update(data["server"])
     if "llm" in data:
@@ -270,7 +322,9 @@ async def save_config(data: dict = Body(...)):
     if "rerank" in data:
         existing.setdefault("rerank", {}).update(data["rerank"])
     if "memory" in data:
-        existing.setdefault("memory", {}).update(data["memory"])
+        _deep_merge(existing.setdefault("memory", {}), data["memory"])
+    if "conversation" in data:
+        existing.setdefault("conversation", {}).update(data["conversation"])
     if "storage" in data:
         new_root = data["storage"].get("root_dir")
         existing.setdefault("storage", {}).update(data["storage"])

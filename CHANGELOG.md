@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.4 (unreleased)
+
+### 改进
+
+- **侧边栏 GitHub 入口** — 左下角新增 GitHub 图标，点击跳转项目仓库
+- **状态板填表帮助** — 帮助弹窗新增最小置信度、超时时间、Temperature、自定义 Prompt 的功能说明
+
+### 修复
+
+- 修复 Gemini 反代场景下 `x-goog-api-key` header 导致 401 认证失败
+- 移除未使用的 `fillModeOptions` 变量，修复 TypeScript 构建报错
+
 ## v0.2.3 (2026-04-29)
 
 ### 新增

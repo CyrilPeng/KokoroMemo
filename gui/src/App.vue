@@ -14,11 +14,13 @@ import {
 } from 'naive-ui'
 import type { MenuOption, GlobalThemeOverrides } from 'naive-ui'
 import { invoke } from '@tauri-apps/api/core'
+import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import {
   HomeOutline,
   BulbOutline,
   ReaderOutline,
   SettingsOutline,
+  LogoGithub,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -51,6 +53,14 @@ async function syncCloseToTraySetting() {
 }
 
 onMounted(syncCloseToTraySetting)
+
+async function openGitHub() {
+  try {
+    await shellOpen('https://github.com/CyrilPeng/KokoroMemo')
+  } catch {
+    window.open('https://github.com/CyrilPeng/KokoroMemo', '_blank')
+  }
+}
 const themeOverrides: GlobalThemeOverrides = {
   common: {
     primaryColor: '#a78bfa',
@@ -99,8 +109,11 @@ const themeOverrides: GlobalThemeOverrides = {
             @update:value="handleMenuUpdate"
             :indent="24"
           />
-          <div style="position: absolute; bottom: 16px; left: 24px; right: 24px; font-size: 12px; color: #52525b;">
-            {{ $t('common.version') }}
+          <div style="position: absolute; bottom: 16px; left: 24px; right: 24px; display: flex; align-items: center; gap: 8px;">
+            <NIcon :size="18" style="cursor: pointer; color: #71717a;" @click="openGitHub">
+              <LogoGithub />
+            </NIcon>
+            <span style="font-size: 12px; color: #52525b;">{{ $t('common.version') }}</span>
           </div>
         </NLayoutSider>
         <NLayoutContent :native-scrollbar="false" content-style="padding: 32px;">

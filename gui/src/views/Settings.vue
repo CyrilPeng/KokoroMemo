@@ -240,10 +240,6 @@ const judgeModeOptions = computed(() => [
   { label: t('settings.judgeModeModelRules'), value: 'model_with_user_rules' },
 ])
 
-const fillModeOptions = computed(() => [
-  { label: t('settings.fillModeTemplate'), value: 'model_template' },
-])
-
 const helpModal = ref('')
 
 const providerUrlPlaceholder = computed(() => {
@@ -738,6 +734,10 @@ onMounted(() => {
       <div v-else-if="helpModal === 'stateFiller'" class="help-content">
         <p>{{ $t('settings.stateFillerHelp') }}</p>
         <p><strong>{{ $t('settings.fillMode') }}</strong>: {{ $t('settings.fillModeHelp') }}</p>
+        <p><strong>{{ $t('settings.minConfidence') }}</strong>: {{ $t('settings.minConfidenceHelp') }}</p>
+        <p><strong>{{ $t('settings.timeout') }}</strong>: {{ $t('settings.timeoutHelp') }}</p>
+        <p><strong>{{ $t('settings.temperature') }}</strong>: {{ $t('settings.temperatureHelp') }}</p>
+        <p><strong>{{ $t('settings.customPrompt') }}</strong>: {{ $t('settings.customPromptHelp') }}</p>
       </div>
       <div v-else-if="helpModal === 'memory'" class="help-content">
         <p>{{ $t('settings.memoryHelp') }}</p>

@@ -54,6 +54,7 @@ export default {
     totalMemories: '已批准记忆',
     totalAll: '总计（含所有状态）:',
     inboxPending: '待审核',
+    awaitingReview: '等待审核处理',
     gateRequests24h: '检索门控 (24h)',
     skipRate: '跳过率:',
     dailyGrowth7d: '7 日新增',

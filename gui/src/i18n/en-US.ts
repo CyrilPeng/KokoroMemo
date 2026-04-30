@@ -54,6 +54,7 @@ export default {
     totalMemories: 'Approved Memories',
     totalAll: 'Total (all statuses):',
     inboxPending: 'Inbox Pending',
+    awaitingReview: 'Awaiting review',
     gateRequests24h: 'Retrieval Gate (24h)',
     skipRate: 'Skip rate:',
     dailyGrowth7d: '7-Day Growth',

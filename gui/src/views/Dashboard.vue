@@ -129,6 +129,7 @@ onMounted(() => {
             <NGridItem span="4 m:1">
               <NCard style="background: #18181b; border: 1px solid #27272a;">
                 <NStatistic :label="$t('dashboard.inboxPending')" :value="inboxPending" />
+                <div style="color: #52525b; font-size: 12px; margin-top: 4px;">{{ $t('dashboard.awaitingReview') }}</div>
               </NCard>
             </NGridItem>
             <NGridItem span="4 m:1">

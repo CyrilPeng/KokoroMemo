@@ -33,7 +33,7 @@ embedding:
   base_url: "https://ai.gitee.com/v1"
   api_key: ""
   api_key_env: "MODELARK_API_KEY"
-  model: "qwen3-embedding-8b"
+  model: "Qwen3-Embedding-8B"
   dimension: 4096  # 必须与模型实际输出维度一致，切换模型后需重建索引
   timeout_seconds: 8
   batch_size: 16
@@ -45,7 +45,7 @@ rerank:
   base_url: "https://ai.gitee.com/v1"
   api_key: ""
   api_key_env: "MODELARK_API_KEY"
-  model: "qwen3-reranker-8b"
+  model: "Qwen3-Reranker-8B"
   timeout_seconds: 8
   candidate_top_k: 30
   final_top_k: 8

@@ -688,9 +688,9 @@ Embedding 是长期记忆召回的核心能力，默认开启。
 embedding:
   enabled: true
   provider: "modelark"
-  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  base_url: "https://ai.gitee.com/v1"
   api_key: "YOUR_EMBEDDING_API_KEY"
-  model: "qwen3-embedding-8b"
+  model: "Qwen3-Embedding-8B"
   dimension: 4096
   timeout_seconds: 8
 ```
@@ -721,9 +721,9 @@ rerank:
 rerank:
   enabled: true
   provider: "modelark"
-  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  base_url: "https://ai.gitee.com/v1"
   api_key: "YOUR_RERANK_API_KEY"
-  model: "qwen3-reranker-8b"
+  model: "Qwen3-Reranker-8B"
   candidate_top_k: 40
   final_top_k: 8
 ```
@@ -975,9 +975,9 @@ llm:
 embedding:
   enabled: true
   provider: "modelark"
-  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  base_url: "https://ai.gitee.com/v1"
   api_key: "YOUR_EMBEDDING_API_KEY"
-  model: "qwen3-embedding-8b"
+  model: "Qwen3-Embedding-8B"
   dimension: 4096
   timeout_seconds: 8
   batch_size: 16
@@ -986,9 +986,9 @@ embedding:
 rerank:
   enabled: false
   provider: "modelark"
-  base_url: "https://ark.cn-beijing.volces.com/api/v3"
+  base_url: "https://ai.gitee.com/v1"
   api_key: "YOUR_RERANK_API_KEY"
-  model: "qwen3-reranker-8b"
+  model: "Qwen3-Reranker-8B"
   timeout_seconds: 8
   candidate_top_k: 40
   final_top_k: 8

@@ -52,6 +52,7 @@ const fillForm = ref({ user_message: '', assistant_message: '' })
 const configLoaded = ref(false)
 const stateItemCount = ref(0)
 const isNewSession = ref(false)
+const recentConversations = ref<any[]>([])
 const presets = ref<any[]>([])
 const showPresetModal = ref(false)
 const presetForm = ref({ name: '', description: '' })
@@ -64,6 +65,12 @@ const wizardForm = ref({ library_ids: ['lib_default'] as string[], write_library
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? `(${t('common.builtin')})` : ''}`, value: item.template_id })))
 const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
+const conversationOptions = computed(() => recentConversations.value.map((item) => {
+  const parts = [item.conversation_id]
+  if (item.character_id) parts.push(item.character_id)
+  if (item.client_name) parts.push(item.client_name)
+  return { label: parts.join(' · '), value: item.conversation_id }
+}))
 const mountedLibraryNames = computed(() => memoryMounts.value.map((item) => item.name).join(' + ') || t('state.noMount'))
 const fieldOptions = computed(() => (currentTemplate.value?.tabs || []).flatMap((tab: any) =>
   (tab.fields || []).map((field: any) => ({ label: `${tab.label} / ${field.label}`, value: field.field_id })),
@@ -93,6 +100,11 @@ async function fetchTemplates() {
 async function fetchMemoryLibraries() {
   const resp = await apiFetch('/admin/memory-libraries', { headers: authHeaders() })
   memoryLibraries.value = (await resp.json()).items || []
+}
+
+async function fetchConversations() {
+  const resp = await apiFetch('/admin/conversations?limit=100', { headers: authHeaders() })
+  recentConversations.value = (await resp.json()).items || []
 }
 
 async function fetchConfig() {
@@ -674,7 +686,7 @@ onMounted(() => {
   const savedToken = localStorage.getItem('kokoromemo.adminToken')
   if (saved) conversationId.value = saved
   if (savedToken) adminToken.value = savedToken
-  Promise.all([fetchTemplates(), fetchMemoryLibraries(), fetchPresets()]).catch(() => {})
+  Promise.all([fetchTemplates(), fetchMemoryLibraries(), fetchPresets(), fetchConversations()]).catch(() => {})
 })
 </script>
 
@@ -691,7 +703,7 @@ onMounted(() => {
         <NGridItem span="4 m:2">
           <NFormItem :label="$t('state.conversationId')" label-placement="top" style="margin-bottom: 0;">
             <NSpace :wrap="false">
-              <NInput v-model:value="conversationId" :placeholder="$t('state.inputConversationId')" style="width: 280px;" @blur="saveLocalInputs" />
+              <NSelect v-model:value="conversationId" :options="conversationOptions" filterable tag :placeholder="$t('state.selectConversation')" style="width: 320px;" @blur="saveLocalInputs" />
               <NButton type="primary" @click="fetchAll">{{ $t('common.load') }}</NButton>
             </NSpace>
           </NFormItem>
@@ -774,11 +786,11 @@ onMounted(() => {
         <NSpace>
           <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">{{ $t('state.saveConfig') }}</NButton>
           <NButton @click="openCopyModal" :disabled="!stateItemCount">{{ $t('state.copyToNew') }}</NButton>
-          <NPopconfirm @positive-click="resetState">
+          <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="resetState">
             <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.resetToEmpty') }}</NButton></template>
             {{ $t('state.resetConfirm') }}
           </NPopconfirm>
-          <NPopconfirm @positive-click="clearState">
+          <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="clearState">
             <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.clearState') }}</NButton></template>
             {{ $t('state.clearConfirm') }}
           </NPopconfirm>

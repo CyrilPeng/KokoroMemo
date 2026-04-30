@@ -157,3 +157,29 @@ async def list_characters(db_path: str) -> list[dict]:
             }
             for row in rows
         ]
+
+
+async def list_conversations(db_path: str, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
+    """List recent conversations ordered by last_seen_at descending."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT COUNT(*) FROM conversations")
+        total = (await cursor.fetchone())[0]
+        cursor = await db.execute(
+            "SELECT conversation_id, user_id, character_id, client_name, last_seen_at, first_seen_at "
+            "FROM conversations ORDER BY last_seen_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+        rows = await cursor.fetchall()
+        items = [
+            {
+                "conversation_id": row["conversation_id"],
+                "user_id": row["user_id"],
+                "character_id": row["character_id"],
+                "client_name": row["client_name"],
+                "last_seen_at": row["last_seen_at"],
+                "first_seen_at": row["first_seen_at"],
+            }
+            for row in rows
+        ]
+        return items, total

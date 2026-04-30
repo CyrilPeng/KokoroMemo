@@ -488,6 +488,20 @@ async def delete_memory_library_api(library_id: str):
     return {"status": "ok" if ok else "error", "message": None if ok else "默认记忆库不能删除或记忆库不存在"}
 
 
+@router.get("/admin/conversations")
+async def list_conversations_api(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """List recent conversations ordered by last activity."""
+    from app.core.state import get_config
+    from app.storage.sqlite_app import list_conversations
+
+    cfg = get_config()
+    items, total = await list_conversations(cfg.storage.sqlite.app_db, limit=limit, offset=offset)
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
 @router.get("/admin/conversations/{conversation_id}/memory-mounts")
 async def get_conversation_memory_mounts_api(conversation_id: str):
     """Get mounted long-term memory libraries for a conversation."""

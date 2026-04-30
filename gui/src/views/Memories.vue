@@ -75,7 +75,7 @@ const columns = [
     title: t('memories.column.actions'), key: 'actions', width: 130,
     render: (row: any) => h(NSpace, { size: 4 }, { default: () => [
       h(NButton, { size: 'tiny', type: 'info', quaternary: true, onClick: () => openEditModal(row) }, { default: () => t('common.edit') }),
-      h(NPopconfirm, { onPositiveClick: () => deleteCard(row.card_id) }, {
+      h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => deleteCard(row.card_id) }, {
         trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => t('common.delete') }),
         default: () => t('common.confirm') + t('common.delete') + '?',
       }),
@@ -297,7 +297,7 @@ onMounted(fetchMemories)
           <NButton size="small" @click="openCreateLibrary">{{ $t('memories.createLibrary') }}</NButton>
           <NButton size="small" :disabled="!selectedLibraryId" @click="openEditLibrary">{{ $t('memories.editLibrary') }}</NButton>
           <NButton size="small" :disabled="!selectedLibraryId" @click="openPresetModal">{{ $t('memories.saveAsPreset') }}</NButton>
-          <NPopconfirm @positive-click="deleteLibrary"><template #trigger><NButton size="small" type="error" quaternary :disabled="!selectedLibraryId">{{ $t('memories.deleteLibrary') }}</NButton></template>{{ $t('memories.deleteLibraryConfirm') }}</NPopconfirm>
+          <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="deleteLibrary"><template #trigger><NButton size="small" type="error" quaternary :disabled="!selectedLibraryId">{{ $t('memories.deleteLibrary') }}</NButton></template>{{ $t('memories.deleteLibraryConfirm') }}</NPopconfirm>
           <NButton size="small" :disabled="!selectedLibraryId" @click="exportLibrary">{{ $t('memories.exportLibrary') }}</NButton>
           <NButton size="small" @click="triggerImportLibrary">{{ $t('memories.importLibrary') }}</NButton>
           <NButton size="small" @click="fetchMemories" quaternary style="color: #71717a;">{{ $t('common.refresh') }}</NButton>

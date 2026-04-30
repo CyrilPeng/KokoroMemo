@@ -538,51 +538,6 @@ onMounted(() => {
               </template>
             </NForm>
           </NCard>
-
-          <!-- State Filler Config -->
-          <NCard style="background: #18181b; border: 1px solid #27272a;">
-            <template #header>
-              <NSpace align="center">
-                <span>{{ $t('settings.stateFillerConfig') }}</span>
-                <NButton quaternary size="tiny" @click="helpModal = 'stateFiller'"><span class="help-icon">?</span></NButton>
-              </NSpace>
-            </template>
-            <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
-              <NFormItem :label="$t('common.enabled')">
-                <NSwitch v-model:value="config.state_filler_enabled" />
-              </NFormItem>
-              <template v-if="config.state_filler_enabled">
-                <NFormItem label="Provider">
-                  <NSelect v-model:value="config.state_filler_provider" :options="providerOptions" style="width: 280px;" />
-                </NFormItem>
-                <NFormItem label="Base URL">
-                  <NInput v-model:value="config.state_filler_base_url" :placeholder="$t('settings.reuseBaseUrlPlaceholder')" />
-                </NFormItem>
-                <NFormItem label="API Key">
-                  <NInput v-model:value="config.state_filler_api_key" type="password" show-password-on="click" :placeholder="$t('settings.reuseApiKeyPlaceholder')" />
-                </NFormItem>
-                <NFormItem :label="$t('settings.modelName')">
-                  <div style="display: flex; gap: 8px; flex: 1;">
-                    <NSelect v-if="stateFillerModels.length > 0" v-model:value="config.state_filler_model" :options="stateFillerModels" filterable tag :placeholder="$t('settings.cheapModelPlaceholder')" style="flex: 1;" />
-                    <NInput v-else v-model:value="config.state_filler_model" :placeholder="$t('settings.reuseModelPlaceholder')" style="flex: 1;" />
-                    <NButton size="small" :loading="fetchingStateFiller" @click="fetchModelList(config.state_filler_base_url || config.judge_base_url || config.llm_base_url, config.state_filler_api_key || config.judge_api_key || config.llm_api_key, 'state_filler')">{{ $t('common.fetch') }}</NButton>
-                  </div>
-                </NFormItem>
-                <NFormItem :label="$t('settings.minConfidence')">
-                  <NInputNumber v-model:value="config.state_filler_min_confidence" :min="0" :max="1" :step="0.05" style="width: 200px;" />
-                </NFormItem>
-                <NFormItem :label="$t('settings.timeout')">
-                  <NInputNumber v-model:value="config.state_filler_timeout_seconds" :min="5" :max="120" style="width: 200px;" />
-                </NFormItem>
-                <NFormItem label="Temperature">
-                  <NInputNumber v-model:value="config.state_filler_temperature" :min="0" :max="1" :step="0.05" style="width: 200px;" />
-                </NFormItem>
-                <NFormItem :label="$t('settings.customPrompt')">
-                  <NInput v-model:value="config.state_filler_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.stateFillerPromptPlaceholder')" />
-                </NFormItem>
-              </template>
-            </NForm>
-          </NCard>
         </NSpace>
       </NTabPane>
 
@@ -653,7 +608,56 @@ onMounted(() => {
         </NSpace>
       </NTabPane>
 
-      <!-- Tab 3: 服务配置 -->
+      <!-- Tab 3: 状态板填表 -->
+      <NTabPane name="stateFiller" :tab="$t('settings.tabStateFiller')">
+        <NSpace vertical :size="16">
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>
+              <NSpace align="center">
+                <span>{{ $t('settings.stateFillerConfig') }}</span>
+                <NButton quaternary size="tiny" @click="helpModal = 'stateFiller'"><span class="help-icon">?</span></NButton>
+              </NSpace>
+            </template>
+            <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
+              <NFormItem :label="$t('common.enabled')">
+                <NSwitch v-model:value="config.state_filler_enabled" />
+              </NFormItem>
+              <template v-if="config.state_filler_enabled">
+                <NFormItem label="Provider">
+                  <NSelect v-model:value="config.state_filler_provider" :options="providerOptions" style="width: 280px;" />
+                </NFormItem>
+                <NFormItem label="Base URL">
+                  <NInput v-model:value="config.state_filler_base_url" :placeholder="$t('settings.reuseBaseUrlPlaceholder')" />
+                </NFormItem>
+                <NFormItem label="API Key">
+                  <NInput v-model:value="config.state_filler_api_key" type="password" show-password-on="click" :placeholder="$t('settings.reuseApiKeyPlaceholder')" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.modelName')">
+                  <div style="display: flex; gap: 8px; flex: 1;">
+                    <NSelect v-if="stateFillerModels.length > 0" v-model:value="config.state_filler_model" :options="stateFillerModels" filterable tag :placeholder="$t('settings.cheapModelPlaceholder')" style="flex: 1;" />
+                    <NInput v-else v-model:value="config.state_filler_model" :placeholder="$t('settings.reuseModelPlaceholder')" style="flex: 1;" />
+                    <NButton size="small" :loading="fetchingStateFiller" @click="fetchModelList(config.state_filler_base_url || config.judge_base_url || config.llm_base_url, config.state_filler_api_key || config.judge_api_key || config.llm_api_key, 'state_filler')">{{ $t('common.fetch') }}</NButton>
+                  </div>
+                </NFormItem>
+                <NFormItem :label="$t('settings.minConfidence')">
+                  <NInputNumber v-model:value="config.state_filler_min_confidence" :min="0" :max="1" :step="0.05" style="width: 200px;" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.timeout')">
+                  <NInputNumber v-model:value="config.state_filler_timeout_seconds" :min="5" :max="120" style="width: 200px;" />
+                </NFormItem>
+                <NFormItem label="Temperature">
+                  <NInputNumber v-model:value="config.state_filler_temperature" :min="0" :max="1" :step="0.05" style="width: 200px;" />
+                </NFormItem>
+                <NFormItem :label="$t('settings.customPrompt')">
+                  <NInput v-model:value="config.state_filler_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.stateFillerPromptPlaceholder')" />
+                </NFormItem>
+              </template>
+            </NForm>
+          </NCard>
+        </NSpace>
+      </NTabPane>
+
+      <!-- Tab 4: 服务配置 -->
       <NTabPane name="server" :tab="$t('settings.tabServer')">
         <NSpace vertical :size="16">
           <NCard style="background: #18181b; border: 1px solid #27272a;">

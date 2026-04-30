@@ -29,7 +29,7 @@ import {
   useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { AddOutline, EllipsisHorizontal, HelpCircleOutline } from '@vicons/ionicons5'
+import { AddOutline, EllipsisHorizontal, HelpCircleOutline, CreateOutline, RefreshOutline, TrashOutline, AddCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 
 const { t } = useI18n()
@@ -923,10 +923,6 @@ function fieldRows(tab: any) {
   return rows
 }
 
-function hButton(label: string, onClick: () => void) {
-  return h('button', { class: 'km-link-button', onClick }, label)
-}
-
 function authHeaders(json = false) {
   const headers: Record<string, string> = {}
   if (json) headers['Content-Type'] = 'application/json'
@@ -937,6 +933,15 @@ function authHeaders(json = false) {
 function saveLocalInputs() {
   localStorage.setItem('kokoromemo.lastConversationId', conversationId.value)
   localStorage.setItem('kokoromemo.adminToken', adminToken.value)
+}
+
+function actionIconBtn(icon: any, tooltip: string, onClick: () => void, type: 'default' | 'primary' | 'warning' | 'error' = 'default') {
+  return h(NTooltip, { trigger: 'hover' }, {
+    trigger: () => h(NButton, {
+      circle: true, quaternary: true, size: 'tiny', type, onClick,
+    }, { icon: () => h(NIcon, null, { default: () => h(icon) }) }),
+    default: () => tooltip,
+  })
 }
 
 const boardColumns = [
@@ -950,11 +955,22 @@ const boardColumns = [
   { title: t('state.column.source'), key: 'source', width: 120, render: (row: any) => row.item?.source || '—' },
   { title: t('state.column.updatedAt'), key: 'updated_at', width: 170, render: (row: any) => row.item?.updated_at || '—' },
   { title: t('state.column.locked'), key: 'locked', width: 80, render: (row: any) => row.item?.user_locked ? h(NTag, { size: 'small', type: 'warning' }, { default: () => t('state.column.locked') }) : '—' },
-  { title: t('state.column.actions'), key: 'actions', width: 220, render: (row: any) => row.item ? [
-    hButton(t('state.actions.edit'), () => openEditModal(row.item, row.field)),
-    h(NPopconfirm, { onPositiveClick: () => resetItem(row.item) }, { trigger: () => hButton(t('state.actions.reset'), () => {}), default: () => t('state.messages.confirmReset') }),
-    h(NPopconfirm, { onPositiveClick: () => deleteItem(row.item) }, { trigger: () => hButton(t('state.actions.delete'), () => {}), default: () => t('state.messages.confirmDelete') }),
-  ] : hButton(t('state.actions.fill'), () => openCreateModal(row.field)) },
+  { title: t('state.column.actions'), key: 'actions', width: 140, render: (row: any) => row.item
+    ? h(NSpace, { size: 4, align: 'center', wrap: false }, { default: () => [
+        actionIconBtn(CreateOutline, t('state.actions.edit'), () => openEditModal(row.item, row.field)),
+        h(NPopconfirm, { onPositiveClick: () => resetItem(row.item) }, {
+          trigger: () => actionIconBtn(RefreshOutline, t('state.actions.reset'), () => {}, 'warning'),
+          default: () => t('state.messages.confirmReset'),
+        }),
+        h(NPopconfirm, { onPositiveClick: () => deleteItem(row.item) }, {
+          trigger: () => actionIconBtn(TrashOutline, t('state.actions.delete'), () => {}, 'error'),
+          default: () => t('state.messages.confirmDelete'),
+        }),
+      ] })
+    : h(NButton, { size: 'tiny', dashed: true, type: 'primary', onClick: () => openCreateModal(row.field) }, {
+        icon: () => h(NIcon, null, { default: () => h(AddCircleOutline) }),
+        default: () => t('state.actions.fill'),
+      }) },
 ]
 
 const legacyColumns = [
@@ -964,11 +980,17 @@ const legacyColumns = [
   { title: t('state.column.priority'), key: 'priority', width: 80 },
   { title: t('state.column.status'), key: 'status', width: 90, render: (row: any) => h(NTag, { size: 'small', type: row.status === 'active' ? 'success' : row.status === 'resolved' ? 'warning' : 'default' }, { default: () => row.status }) },
   { title: t('state.column.source'), key: 'source', width: 120 },
-  { title: t('state.column.actions'), key: 'actions', width: 220, render: (row: any) => [
-    hButton(t('state.actions.edit'), () => openEditModal(row)),
-    h(NPopconfirm, { onPositiveClick: () => resetItem(row) }, { trigger: () => hButton(t('state.actions.reset'), () => {}), default: () => t('state.messages.confirmReset') }),
-    h(NPopconfirm, { onPositiveClick: () => deleteItem(row) }, { trigger: () => hButton(t('state.actions.delete'), () => {}), default: () => t('state.messages.confirmDelete') }),
-  ] },
+  { title: t('state.column.actions'), key: 'actions', width: 140, render: (row: any) => h(NSpace, { size: 4, align: 'center', wrap: false }, { default: () => [
+    actionIconBtn(CreateOutline, t('state.actions.edit'), () => openEditModal(row)),
+    h(NPopconfirm, { onPositiveClick: () => resetItem(row) }, {
+      trigger: () => actionIconBtn(RefreshOutline, t('state.actions.reset'), () => {}, 'warning'),
+      default: () => t('state.messages.confirmReset'),
+    }),
+    h(NPopconfirm, { onPositiveClick: () => deleteItem(row) }, {
+      trigger: () => actionIconBtn(TrashOutline, t('state.actions.delete'), () => {}, 'error'),
+      default: () => t('state.messages.confirmDelete'),
+    }),
+  ] }) },
 ]
 
 const decisionColumns = [
@@ -1281,13 +1303,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.km-link-button {
-  margin-right: 8px;
-  border: none;
-  background: transparent;
-  color: #a78bfa;
-  cursor: pointer;
-}
 .km-muted {
   color: #71717a;
   font-size: 12px;

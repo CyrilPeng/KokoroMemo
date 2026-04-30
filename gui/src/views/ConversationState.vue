@@ -151,12 +151,16 @@ async function fetchAll() {
       apiFetch(`/admin/conversations/${conversationId.value}/retrieval-decisions?limit=100`, { headers: authHeaders() }),
       apiFetch(`/admin/conversations/${conversationId.value}/state/events?limit=100`, { headers: authHeaders() }),
     ])
-    currentTemplate.value = await templateResp.json()
-    selectedTemplateId.value = currentTemplate.value?.template_id || ''
-    stateItems.value = (await stateResp.json()).items || []
-    decisions.value = (await decisionResp.json()).items || []
-    events.value = (await eventResp.json()).items || []
-    stateItemCount.value = stateItems.value.filter((item) => item.status === 'active').length
+    if (templateResp.ok) {
+      currentTemplate.value = await templateResp.json()
+      selectedTemplateId.value = currentTemplate.value?.template_id || ''
+    }
+    if (stateResp.ok) {
+      stateItems.value = (await stateResp.json()).items || []
+      stateItemCount.value = stateItems.value.filter((item) => item.status === 'active').length
+    }
+    if (decisionResp.ok) decisions.value = (await decisionResp.json()).items || []
+    if (eventResp.ok) events.value = (await eventResp.json()).items || []
     await fetchConfig()
     saveLocalInputs()
   } catch (e: any) {
@@ -278,15 +282,22 @@ async function saveItem() {
       ? editForm.value.linked_card_ids.split(',').map((s: string) => s.trim()).filter(Boolean)
       : [],
   })
-  const url = editingItem.value ? `/admin/state/${editingItem.value.item_id}` : `/admin/conversations/${conversationId.value}/state`
-  const method = editingItem.value ? 'PATCH' : 'POST'
+  const isEdit = !!editingItem.value && !!editingItem.value.item_id
+  const url = isEdit ? `/admin/state/${editingItem.value.item_id}` : `/admin/conversations/${conversationId.value}/state`
+  const method = isEdit ? 'PATCH' : 'POST'
   try {
     const resp = await apiFetch(url, { method, headers: authHeaders(true), body })
+    if (!resp.ok) {
+      const errorText = await resp.text().catch(() => '')
+      let errorMsg = `HTTP ${resp.status}`
+      try { errorMsg = JSON.parse(errorText).detail || errorMsg } catch {}
+      throw new Error(errorMsg)
+    }
     const data = await resp.json()
     if (data.status !== 'ok') throw new Error(data.message || t('common.saveFailed'))
     showEditModal.value = false
     message.success(t('state.messages.stateItemSaved'))
-    fetchAll()
+    fetchAll().catch(() => {})
   } catch (e: any) {
     message.error(e.message || String(e))
   }

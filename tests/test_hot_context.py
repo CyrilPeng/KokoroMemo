@@ -14,6 +14,8 @@ from app.memory.state_filler import StateFillerConfigView, fill_conversation_sta
 from app.memory.state_updater import rule_based_state_updates
 from app.memory.state_injector import inject_state_board
 from app.memory.state_renderer import HOT_CONTEXT_HEADER, render_state_board
+
+HOT_CONTEXT_HEADER_ZH = HOT_CONTEXT_HEADER["zh"]
 from app.memory.state_schema import ConversationStateItem, StateRenderOptions
 from app.storage.sqlite_state import SQLiteStateStore, init_state_db
 from app.storage.sqlite_cards import init_cards_db, insert_card
@@ -215,7 +217,7 @@ def test_state_renderer_respects_order_and_budget():
             max_items_per_section={"boundary": 1, "scene": 1},
         ),
     )
-    assert rendered.startswith(HOT_CONTEXT_HEADER)
+    assert rendered.startswith(HOT_CONTEXT_HEADER_ZH)
     assert rendered.index("稳定边界") < rendered.index("当前场景")
 
 
@@ -377,9 +379,9 @@ def test_state_injector_preserves_original_system_prompt():
         {"role": "system", "content": "原始设定"},
         {"role": "user", "content": "继续"},
     ]
-    injected = inject_state_board(messages, HOT_CONTEXT_HEADER)
+    injected = inject_state_board(messages, HOT_CONTEXT_HEADER_ZH)
     assert injected[0]["content"] == "原始设定"
-    assert injected[1]["content"] == HOT_CONTEXT_HEADER
+    assert injected[1]["content"] == HOT_CONTEXT_HEADER_ZH
     assert injected[2]["role"] == "user"
 
 

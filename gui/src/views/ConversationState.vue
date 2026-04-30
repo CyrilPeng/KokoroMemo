@@ -325,6 +325,11 @@ async function saveTemplateFromCurrent(): Promise<string | null> {
   return data.template_id
 }
 
+function onAddTabClick() {
+  newTabLabel.value = ''
+  showAddTabModal.value = true
+}
+
 async function addTab() {
   const label = newTabLabel.value.trim()
   if (!label) return
@@ -1115,13 +1120,7 @@ onMounted(async () => {
       <NTabs type="line" animated>
         <NTabPane name="board" :tab="$t('state.tabs.board')">
           <div v-if="currentTemplate">
-            <NTabs type="card" animated>
-              <template #suffix>
-                <NButton text size="small" @click="newTabLabel = ''; showAddTabModal = true" style="margin: 0 6px;">
-                  <template #icon><NIcon><AddOutline /></NIcon></template>
-                  {{ $t('state.addTab') }}
-                </NButton>
-              </template>
+            <NTabs type="card" animated addable @add="onAddTabClick">
               <NTabPane v-for="tab in currentTemplate.tabs" :key="tab.tab_id" :name="tab.tab_id">
                 <template #tab>
                   <NSpace :size="6" align="center" :wrap="false">

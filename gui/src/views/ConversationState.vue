@@ -772,12 +772,13 @@ const eventColumns = [
   { title: t('state.column.newValue'), key: 'new_value', ellipsis: { tooltip: true } },
 ]
 
-onMounted(() => {
+onMounted(async () => {
   const saved = localStorage.getItem('kokoromemo.lastConversationId')
   const savedToken = localStorage.getItem('kokoromemo.adminToken')
   if (saved) conversationId.value = saved
   if (savedToken) adminToken.value = savedToken
-  Promise.all([fetchTemplates(), fetchMemoryLibraries(), fetchPresets(), fetchConversations()]).catch(() => {})
+  await Promise.all([fetchTemplates(), fetchMemoryLibraries(), fetchPresets(), fetchConversations()]).catch(() => {})
+  if (saved) fetchAll().catch(() => {})
 })
 </script>
 

@@ -150,15 +150,6 @@ async def fetch_models(data: dict = Body(...)):
     return await _fetch_models_from_remote(data.get("base_url", ""), data.get("api_key", ""), data.get("provider"))
 
 
-@router.get("/admin/fetch-models")
-async def fetch_models_legacy(
-    base_url: str = Query(...),
-    api_key: str = Query(default=""),
-):
-    """Legacy compatibility endpoint. Prefer POST /admin/fetch-models."""
-    return await _fetch_models_from_remote(base_url, api_key)
-
-
 @router.get("/admin/config")
 async def get_current_config():
     """Return current configuration (safe fields only)."""

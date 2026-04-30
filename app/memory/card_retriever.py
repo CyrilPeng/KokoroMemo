@@ -39,11 +39,6 @@ class MemoryCandidate:
     final_score: float
     source: str  # 'pinned' | 'vector' | 'recent' | 'graph'
 
-    @property
-    def memory_type(self) -> str:
-        """Alias for backward compatibility with injector."""
-        return self.card_type
-
 
 def _recency_score(created_at: str | None) -> float:
     if not created_at:

@@ -28,28 +28,6 @@ async def insert_edge(
     return edge_id
 
 
-async def get_edges_from(db_path: str, card_id: str) -> list[dict]:
-    """Get all active outgoing edges from a card."""
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM memory_edges WHERE source_card_id = ? AND status = 'active'",
-            (card_id,),
-        )
-        return [dict(r) for r in await cursor.fetchall()]
-
-
-async def get_edges_to(db_path: str, card_id: str) -> list[dict]:
-    """Get all active incoming edges to a card."""
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM memory_edges WHERE target_card_id = ? AND status = 'active'",
-            (card_id,),
-        )
-        return [dict(r) for r in await cursor.fetchall()]
-
-
 async def get_active_edges_for_cards(db_path: str, card_ids: list[str]) -> list[dict]:
     """Get all active edges touching any of the given cards."""
     if not card_ids:
@@ -64,41 +42,3 @@ async def get_active_edges_for_cards(db_path: str, card_ids: list[str]) -> list[
             list(card_ids) + list(card_ids),
         )
         return [dict(r) for r in await cursor.fetchall()]
-
-
-async def expand_one_hop(
-    db_path: str, card_ids: list[str], edge_types: list[str] | None = None
-) -> list[str]:
-    """Expand one hop from given card_ids. Returns additional card_ids not in input."""
-    if not card_ids:
-        return []
-
-    placeholders = ",".join(["?"] * len(card_ids))
-    query = f"""
-        SELECT DISTINCT target_card_id FROM memory_edges
-        WHERE source_card_id IN ({placeholders}) AND status = 'active'
-        UNION
-        SELECT DISTINCT source_card_id FROM memory_edges
-        WHERE target_card_id IN ({placeholders}) AND status = 'active'
-    """
-    params = list(card_ids) + list(card_ids)
-
-    if edge_types:
-        et_placeholders = ",".join(["?"] * len(edge_types))
-        query = f"""
-            SELECT DISTINCT target_card_id FROM memory_edges
-            WHERE source_card_id IN ({placeholders}) AND status = 'active'
-            AND edge_type IN ({et_placeholders})
-            UNION
-            SELECT DISTINCT source_card_id FROM memory_edges
-            WHERE target_card_id IN ({placeholders}) AND status = 'active'
-            AND edge_type IN ({et_placeholders})
-        """
-        params = list(card_ids) + list(edge_types) + list(card_ids) + list(edge_types)
-
-    async with aiosqlite.connect(db_path) as db:
-        cursor = await db.execute(query, params)
-        rows = await cursor.fetchall()
-
-    input_set = set(card_ids)
-    return [r[0] for r in rows if r[0] not in input_set]

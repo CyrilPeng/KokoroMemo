@@ -418,7 +418,7 @@ function handleTabAction(key: string, tab: any) {
   else if (key === 'delete') deleteTab(tab)
 }
 
-function tabActionOptions(tab: any) {
+function tabActionOptions(_tab: any) {
   return [
     { label: t('state.renameTab'), key: 'rename' },
     { label: t('state.deleteTab'), key: 'delete' },
@@ -506,12 +506,6 @@ async function saveItem() {
   } catch (e: any) {
     message.error(e.message || String(e))
   }
-}
-
-async function resolveItem(row: any) {
-  await apiFetch(`/admin/state/${row.item_id}/resolve`, { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ reason: t('state.messages.done') }) })
-  message.success(t('state.messages.markedDone'))
-  fetchAll()
 }
 
 async function resetItem(row: any) {

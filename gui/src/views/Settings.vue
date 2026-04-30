@@ -1069,7 +1069,7 @@ onMounted(() => {
                         <span style="color: #d4d4d8; font-size: 13px; min-width: 90px;">{{ $t(`settings.adv.section.${key}`) }}</span>
                         <NInputNumber
                           :value="config.hc_max_items[key] ?? 5"
-                          @update:value="(v: number) => { config.hc_max_items[key] = v ?? 5 }"
+                          @update:value="(v: number | null) => { config.hc_max_items[key] = v ?? 5 }"
                           :min="0" :max="50" size="small" style="width: 90px;"
                         />
                       </div>

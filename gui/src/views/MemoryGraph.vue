@@ -23,7 +23,6 @@ const hoveredNode = ref<any | null>(null)
 interface SimNode { id: string; x: number; y: number; vx: number; vy: number; data: any }
 const simNodes = ref<SimNode[]>([])
 const simEdges = ref<{ source: SimNode; target: SimNode; data: any }[]>([])
-const svgRef = ref<SVGSVGElement | null>(null)
 const SVG_W = 880
 const SVG_H = 560
 
@@ -199,7 +198,6 @@ watch([selectedLibraryId, limit], () => fetchGraph())
         <NEmpty v-if="!nodes.length && !loading" :description="$t('graph.empty')" style="padding: 40px 0;" />
         <div v-else style="display: flex; gap: 16px;">
           <svg
-            ref="svgRef"
             :viewBox="`0 0 ${SVG_W} ${SVG_H}`"
             style="flex: 1; background: #09090b; border-radius: 6px; min-height: 560px;"
           >

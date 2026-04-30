@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { createWebSocket } from '../api'
 
 const message = useMessage()
-const router = useRouter()
 const { t } = useI18n()
 
 let ws: WebSocket | null = null
@@ -25,7 +23,6 @@ function showNotification(data: any) {
     message.info(t('events.inboxNew', { content }), {
       duration: 5000,
       closable: true,
-      onClick: () => router.push('/inbox'),
     })
   } else if (data.event === 'card_approved') {
     const content = (data.content || '').slice(0, 40)

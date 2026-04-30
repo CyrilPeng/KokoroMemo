@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic } from 'naive-ui'
 import { apiFetch, getServerUrl } from '../api'
+const router = useRouter()
 const health = ref<any>(null)
 const stats = ref<any>(null)
 const loading = ref(true)
@@ -127,7 +129,7 @@ onMounted(() => {
               </NCard>
             </NGridItem>
             <NGridItem span="4 m:1">
-              <NCard style="background: #18181b; border: 1px solid #27272a;">
+              <NCard hoverable style="background: #18181b; border: 1px solid #27272a; cursor: pointer;" @click="router.push('/inbox')">
                 <NStatistic :label="$t('dashboard.inboxPending')" :value="inboxPending" />
                 <div style="color: #52525b; font-size: 12px; margin-top: 4px;">{{ $t('dashboard.awaitingReview') }}</div>
               </NCard>

@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/', redirect: '/dashboard' },
     { path: '/dashboard', component: () => import('./views/Dashboard.vue') },
     { path: '/memories', component: () => import('./views/Memories.vue') },
+    { path: '/inbox', component: () => import('./views/Inbox.vue') },
     { path: '/state', component: () => import('./views/ConversationState.vue') },
     { path: '/settings', component: () => import('./views/Settings.vue') },
   ],

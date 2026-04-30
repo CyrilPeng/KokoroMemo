@@ -33,6 +33,7 @@ export default {
   nav: {
     dashboard: '仪表盘',
     memories: '记忆管理',
+    inbox: '待审核',
     state: '会话状态板',
     settings: '设置',
   },
@@ -126,6 +127,39 @@ export default {
       correction: '纠正',
       world_state: '世界状态',
       summary: '摘要',
+    },
+  },
+  inbox: {
+    title: '待审核',
+    subtitle: '审核记忆抽取产生的候选条目',
+    empty: '暂无待审核条目',
+    totalCount: '共 {count} 条',
+    rejectNote: '拒绝原因（可选）',
+    rejectNotePlaceholder: '记录拒绝该条目的原因',
+    confirmApprove: '确认批准并写入长期记忆？',
+    column: {
+      content: '内容',
+      type: '类型',
+      scope: '作用域',
+      risk: '风险',
+      source: '来源会话',
+      reason: '判断原因',
+      createdAt: '创建时间',
+      actions: '操作',
+    },
+    actions: {
+      approve: '批准',
+      reject: '拒绝',
+    },
+    statusFilter: {
+      pending: '待审核',
+      approved: '已批准',
+      rejected: '已拒绝',
+    },
+    messages: {
+      approved: '已批准',
+      rejected: '已拒绝',
+      loadFailed: '加载失败：{error}',
     },
   },
   state: {

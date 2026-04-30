@@ -20,6 +20,7 @@ import {
   HomeOutline,
   BulbOutline,
   ReaderOutline,
+  MailOutline,
   SettingsOutline,
   LogoGithub,
 } from '@vicons/ionicons5'
@@ -35,6 +36,7 @@ function renderIcon(icon: any) {
 const menuOptions = computed<MenuOption[]>(() => [
   { label: t('nav.dashboard'), key: '/dashboard', icon: renderIcon(HomeOutline) },
   { label: t('nav.memories'), key: '/memories', icon: renderIcon(BulbOutline) },
+  { label: t('nav.inbox'), key: '/inbox', icon: renderIcon(MailOutline) },
   { label: t('nav.state'), key: '/state', icon: renderIcon(ReaderOutline) },
   { label: t('nav.settings'), key: '/settings', icon: renderIcon(SettingsOutline) },
 ])

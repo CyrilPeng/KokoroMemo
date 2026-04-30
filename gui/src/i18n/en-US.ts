@@ -33,6 +33,7 @@ export default {
   nav: {
     dashboard: 'Dashboard',
     memories: 'Memories',
+    inbox: 'Inbox',
     state: 'Session State',
     settings: 'Settings',
   },
@@ -126,6 +127,39 @@ export default {
       correction: 'Correction',
       world_state: 'World State',
       summary: 'Summary',
+    },
+  },
+  inbox: {
+    title: 'Inbox',
+    subtitle: 'Review candidate memory cards from extraction',
+    empty: 'No items pending review',
+    totalCount: '{count} items',
+    rejectNote: 'Rejection note (optional)',
+    rejectNotePlaceholder: 'Why is this item rejected?',
+    confirmApprove: 'Approve and save to long-term memory?',
+    column: {
+      content: 'Content',
+      type: 'Type',
+      scope: 'Scope',
+      risk: 'Risk',
+      source: 'Source Conversation',
+      reason: 'Reason',
+      createdAt: 'Created At',
+      actions: 'Actions',
+    },
+    actions: {
+      approve: 'Approve',
+      reject: 'Reject',
+    },
+    statusFilter: {
+      pending: 'Pending',
+      approved: 'Approved',
+      rejected: 'Rejected',
+    },
+    messages: {
+      approved: 'Approved',
+      rejected: 'Rejected',
+      loadFailed: 'Load failed: {error}',
     },
   },
   state: {

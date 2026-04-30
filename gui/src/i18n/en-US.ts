@@ -186,6 +186,7 @@ export default {
     presetPlaceholder: 'Select preset to apply...',
     managePresets: 'Manage',
     templateMore: 'More',
+    moreActions: 'More Actions',
     newSession: 'New Session',
     configured: 'Configured',
     templateLabel: 'Template: ',

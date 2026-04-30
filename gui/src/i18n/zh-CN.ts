@@ -186,6 +186,7 @@ export default {
     presetPlaceholder: '选择预设快速应用...',
     managePresets: '管理',
     templateMore: '更多',
+    moreActions: '更多操作',
     newSession: '新会话',
     configured: '已配置',
     templateLabel: '模板：',

@@ -3,6 +3,8 @@ import { computed, h, onMounted, ref } from 'vue'
 import {
   NButton,
   NCard,
+  NCollapse,
+  NCollapseItem,
   NDataTable,
   NDivider,
   NDropdown,
@@ -10,6 +12,7 @@ import {
   NFormItem,
   NGrid,
   NGridItem,
+  NIcon,
   NInput,
   NInputNumber,
   NModal,
@@ -26,6 +29,7 @@ import {
   useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { AddOutline, EllipsisHorizontal, HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 
 const { t } = useI18n()
@@ -104,6 +108,11 @@ const templateMenuOptions = computed(() => [
 const presetManageOptions = computed(() => [
   { label: t('state.importPreset'), key: 'import' },
   { label: t('state.exportAllPresets'), key: 'exportAll' },
+])
+const dangerActionOptions = computed(() => [
+  { label: t('state.copyToNew'), key: 'copy' },
+  { label: t('state.resetToEmpty'), key: 'reset' },
+  { label: t('state.clearState'), key: 'clear' },
 ])
 
 function ensureConversationId() {
@@ -556,6 +565,27 @@ function openCopyModal() {
   showCopyModal.value = true
 }
 
+function handleDangerAction(key: string) {
+  if (key === 'copy') openCopyModal()
+  else if (key === 'reset') {
+    dialog.warning({
+      title: t('state.resetToEmpty'),
+      content: t('state.resetConfirm'),
+      positiveText: t('common.confirm'),
+      negativeText: t('common.cancel'),
+      onPositiveClick: () => { resetState() },
+    })
+  } else if (key === 'clear') {
+    dialog.warning({
+      title: t('state.clearState'),
+      content: t('state.clearConfirm'),
+      positiveText: t('common.confirm'),
+      negativeText: t('common.cancel'),
+      onPositiveClick: () => { clearState() },
+    })
+  }
+}
+
 async function confirmCopy() {
   if (!ensureConversationId()) return
   if (!copyForm.value.target_conversation_id.trim()) {
@@ -973,44 +1003,41 @@ onMounted(async () => {
       <p style="color: #71717a; font-size: 14px;">{{ $t('state.subtitle') }}</p>
     </div>
 
-    <!-- 卡片 1：会话选择 -->
+    <!-- 顶部上下文条：会话选择 + Admin Token + 只读状态行 -->
     <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
-      <NGrid :cols="4" :x-gap="12" :y-gap="12" responsive="screen" item-responsive>
-        <NGridItem span="4 m:2">
-          <NFormItem :label="$t('state.conversationId')" label-placement="top" style="margin-bottom: 0;">
-            <NSpace :wrap="false">
-              <NSelect v-model:value="conversationId" :options="conversationOptions" filterable tag :placeholder="$t('state.selectConversation')" style="width: 320px;" @blur="saveLocalInputs" />
-              <NButton type="primary" @click="fetchAll">{{ $t('common.load') }}</NButton>
-              <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="deleteConversation">
-                <template #trigger><NButton type="error" quaternary :disabled="!conversationId.trim()">{{ $t('common.delete') }}</NButton></template>
-                {{ $t('state.deleteConversationConfirm') }}
-              </NPopconfirm>
-            </NSpace>
-          </NFormItem>
-        </NGridItem>
-        <NGridItem span="4 m:2">
-          <NFormItem :label="$t('state.adminToken')" label-placement="top" style="margin-bottom: 0;">
-            <NInput v-model:value="adminToken" type="password" :placeholder="$t('state.adminTokenPlaceholder')" style="width: 220px;" @blur="saveLocalInputs" />
-          </NFormItem>
-        </NGridItem>
-      </NGrid>
-      <div style="margin-top: 12px;">
-        <NSpace align="center" :wrap="true">
-          <NTag v-if="isNewSession" type="warning" size="small">{{ $t('state.newSession') }}</NTag>
-          <NTag v-else type="success" size="small">{{ $t('state.configured') }}</NTag>
-          <span style="color: #a1a1aa; font-size: 13px;">
-            {{ $t('state.templateLabel') }}<strong style="color: #e4e4e7;">{{ currentTemplate?.name || $t('state.noTemplate') }}</strong>
-            &nbsp;|&nbsp;
-            {{ $t('state.mountLabel') }}<strong style="color: #e4e4e7;">{{ mountedLibraryNames }}</strong>
-            &nbsp;|&nbsp;
-            {{ $t('state.stateItems') }}<strong style="color: #e4e4e7;">{{ stateItemCount }}</strong>
-          </span>
+      <NSpace align="center" :wrap="true" style="row-gap: 12px;">
+        <NSpace :wrap="false" align="center" :size="8">
+          <span style="color: #a1a1aa; font-size: 13px;">{{ $t('state.conversationId') }}</span>
+          <NSelect v-model:value="conversationId" :options="conversationOptions" filterable tag :placeholder="$t('state.selectConversation')" style="width: 280px;" size="small" @blur="saveLocalInputs" />
+          <NButton type="primary" size="small" @click="fetchAll">{{ $t('common.load') }}</NButton>
+          <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="deleteConversation">
+            <template #trigger><NButton type="error" quaternary size="small" :disabled="!conversationId.trim()">{{ $t('common.delete') }}</NButton></template>
+            {{ $t('state.deleteConversationConfirm') }}
+          </NPopconfirm>
         </NSpace>
-      </div>
+        <NSpace :wrap="false" align="center" :size="8">
+          <span style="color: #a1a1aa; font-size: 13px;">{{ $t('state.adminToken') }}</span>
+          <NInput v-model:value="adminToken" type="password" :placeholder="$t('state.adminTokenPlaceholder')" style="width: 200px;" size="small" @blur="saveLocalInputs" />
+        </NSpace>
+      </NSpace>
+      <NDivider style="margin: 12px 0 10px;" />
+      <NSpace align="center" :size="10" :wrap="true">
+        <NTag v-if="isNewSession" type="warning" size="small">{{ $t('state.newSession') }}</NTag>
+        <NTag v-else type="success" size="small">{{ $t('state.configured') }}</NTag>
+        <span style="color: #a1a1aa; font-size: 13px;">
+          {{ $t('state.templateLabel') }}<strong style="color: #e4e4e7;">{{ currentTemplate?.name || $t('state.noTemplate') }}</strong>
+          <span style="color: #3f3f46; margin: 0 8px;">·</span>
+          {{ $t('state.mountLabel') }}<strong style="color: #e4e4e7;">{{ mountedLibraryNames }}</strong>
+          <span style="color: #3f3f46; margin: 0 8px;">·</span>
+          {{ $t('state.stateItems') }}<strong style="color: #e4e4e7;">{{ stateItemCount }}</strong>
+        </span>
+      </NSpace>
     </NCard>
 
-    <!-- 卡片 2：会话配置 -->
-    <NCard :title="$t('state.configCard')" style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+    <!-- 配置区：NCollapse 折叠 -->
+    <NCollapse :default-expanded-names="isNewSession ? ['config'] : []" style="margin-bottom: 16px;">
+      <NCollapseItem :title="$t('state.configCard')" name="config">
+        <NCard style="background: #18181b; border: 1px solid #27272a;">
       <NForm label-placement="left" label-width="120" :show-feedback="false" style="gap: 14px; display: flex; flex-direction: column;">
         <NFormItem :label="$t('state.stateTemplate')">
           <NSpace :wrap="false">
@@ -1047,25 +1074,28 @@ onMounted(async () => {
         </NFormItem>
       </NForm>
       <NDivider style="margin: 14px 0;" />
-      <NSpace align="center" :wrap="true">
-        <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">{{ $t('state.saveConfig') }}</NButton>
-        <NButton @click="showFillModal = true" :disabled="!configLoaded">{{ $t('state.manualFill') }}</NButton>
-        <NButton @click="rebuildFromCards" :disabled="!configLoaded">{{ $t('state.projectFromMemory') }}</NButton>
-        <NButton @click="openCopyModal" :disabled="!stateItemCount">{{ $t('state.copyToNew') }}</NButton>
-        <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="resetState">
-          <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.resetToEmpty') }}</NButton></template>
-          {{ $t('state.resetConfirm') }}
-        </NPopconfirm>
-        <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="clearState">
-          <template #trigger><NButton :disabled="!stateItemCount">{{ $t('state.clearState') }}</NButton></template>
-          {{ $t('state.clearConfirm') }}
-        </NPopconfirm>
-        <NTooltip trigger="hover">
-          <template #trigger><span class="help-icon">?</span></template>
-          {{ $t('state.fillHelp') }}
-        </NTooltip>
+      <NSpace align="center" justify="space-between" :wrap="true" style="width: 100%;">
+        <NSpace align="center" :wrap="true">
+          <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">{{ $t('state.saveConfig') }}</NButton>
+          <NButton @click="showFillModal = true" :disabled="!configLoaded">{{ $t('state.manualFill') }}</NButton>
+          <NButton @click="rebuildFromCards" :disabled="!configLoaded">{{ $t('state.projectFromMemory') }}</NButton>
+          <NTooltip trigger="hover">
+            <template #trigger>
+              <NIcon size="16" style="color: #71717a; cursor: help; vertical-align: middle;"><HelpCircleOutline /></NIcon>
+            </template>
+            {{ $t('state.fillHelp') }}
+          </NTooltip>
+        </NSpace>
+        <NDropdown :options="dangerActionOptions" @select="handleDangerAction" trigger="click">
+          <NButton :disabled="!stateItemCount">
+            {{ $t('state.moreActions') }}
+            <template #icon><NIcon><EllipsisHorizontal /></NIcon></template>
+          </NButton>
+        </NDropdown>
       </NSpace>
-    </NCard>
+        </NCard>
+      </NCollapseItem>
+    </NCollapse>
 
     <!-- 新会话初始化提示 -->
     <NCard v-if="configLoaded && isNewSession" style="background: rgba(167, 139, 250, 0.08); border: 1px solid #a78bfa; margin-bottom: 16px;">
@@ -1084,34 +1114,43 @@ onMounted(async () => {
     <NSpin :show="loading">
       <NTabs type="line" animated>
         <NTabPane name="board" :tab="$t('state.tabs.board')">
-          <div v-if="currentTemplate" style="position: relative;">
+          <div v-if="currentTemplate">
             <NTabs type="card" animated>
+              <template #suffix>
+                <NButton text size="small" @click="newTabLabel = ''; showAddTabModal = true" style="margin: 0 6px;">
+                  <template #icon><NIcon><AddOutline /></NIcon></template>
+                  {{ $t('state.addTab') }}
+                </NButton>
+              </template>
               <NTabPane v-for="tab in currentTemplate.tabs" :key="tab.tab_id" :name="tab.tab_id">
                 <template #tab>
-                  <NSpace :size="4" align="center" :wrap="false">
+                  <NSpace :size="6" align="center" :wrap="false">
                     <span>{{ tab.label }}</span>
                     <NDropdown :options="tabActionOptions(tab)" @select="(key: string) => handleTabAction(key, tab)" trigger="click" size="small">
-                      <NButton text size="tiny" @click.stop style="font-size: 14px; padding: 0 2px;">⋮</NButton>
+                      <NButton text size="tiny" @click.stop>
+                        <template #icon><NIcon><EllipsisHorizontal /></NIcon></template>
+                      </NButton>
                     </NDropdown>
                   </NSpace>
                 </template>
-                <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 12px;">
-                  <template #header>
-                    <NSpace align="center"><span>{{ tab.label }}</span><NTag size="small">{{ $t('state.fieldCount', { count: tab.fields?.length || 0 }) }}</NTag></NSpace>
-                  </template>
-                  <p style="color: #71717a; margin-top: 0;">{{ tab.description || $t('state.noDescription') }}</p>
+                <div style="padding: 4px 2px 0;">
+                  <p v-if="tab.description" style="color: #71717a; margin: 0 0 12px;">{{ tab.description }}</p>
                   <NDataTable :columns="boardColumns" :data="fieldRows(tab)" :pagination="false" />
-                  <div style="margin-top: 8px;">
-                    <NButton quaternary size="small" @click="openCreateModalForTab(tab)">➕ {{ $t('state.actions.addNew') }}</NButton>
+                  <div style="margin-top: 12px;">
+                    <NButton dashed size="small" @click="openCreateModalForTab(tab)">
+                      <template #icon><NIcon><AddOutline /></NIcon></template>
+                      {{ $t('state.actions.addNew') }}
+                    </NButton>
                   </div>
-                </NCard>
+                </div>
               </NTabPane>
             </NTabs>
-            <NButton quaternary size="small" @click="newTabLabel = ''; showAddTabModal = true" class="add-tab-btn">+ {{ $t('state.addTab') }}</NButton>
           </div>
-          <NCard v-if="legacyItems.length" :title="$t('state.legacyItems')" style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
-            <NDataTable :columns="legacyColumns" :data="legacyItems" :pagination="{ pageSize: 8 }" />
-          </NCard>
+          <NCollapse v-if="legacyItems.length" style="margin-top: 16px;">
+            <NCollapseItem :title="`${$t('state.legacyItems')} (${legacyItems.length})`" name="legacy">
+              <NDataTable :columns="legacyColumns" :data="legacyItems" :pagination="{ pageSize: 8 }" />
+            </NCollapseItem>
+          </NCollapse>
         </NTabPane>
         <NTabPane name="gate" :tab="$t('state.tabs.gate')"><NDataTable :columns="decisionColumns" :data="decisions" :pagination="{ pageSize: 12 }" /></NTabPane>
         <NTabPane name="events" :tab="$t('state.tabs.events')"><NDataTable :columns="eventColumns" :data="events" :pagination="{ pageSize: 12 }" /></NTabPane>
@@ -1256,23 +1295,7 @@ onMounted(async () => {
   margin-top: 2px;
 }
 .help-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #3f3f46;
-  color: #a1a1aa;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: help;
-  margin-left: 6px;
-  vertical-align: middle;
-}
-.help-icon:hover {
-  background: #52525b;
-  color: #e4e4e7;
+  display: none;
 }
 .preset-delete {
   color: #71717a;

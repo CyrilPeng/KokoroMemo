@@ -77,7 +77,7 @@ def create_app() -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=allowed_origins,
-            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=["*"],
         )
 
@@ -88,14 +88,59 @@ def create_app() -> FastAPI:
 create_app()
 
 
+def _find_available_port(host: str, preferred: int) -> int:
+    """Return preferred port if free, otherwise pick a random port above 20000."""
+    import socket
+
+    def _try_bind(port: int) -> bool:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind((host, port))
+                return True
+        except OSError:
+            return False
+
+    if _try_bind(preferred):
+        return preferred
+
+    import random
+    for _ in range(50):
+        port = random.randint(20000, 40000)
+        if _try_bind(port):
+            return port
+
+    # Fallback: let the OS decide
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        return s.getsockname()[1]
+
+
+def _write_port_file(port: int) -> None:
+    """Write actual port to .port file for Tauri sidecar discovery."""
+    try:
+        Path(".port").write_text(str(port), encoding="utf-8")
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
     import uvicorn
 
     load_dotenv()
     cfg = load_config()
+    host = cfg.server.host
+    port = _find_available_port(host, cfg.server.port)
+    _write_port_file(port)
+
+    if port != cfg.server.port:
+        import logging
+        logging.getLogger("kokoromemo").info(
+            "端口 %d 被占用，已切换到 %d", cfg.server.port, port
+        )
+
     uvicorn.run(
         "app.main:app",
-        host=cfg.server.host,
-        port=cfg.server.port,
+        host=host,
+        port=port,
         reload=True,
     )

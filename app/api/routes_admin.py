@@ -806,6 +806,28 @@ async def get_index_migration_status_api(request: Request):
     return status
 
 
+@router.post("/admin/start-index-migration")
+async def start_index_migration_api(request: Request, data: dict = Body(default=None)):
+    """Start an asynchronous embedding index migration with the current config."""
+    _require_admin(request)
+    from app.core.services import (
+        get_index_migration_status,
+        start_index_migration,
+    )
+    from app.core.state import get_config
+
+    current = get_index_migration_status()
+    if current and current.get("status") == "running":
+        return {"status": "error", "message": "Migration already running"}
+
+    payload = data or {}
+    cfg = get_config()
+    old_model = payload.get("old_model") or cfg.embedding.model
+    old_dimension = payload.get("old_dimension") or cfg.embedding.dimension
+    start_index_migration(cfg, old_model, old_dimension)
+    return {"status": "ok", "message": "Migration started"}
+
+
 # --- Inbox API ---
 
 @router.get("/admin/inbox")

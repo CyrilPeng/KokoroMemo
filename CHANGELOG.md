@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.0 (2026-05-01)
+
+### 新增
+
+- **角色默认绑定**（`/characters` 新页面）— 列出已发现的角色（从对话推断），可为每个角色绑定默认状态板模板、挂载库、写入库；新会话启动时自动应用
+- **SillyTavern 导入**（记忆库页"导入 SillyTavern"按钮）— 选择本地 .jsonl/.json/.txt 聊天记录，导入后弹窗确认是否立即提取候选记忆，跳转待审核页查看
+- **WebSocket 实时事件接通** — `card_approved` / `inbox_new` 事件通过全局 EventBridge 组件触发 toast 通知；Inbox/Dashboard 自动刷新数据，断线 5 秒重连
+- **设置页"高级"标签页** — NCollapse 折叠展示 6 类记忆系统配置：会话自动检测、记忆总开关、注入作用域、抽取阈值、评分权重、检索门控、热上下文
+- **记忆图谱可视化**（`/memory-graph` 新页面）— 力导向布局展示 memory_edges 网络，节点颜色按类型、半径按重要性，hover 显示详情
+- **向量索引迁移进度** — 设置页新增"后台异步迁移"按钮，启动后实时显示 NProgress 进度条
+- **重试失败的向量同步** — 设置页新增按钮一键重试 pending vector_sync 任务
+
+### 改进
+
+- 后端 `GET /admin/config` 返回完整的 conversation / memory.scopes / scoring / extraction / retrieval_gate / hot_context 字段
+- 后端 `POST /admin/config` 改用深合并，正确处理 memory.* 嵌套字典
+- 后端新增 `GET /admin/discovered-characters` 从 conversations 表推断已知角色
+- 后端新增 `POST /admin/start-index-migration` 包装 `start_index_migration`
+
 ## v0.4.0 (2026-05-01)
 
 ### 新增

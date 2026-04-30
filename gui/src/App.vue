@@ -23,6 +23,7 @@ import {
   ReaderOutline,
   MailOutline,
   PersonOutline,
+  GitNetworkOutline,
   SettingsOutline,
   LogoGithub,
 } from '@vicons/ionicons5'
@@ -38,6 +39,7 @@ function renderIcon(icon: any) {
 const menuOptions = computed<MenuOption[]>(() => [
   { label: t('nav.dashboard'), key: '/dashboard', icon: renderIcon(HomeOutline) },
   { label: t('nav.memories'), key: '/memories', icon: renderIcon(BulbOutline) },
+  { label: t('nav.memoryGraph'), key: '/memory-graph', icon: renderIcon(GitNetworkOutline) },
   { label: t('nav.inbox'), key: '/inbox', icon: renderIcon(MailOutline) },
   { label: t('nav.state'), key: '/state', icon: renderIcon(ReaderOutline) },
   { label: t('nav.characters'), key: '/characters', icon: renderIcon(PersonOutline) },

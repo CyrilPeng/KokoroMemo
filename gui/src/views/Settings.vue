@@ -4,7 +4,7 @@ import {
   NCard, NForm, NFormItem, NInput, NSwitch, NInputNumber,
   NButton, NSpace, NDivider, NAlert, NSelect,
   NTabs, NTabPane, NModal, NCollapse, NCollapseItem,
-  NDynamicTags, NSlider,
+  NDynamicTags, NSlider, NProgress, NTag,
   useMessage,
 } from 'naive-ui'
 import { apiFetch, getServerUrl, setServerUrl, resolveBackendUrl } from '../api'
@@ -583,6 +583,70 @@ async function rebuildIndex() {
   }
 }
 
+const migrationStatus = ref<any>({ status: 'idle' })
+let migrationPollTimer: number | null = null
+
+async function fetchMigrationStatus() {
+  try {
+    const resp = await apiFetch('/admin/index-migration-status')
+    if (resp.ok) migrationStatus.value = await resp.json()
+  } catch {}
+}
+
+async function startMigration() {
+  try {
+    const resp = await apiFetch('/admin/start-index-migration', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    const data = await resp.json()
+    if (data.status === 'ok') {
+      message.success(t('settings.migrationStarted'))
+      pollMigration()
+    } else {
+      message.error(data.message || t('settings.migrationFailed'))
+    }
+  } catch {
+    message.error(t('common.backendConnectionFailed'))
+  }
+}
+
+function pollMigration() {
+  if (migrationPollTimer) clearInterval(migrationPollTimer)
+  migrationPollTimer = window.setInterval(async () => {
+    await fetchMigrationStatus()
+    const s = migrationStatus.value?.status
+    if (s !== 'running') {
+      if (migrationPollTimer) {
+        clearInterval(migrationPollTimer)
+        migrationPollTimer = null
+      }
+    }
+  }, 2000)
+}
+
+const migrationProgressPercent = computed(() => {
+  const total = migrationStatus.value?.total || 0
+  const progress = migrationStatus.value?.progress || 0
+  if (!total) return 0
+  return Math.min(100, Math.round((progress / total) * 100))
+})
+
+async function retryVectorSync() {
+  try {
+    const resp = await apiFetch('/admin/jobs/retry-vector-sync?limit=50', { method: 'POST' })
+    const data = await resp.json()
+    if (data.status === 'ok') {
+      message.success(t('settings.vectorSyncDone', { total: data.total, success: data.success, failed: data.failed }))
+    } else {
+      message.error(data.message || t('settings.vectorSyncFailed'))
+    }
+  } catch {
+    message.error(t('common.backendConnectionFailed'))
+  }
+}
+
 onMounted(() => {
   loadConfig()
   syncCloseToTraySetting()
@@ -759,9 +823,28 @@ onMounted(() => {
             </NForm>
 
             <NDivider style="margin: 16px 0;" />
-            <NSpace>
+            <NSpace align="center" :wrap="true">
               <NButton type="warning" size="small" @click="rebuildIndex">{{ $t('settings.rebuildIndex') }}</NButton>
+              <NButton size="small" @click="startMigration" :disabled="migrationStatus?.status === 'running'">{{ $t('settings.startMigration') }}</NButton>
+              <NButton size="small" @click="retryVectorSync">{{ $t('settings.retryVectorSync') }}</NButton>
             </NSpace>
+            <div v-if="migrationStatus?.status && migrationStatus.status !== 'idle'" style="margin-top: 12px;">
+              <NSpace align="center" :size="8">
+                <NTag size="small" :type="migrationStatus.status === 'running' ? 'info' : migrationStatus.status === 'completed' ? 'success' : 'error'">
+                  {{ migrationStatus.status }}
+                </NTag>
+                <span v-if="migrationStatus.error" style="color: #ef4444; font-size: 12px;">{{ migrationStatus.error }}</span>
+                <span v-else-if="migrationStatus.status === 'running'" style="color: #a1a1aa; font-size: 12px;">
+                  {{ migrationStatus.progress || 0 }} / {{ migrationStatus.total || 0 }}
+                </span>
+              </NSpace>
+              <NProgress
+                v-if="migrationStatus.status === 'running'"
+                :percentage="migrationProgressPercent"
+                :show-indicator="false"
+                style="margin-top: 6px;"
+              />
+            </div>
           </NCard>
         </NSpace>
       </NTabPane>

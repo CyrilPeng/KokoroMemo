@@ -795,12 +795,13 @@ onMounted(() => {
   color: #e4e4e7;
 }
 .help-content p {
-  color: #a1a1aa;
-  font-size: 13px;
-  line-height: 1.8;
-  margin: 8px 0;
+  color: #d4d4d8;
+  font-size: 15px;
+  line-height: 1.85;
+  margin: 10px 0;
 }
 .help-content p strong {
-  color: #e4e4e7;
+  color: #ffffff;
+  font-weight: 600;
 }
 </style>

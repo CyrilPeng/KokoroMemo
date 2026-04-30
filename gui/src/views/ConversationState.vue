@@ -78,6 +78,7 @@ const showRenameTabModal = ref(false)
 const renamingTab = ref<any>(null)
 const renameTabLabel = ref('')
 const newTabLabel = ref('')
+const helpModal = ref('')
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? `(${t('common.builtin')})` : ''}`, value: item.template_id })))
 const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
@@ -1025,9 +1026,15 @@ onMounted(async () => {
 
 <template>
   <div>
-    <div style="margin-bottom: 28px;">
-      <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('state.title') }}</h1>
-      <p style="color: #71717a; font-size: 14px;">{{ $t('state.subtitle') }}</p>
+    <div style="margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('state.title') }}</h1>
+        <p style="color: #71717a; font-size: 14px; margin: 0;">{{ $t('state.subtitle') }}</p>
+      </div>
+      <NButton quaternary @click="helpModal = 'overview'">
+        <template #icon><NIcon><HelpCircleOutline /></NIcon></template>
+        {{ $t('state.helpButton') }}
+      </NButton>
     </div>
 
     <!-- 顶部上下文条：会话选择 + Admin Token + 只读状态行 -->
@@ -1106,12 +1113,9 @@ onMounted(async () => {
           <NButton type="primary" @click="saveFullConfig" :disabled="!conversationId.trim()">{{ $t('state.saveConfig') }}</NButton>
           <NButton @click="showFillModal = true" :disabled="!configLoaded">{{ $t('state.manualFill') }}</NButton>
           <NButton @click="rebuildFromCards" :disabled="!configLoaded">{{ $t('state.projectFromMemory') }}</NButton>
-          <NTooltip trigger="hover">
-            <template #trigger>
-              <NIcon size="16" style="color: #71717a; cursor: help; vertical-align: middle;"><HelpCircleOutline /></NIcon>
-            </template>
-            {{ $t('state.fillHelp') }}
-          </NTooltip>
+          <NButton quaternary size="tiny" @click="helpModal = 'config'" style="padding: 0 6px;">
+            <template #icon><NIcon><HelpCircleOutline /></NIcon></template>
+          </NButton>
         </NSpace>
         <NDropdown :options="dangerActionOptions" @select="handleDangerAction" trigger="click">
           <NButton :disabled="!stateItemCount">
@@ -1299,6 +1303,26 @@ onMounted(async () => {
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showRenameTabModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="renameTab">{{ $t('common.confirm') }}</NButton></NSpace></template>
     </NModal>
+
+    <!-- 帮助弹窗 -->
+    <NModal :show="!!helpModal" preset="card" :title="$t('state.helpTitle')" style="width: 640px; background: #18181b;" :mask-closable="true" @update:show="(v: boolean) => { if (!v) helpModal = '' }">
+      <div v-if="helpModal === 'overview'" class="help-content">
+        <p>{{ $t('state.help.overview.intro') }}</p>
+        <p><strong>{{ $t('state.help.overview.contextTitle') }}</strong>: {{ $t('state.help.overview.contextDesc') }}</p>
+        <p><strong>{{ $t('state.help.overview.configTitle') }}</strong>: {{ $t('state.help.overview.configDesc') }}</p>
+        <p><strong>{{ $t('state.help.overview.boardTitle') }}</strong>: {{ $t('state.help.overview.boardDesc') }}</p>
+        <p><strong>{{ $t('state.help.overview.tabsTitle') }}</strong>: {{ $t('state.help.overview.tabsDesc') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'config'" class="help-content">
+        <p><strong>{{ $t('state.stateTemplate') }}</strong>: {{ $t('state.help.config.template') }}</p>
+        <p><strong>{{ $t('state.mountLibraries') }}</strong>: {{ $t('state.help.config.mount') }}</p>
+        <p><strong>{{ $t('state.writeTarget') }}</strong>: {{ $t('state.help.config.write') }}</p>
+        <p><strong>{{ $t('state.mountPresets') }}</strong>: {{ $t('state.help.config.preset') }}</p>
+        <p><strong>{{ $t('state.manualFill') }}</strong>: {{ $t('state.help.config.fill') }}</p>
+        <p><strong>{{ $t('state.projectFromMemory') }}</strong>: {{ $t('state.help.config.project') }}</p>
+        <p><strong>{{ $t('state.moreActions') }}</strong>: {{ $t('state.help.config.danger') }}</p>
+      </div>
+    </NModal>
   </div>
 </template>
 
@@ -1310,6 +1334,16 @@ onMounted(async () => {
 }
 .help-icon {
   display: none;
+}
+.help-content p {
+  color: #d4d4d8;
+  font-size: 15px;
+  line-height: 1.85;
+  margin: 10px 0;
+}
+.help-content p strong {
+  color: #ffffff;
+  font-weight: 600;
 }
 .preset-delete {
   color: #71717a;

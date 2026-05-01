@@ -85,6 +85,33 @@ async def upsert_conversation(
         await db.commit()
 
 
+async def upsert_character(
+    db_path: str,
+    character_id: str,
+    user_id: str,
+    display_name: str | None = None,
+    system_prompt_hash: str | None = None,
+) -> None:
+    """Register or refresh a character row when first seen.
+
+    The characters table is the canonical record of "which characters this user has interacted with";
+    insertion happens lazily when a chat request with a known character_id arrives.
+    """
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """
+            INSERT INTO characters (character_id, user_id, display_name, system_prompt_hash)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(character_id) DO UPDATE SET
+              updated_at = datetime('now', 'localtime'),
+              display_name = COALESCE(excluded.display_name, characters.display_name),
+              system_prompt_hash = COALESCE(excluded.system_prompt_hash, characters.system_prompt_hash)
+            """,
+            (character_id, user_id, display_name, system_prompt_hash),
+        )
+        await db.commit()
+
+
 async def get_character_defaults(db_path: str, character_id: str) -> dict | None:
     """Get default template and library config for a character."""
     async with aiosqlite.connect(db_path) as db:

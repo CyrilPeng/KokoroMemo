@@ -42,6 +42,13 @@ def decide_retrieval(gate_input: RetrievalGateInput) -> RetrievalGateDecision:
         return _decision(False, "mode_never", ["mode_never"], mode, stats)
 
     latest_user_text = (gate_input.query.latest_user_text or "").strip()
+
+    if mode == "keyword_only":
+        for keyword in gate_input.trigger_keywords:
+            if keyword and keyword in latest_user_text:
+                return _decision(True, f"keyword:{keyword}", [f"keyword:{keyword}"], mode, stats)
+        return _decision(False, "no_keyword_match", ["no_keyword_match"], mode, stats)
+
     reasons: list[str] = []
 
     if gate_input.vector_search_on_new_session and (gate_input.turn_index is None or gate_input.turn_index <= 0):

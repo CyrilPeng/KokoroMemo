@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, triggerRef, watch } from 'vue'
 import {
   NButton, NCard, NEmpty, NIcon, NInputNumber, NModal, NSelect, NSpace,
   NSpin, NTag, useMessage,
@@ -94,17 +94,14 @@ let rafId: number | null = null
 function initSimulation() {
   const cx = SVG_W / 2
   const cy = SVG_H / 2
-  simNodes.value = nodes.value.map((n, i) => {
-    const angle = (i / Math.max(1, nodes.value.length)) * Math.PI * 2
-    const r = Math.min(SVG_W, SVG_H) * 0.35
-    return {
-      id: n.id,
-      x: cx + Math.cos(angle) * r,
-      y: cy + Math.sin(angle) * r,
-      vx: 0, vy: 0,
-      data: n,
-    }
-  })
+  // Random initial scatter — pure circle layout traps the simulation in local minima.
+  simNodes.value = nodes.value.map((n) => ({
+    id: n.id,
+    x: cx + (Math.random() - 0.5) * SVG_W * 0.6,
+    y: cy + (Math.random() - 0.5) * SVG_H * 0.6,
+    vx: 0, vy: 0,
+    data: n,
+  }))
   const idMap: Record<string, SimNode> = {}
   for (const n of simNodes.value) idMap[n.id] = n
   simEdges.value = edges.value
@@ -113,9 +110,10 @@ function initSimulation() {
   if (rafId) cancelAnimationFrame(rafId)
   let iter = 0
   const step = () => {
-    if (iter > 250) { rafId = null; return }
+    if (iter > 600) { rafId = null; return }
     iter++
     tick()
+    triggerRef(simNodes)
     rafId = requestAnimationFrame(step)
   }
   rafId = requestAnimationFrame(step)
@@ -124,9 +122,10 @@ function initSimulation() {
 function tick() {
   const cx = SVG_W / 2
   const cy = SVG_H / 2
-  const repel = 1200
-  const linkDist = 110
-  const center = 0.005
+  const repel = 1500
+  const linkDist = 90
+  const center = 0.008
+  // Coulomb-like repulsion between every pair
   for (const a of simNodes.value) {
     let fx = (cx - a.x) * center
     let fy = (cy - a.y) * center
@@ -135,19 +134,22 @@ function tick() {
       const dx = a.x - b.x
       const dy = a.y - b.y
       const d2 = dx * dx + dy * dy + 0.01
-      const f = repel / d2
       const dist = Math.sqrt(d2)
+      const f = repel / d2
       fx += (dx / dist) * f
       fy += (dy / dist) * f
     }
-    a.vx = (a.vx + fx) * 0.85
-    a.vy = (a.vy + fy) * 0.85
+    a.vx = (a.vx + fx) * 0.82
+    a.vy = (a.vy + fy) * 0.82
   }
+  // Spring force per edge — weight makes high-weight edges shorter (stronger pull)
   for (const e of simEdges.value) {
     const dx = e.target.x - e.source.x
     const dy = e.target.y - e.source.y
     const dist = Math.sqrt(dx * dx + dy * dy) + 0.01
-    const k = (dist - linkDist) * 0.05
+    const weight = Math.max(0.2, Math.min(2, e.data.weight || 1))
+    const desired = linkDist / weight
+    const k = (dist - desired) * 0.08
     const fx = (dx / dist) * k
     const fy = (dy / dist) * k
     e.source.vx += fx

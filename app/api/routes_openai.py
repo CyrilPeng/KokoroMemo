@@ -23,7 +23,7 @@ from app.memory.state_schema import ConversationStateItem, StateRenderOptions
 from app.memory.state_filler import StateFillerConfigView, fill_conversation_state
 from app.memory.state_updater import StateUpdaterContext, update_conversation_state
 from app.proxy.request_parser import resolve_context, RequestContext
-from app.storage.sqlite_app import init_app_db, upsert_conversation
+from app.storage.sqlite_app import init_app_db, upsert_character, upsert_conversation
 from app.storage.sqlite_cards import init_cards_db
 from app.storage.sqlite_conversation import (
     init_chat_db,
@@ -279,6 +279,10 @@ async def _persist_request(cfg, ctx: RequestContext, raw_body: dict) -> None:
             cfg.storage.sqlite.app_db, ctx.conversation_id,
             ctx.user_id, ctx.character_id, ctx.client_name, ctx.conv_dir,
         )
+        if ctx.character_id:
+            await upsert_character(
+                cfg.storage.sqlite.app_db, ctx.character_id, ctx.user_id,
+            )
         await _apply_character_defaults_if_new(cfg, ctx)
         await save_raw_request(
             ctx.chat_db_path, ctx.request_id, ctx.conversation_id,

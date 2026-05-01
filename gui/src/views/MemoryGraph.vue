@@ -46,6 +46,19 @@ function nodeColor(type: string) {
   return typeColor[type] || '#71717a'
 }
 
+function typeLabel(type: string): string {
+  const key = `memories.typeLabels.${type}`
+  const translated = t(key)
+  return translated === key ? type : translated
+}
+
+function scopeLabel(scope: string): string {
+  if (!scope) return ''
+  const key = `memories.scopeLabels.${scope}`
+  const translated = t(key)
+  return translated === key ? scope : translated
+}
+
 function nodeRadius(importance: number) {
   return 6 + Math.max(0, Math.min(1, importance || 0.5)) * 8
 }
@@ -230,16 +243,16 @@ watch([selectedLibraryId, limit], () => fetchGraph())
               <div v-if="hoveredNode">
                 <p style="color: #d4d4d8; font-size: 13px; line-height: 1.6; margin: 0 0 10px;">{{ hoveredNode.label }}</p>
                 <div style="font-size: 12px; color: #a1a1aa; line-height: 1.8;">
-                  <div><span style="color: #71717a;">{{ $t('graph.type') }}：</span><NTag size="tiny" :color="{ color: nodeColor(hoveredNode.type), textColor: '#fff' }">{{ hoveredNode.type }}</NTag></div>
+                  <div><span style="color: #71717a;">{{ $t('graph.type') }}：</span><NTag size="tiny" :color="{ color: nodeColor(hoveredNode.type), textColor: '#fff' }">{{ typeLabel(hoveredNode.type) }}</NTag></div>
                   <div><span style="color: #71717a;">{{ $t('graph.importance') }}：</span>{{ (hoveredNode.importance || 0).toFixed(2) }}</div>
                   <div><span style="color: #71717a;">{{ $t('graph.confidence') }}：</span>{{ (hoveredNode.confidence || 0).toFixed(2) }}</div>
-                  <div><span style="color: #71717a;">{{ $t('graph.scope') }}：</span>{{ hoveredNode.scope }}</div>
+                  <div><span style="color: #71717a;">{{ $t('graph.scope') }}：</span>{{ scopeLabel(hoveredNode.scope) }}</div>
                 </div>
               </div>
               <div v-else>
                 <div v-for="(color, type) in typeColor" :key="type" style="display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: #d4d4d8;">
                   <span :style="{ width: '10px', height: '10px', borderRadius: '50%', background: color }"></span>
-                  <span>{{ type }}</span>
+                  <span>{{ typeLabel(String(type)) }}</span>
                 </div>
               </div>
             </NCard>

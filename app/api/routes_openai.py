@@ -171,11 +171,19 @@ async def chat_completions(request: Request):
                 store = get_lancedb_store(cfg)
                 if ep and store:
                     from app.memory.card_retriever import retrieve_cards
+                    allowed_scopes = {
+                        s for s, on in (
+                            ("global", cfg.memory.scopes.include_global),
+                            ("character", cfg.memory.scopes.include_character),
+                            ("conversation", cfg.memory.scopes.include_conversation),
+                        ) if on
+                    }
                     candidates = await retrieve_cards(
                         query, ep, store,
                         cards_db_path=cfg.storage.sqlite.memory_db,
                         vector_top_k=cfg.memory.vector_top_k,
                         final_top_k=cfg.memory.final_top_k,
+                        allowed_scopes=allowed_scopes,
                     )
                     if candidates:
                         injected_messages = inject_cards(

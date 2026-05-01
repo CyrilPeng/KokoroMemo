@@ -57,12 +57,23 @@ async def _run_index_migration(cfg: AppConfig) -> None:
     global _index_migration_status
     try:
         from app.storage.rebuild_v2 import rebuild_vector_index_v2
-        result = await rebuild_vector_index_v2(cfg)
+        # Resolve services with the new config first so the rebuild writes to the correct path
+        reset_services()
+        ep = get_embedding_provider(cfg)
+        store = get_lancedb_store(cfg)
+        if not ep or not store:
+            raise RuntimeError("Embedding provider or LanceDB store unavailable for migration")
+        result = await rebuild_vector_index_v2(
+            cards_db_path=cfg.storage.sqlite.memory_db,
+            lancedb_store=store,
+            embedding_provider=ep,
+            batch_size=cfg.embedding.batch_size,
+        )
         _index_migration_status = {
             "status": "completed",
             "new_model": cfg.embedding.model,
             "new_dimension": cfg.embedding.dimension,
-            "progress": result.get("synced", 0),
+            "progress": result.get("rebuilt", 0),
             "total": result.get("total", 0),
             "error": None,
         }

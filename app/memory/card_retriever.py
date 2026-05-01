@@ -75,8 +75,13 @@ async def retrieve_cards(
     vector_top_k: int = 30,
     final_top_k: int = 8,
     scoring_weights: dict | None = None,
+    allowed_scopes: set[str] | None = None,
 ) -> list[MemoryCandidate]:
-    """Multi-path retrieval of approved memory cards."""
+    """Multi-path retrieval of approved memory cards.
+
+    allowed_scopes: subset of {"global", "character", "conversation"} indicating which
+    scopes are eligible for recall. None = all enabled. If empty set, returns no candidates.
+    """
     weights = scoring_weights or {
         "vector_weight": 0.55,
         "importance_weight": 0.20,
@@ -84,6 +89,10 @@ async def retrieve_cards(
         "scope_weight": 0.10,
         "confidence_weight": 0.05,
     }
+    if allowed_scopes is None:
+        allowed_scopes = {"global", "character", "conversation"}
+    if not allowed_scopes:
+        return []
 
     seen_ids: set[str] = set()
     all_candidates: list[MemoryCandidate] = []
@@ -101,6 +110,8 @@ async def retrieve_cards(
         for card in pinned:
             cid = card["card_id"]
             if cid in seen_ids:
+                continue
+            if card.get("scope") not in allowed_scopes:
                 continue
             seen_ids.add(cid)
             all_candidates.append(MemoryCandidate(
@@ -127,11 +138,15 @@ async def retrieve_cards(
             escaped_ids = [library_id.replace("'", "''") for library_id in mounted_library_ids]
             library_filter = ", ".join(f"'{library_id}'" for library_id in escaped_ids)
             clauses.append(f"library_id IN ({library_filter})")
-        scope_clauses = ["scope = 'global'"]
-        if character_id:
+        scope_clauses = []
+        if "global" in allowed_scopes:
+            scope_clauses.append("scope = 'global'")
+        if "character" in allowed_scopes and character_id:
             scope_clauses.append(f"(scope = 'character' AND character_id = '{character_id}')")
-        if conversation_id:
+        if "conversation" in allowed_scopes and conversation_id:
             scope_clauses.append(f"(scope = 'conversation' AND conversation_id = '{conversation_id}')")
+        if not scope_clauses:
+            raise RuntimeError("no_scope_eligible")
         clauses.append(f"({' OR '.join(scope_clauses)})")
         where = " AND ".join(clauses)
 
@@ -184,6 +199,8 @@ async def retrieve_cards(
             cid = card["card_id"]
             if cid in seen_ids:
                 continue
+            if card.get("scope") not in allowed_scopes:
+                continue
             seen_ids.add(cid)
             all_candidates.append(MemoryCandidate(
                 card_id=cid,
@@ -235,6 +252,8 @@ async def retrieve_cards(
             graph_cards = await get_cards_by_ids(cards_db_path, list(expand_ids))
             for card in graph_cards.values():
                 if card.get("status") != "approved":
+                    continue
+                if card.get("scope") not in allowed_scopes:
                     continue
                 if mounted_library_set and card.get("library_id") not in mounted_library_set:
                     continue

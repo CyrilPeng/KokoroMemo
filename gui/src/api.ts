@@ -3,7 +3,12 @@ const DEFAULT_SERVER_URL = 'http://127.0.0.1:14514'
 let _resolvedUrl: string | null = null
 
 export function getServerUrl() {
-  return _resolvedUrl || localStorage.getItem('kokoromemo.serverUrl') || DEFAULT_SERVER_URL
+  const stored = localStorage.getItem('kokoromemo.serverUrl')
+  if (_resolvedUrl) return _resolvedUrl
+  if (stored) return stored
+  // Web mode (not Tauri): backend serves the frontend, use same origin
+  if (!(window as any).__TAURI_INTERNALS__) return window.location.origin
+  return DEFAULT_SERVER_URL
 }
 
 export function setServerUrl(url: string) {

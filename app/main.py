@@ -86,6 +86,26 @@ def create_app() -> FastAPI:
     app.include_router(openai_router)
     app.include_router(ws_router)
 
+    # Serve Vue SPA frontend if gui/dist exists (web UI mode / Termux)
+    _gui_dist = Path(__file__).resolve().parent.parent / "gui" / "dist"
+    if _gui_dist.is_dir():
+        from fastapi.staticfiles import StaticFiles
+        from fastapi.responses import FileResponse
+
+        app.mount("/assets", StaticFiles(directory=_gui_dist / "assets"), name="static-assets")
+
+        _API_PREFIXES = ("/admin", "/v1", "/health", "/ws")
+
+        @app.get("/{path:path}")
+        async def serve_spa(path: str):
+            # Let API routes handle their own paths
+            if any(path.startswith(p.lstrip("/")) for p in _API_PREFIXES):
+                return JSONResponse(status_code=404, content={"detail": "Not found"})
+            file = _gui_dist / path
+            if file.is_file():
+                return FileResponse(file)
+            return FileResponse(_gui_dist / "index.html")
+
     @app.middleware("http")
     async def admin_auth_middleware(request, call_next):
         if request.url.path.startswith("/admin"):

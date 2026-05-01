@@ -4,7 +4,7 @@ import {
   NCard, NForm, NFormItem, NInput, NSwitch, NInputNumber,
   NButton, NSpace, NDivider, NAlert, NSelect,
   NTabs, NTabPane, NModal,
-  NDynamicTags, NSlider, NProgress, NTag,
+  NDynamicTags, NSlider, NProgress, NTag, NPopconfirm,
   NMenu, NDataTable,
   useMessage,
 } from 'naive-ui'
@@ -871,11 +871,39 @@ onMounted(() => {
             </NForm>
 
             <NDivider style="margin: 16px 0;" />
-            <NSpace align="center" :wrap="true">
-              <NButton type="warning" size="small" @click="rebuildIndex">{{ $t('settings.rebuildIndex') }}</NButton>
-              <NButton size="small" @click="startMigration" :disabled="migrationStatus?.status === 'running'">{{ $t('settings.startMigration') }}</NButton>
-              <NButton size="small" @click="retryVectorSync">{{ $t('settings.retryVectorSync') }}</NButton>
-            </NSpace>
+            <div class="vector-actions">
+              <h4 class="vector-actions-title">
+                {{ $t('settings.vectorMaintenance') }}
+                <NButton quaternary size="tiny" @click="helpModal = 'vectorMaintenance'"><span class="help-icon">?</span></NButton>
+              </h4>
+              <div class="vector-action-row">
+                <div class="vector-action-info">
+                  <div class="vector-action-name">{{ $t('settings.rebuildIndex') }}</div>
+                  <div class="vector-action-desc">{{ $t('settings.rebuildIndexDesc') }}</div>
+                </div>
+                <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="rebuildIndex">
+                  <template #trigger><NButton type="warning" size="small">{{ $t('common.execute') }}</NButton></template>
+                  {{ $t('settings.rebuildIndexConfirm') }}
+                </NPopconfirm>
+              </div>
+              <div class="vector-action-row">
+                <div class="vector-action-info">
+                  <div class="vector-action-name">{{ $t('settings.startMigration') }}</div>
+                  <div class="vector-action-desc">{{ $t('settings.startMigrationDesc') }}</div>
+                </div>
+                <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="startMigration" :disabled="migrationStatus?.status === 'running'">
+                  <template #trigger><NButton size="small" :disabled="migrationStatus?.status === 'running'">{{ $t('common.execute') }}</NButton></template>
+                  {{ $t('settings.startMigrationConfirm') }}
+                </NPopconfirm>
+              </div>
+              <div class="vector-action-row">
+                <div class="vector-action-info">
+                  <div class="vector-action-name">{{ $t('settings.retryVectorSync') }}</div>
+                  <div class="vector-action-desc">{{ $t('settings.retryVectorSyncDesc') }}</div>
+                </div>
+                <NButton size="small" @click="retryVectorSync">{{ $t('common.execute') }}</NButton>
+              </div>
+            </div>
             <div v-if="migrationStatus?.status && migrationStatus.status !== 'idle'" style="margin-top: 12px;">
               <NSpace align="center" :size="8">
                 <NTag size="small" :type="migrationStatus.status === 'running' ? 'info' : migrationStatus.status === 'completed' ? 'success' : 'error'">
@@ -1166,6 +1194,12 @@ onMounted(() => {
         <p><strong>{{ $t('settings.adv.retrievalGate') }}</strong>: {{ $t('settings.adv.help.retrievalGate') }}</p>
         <p><strong>{{ $t('settings.adv.hotContext') }}</strong>: {{ $t('settings.adv.help.hotContext') }}</p>
       </div>
+      <div v-else-if="helpModal === 'vectorMaintenance'" class="help-content">
+        <p>{{ $t('settings.vectorHelp.intro') }}</p>
+        <p><strong>{{ $t('settings.rebuildIndex') }}</strong>: {{ $t('settings.vectorHelp.rebuild') }}</p>
+        <p><strong>{{ $t('settings.startMigration') }}</strong>: {{ $t('settings.vectorHelp.migration') }}</p>
+        <p><strong>{{ $t('settings.retryVectorSync') }}</strong>: {{ $t('settings.vectorHelp.retry') }}</p>
+      </div>
     </NModal>
   </div>
 </template>
@@ -1242,5 +1276,44 @@ onMounted(() => {
     padding-right: 0;
     padding-bottom: 8px;
   }
+}
+.vector-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vector-actions-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #d4d4d8;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.vector-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+}
+.vector-action-info {
+  flex: 1;
+  min-width: 0;
+}
+.vector-action-name {
+  color: #e4e4e7;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+.vector-action-desc {
+  color: #71717a;
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

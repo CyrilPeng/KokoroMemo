@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
-  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NModal,
+  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NIcon, NInput, NModal,
   NPagination, NPopconfirm, NSelect, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 
 const message = useMessage()
@@ -18,6 +19,7 @@ const statusFilter = ref('pending')
 const showRejectModal = ref(false)
 const rejectingId = ref('')
 const rejectNote = ref('')
+const helpModal = ref(false)
 
 const statusOptions = computed(() => [
   { label: t('inbox.statusFilter.pending'), value: 'pending' },
@@ -151,9 +153,15 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 
 <template>
   <div>
-    <div style="margin-bottom: 28px;">
-      <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('inbox.title') }}</h1>
-      <p style="color: #71717a; font-size: 14px;">{{ $t('inbox.subtitle') }}</p>
+    <div style="margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('inbox.title') }}</h1>
+        <p style="color: #71717a; font-size: 14px; margin: 0;">{{ $t('inbox.subtitle') }}</p>
+      </div>
+      <NButton quaternary @click="helpModal = true">
+        <template #icon><NIcon><HelpCircleOutline /></NIcon></template>
+        {{ $t('common.help') }}
+      </NButton>
     </div>
 
     <NCard style="background: #18181b; border: 1px solid #27272a;">
@@ -188,5 +196,29 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
         </NSpace>
       </template>
     </NModal>
+
+    <NModal v-model:show="helpModal" preset="card" :title="$t('inbox.help.title')" style="width: 640px; background: #18181b;" :mask-closable="true">
+      <div class="help-content">
+        <p>{{ $t('inbox.help.intro') }}</p>
+        <p><strong>{{ $t('inbox.help.sourceTitle') }}</strong>: {{ $t('inbox.help.source') }}</p>
+        <p><strong>{{ $t('inbox.help.statusTitle') }}</strong>: {{ $t('inbox.help.status') }}</p>
+        <p><strong>{{ $t('inbox.help.approveTitle') }}</strong>: {{ $t('inbox.help.approve') }}</p>
+        <p><strong>{{ $t('inbox.help.rejectTitle') }}</strong>: {{ $t('inbox.help.reject') }}</p>
+        <p><strong>{{ $t('inbox.help.riskTitle') }}</strong>: {{ $t('inbox.help.risk') }}</p>
+      </div>
+    </NModal>
   </div>
 </template>
+
+<style scoped>
+.help-content p {
+  color: #d4d4d8;
+  font-size: 15px;
+  line-height: 1.85;
+  margin: 10px 0;
+}
+.help-content p strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+</style>

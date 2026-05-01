@@ -2,10 +2,11 @@
 import { computed, h, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NInputNumber, NModal,
+  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NIcon, NInput, NInputNumber, NModal,
   NPagination, NPopconfirm, NSelect, NSlider, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 
 const message = useMessage()
@@ -282,6 +283,7 @@ const sillyTavernImporting = ref(false)
 const stForm = ref({ content: '', filename: '', character_id: '' })
 const extractForm = ref({ conversation_id: '', character_id: '', max_pairs: 50, turns_imported: 0 })
 const router = useRouter()
+const helpModal = ref(false)
 
 function openSillyTavernImport() {
   stForm.value = { content: '', filename: '', character_id: '' }
@@ -362,9 +364,15 @@ onMounted(fetchMemories)
 
 <template>
   <div>
-    <div style="margin-bottom: 28px;">
-      <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('memories.title') }}</h1>
-      <p style="color: #71717a; font-size: 14px;">{{ $t('memories.subtitle') }}</p>
+    <div style="margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('memories.title') }}</h1>
+        <p style="color: #71717a; font-size: 14px; margin: 0;">{{ $t('memories.subtitle') }}</p>
+      </div>
+      <NButton quaternary @click="helpModal = true">
+        <template #icon><NIcon><HelpCircleOutline /></NIcon></template>
+        {{ $t('common.help') }}
+      </NButton>
     </div>
 
     <NCard style="background: #18181b; border: 1px solid #27272a;">
@@ -458,5 +466,30 @@ onMounted(fetchMemories)
         </NSpace>
       </template>
     </NModal>
+
+    <NModal v-model:show="helpModal" preset="card" :title="$t('memories.help.title')" style="width: 640px; background: #18181b;" :mask-closable="true">
+      <div class="help-content">
+        <p>{{ $t('memories.help.intro') }}</p>
+        <p><strong>{{ $t('memories.help.libraryTitle') }}</strong>: {{ $t('memories.help.library') }}</p>
+        <p><strong>{{ $t('memories.help.presetTitle') }}</strong>: {{ $t('memories.help.preset') }}</p>
+        <p><strong>{{ $t('memories.help.scopeTitle') }}</strong>: {{ $t('memories.help.scope') }}</p>
+        <p><strong>{{ $t('memories.help.typeTitle') }}</strong>: {{ $t('memories.help.type') }}</p>
+        <p><strong>{{ $t('memories.help.importTitle') }}</strong>: {{ $t('memories.help.import') }}</p>
+        <p><strong>{{ $t('memories.help.flowTitle') }}</strong>: {{ $t('memories.help.flow') }}</p>
+      </div>
+    </NModal>
   </div>
 </template>
+
+<style scoped>
+.help-content p {
+  color: #d4d4d8;
+  font-size: 15px;
+  line-height: 1.85;
+  margin: 10px 0;
+}
+.help-content p strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+</style>

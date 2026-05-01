@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic } from 'naive-ui'
+import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic, NIcon, NModal } from 'naive-ui'
+import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch, getServerUrl } from '../api'
 const router = useRouter()
 const health = ref<any>(null)
 const stats = ref<any>(null)
 const loading = ref(true)
 const serverUrl = ref(getServerUrl())
+const helpModal = ref(false)
 
 const totalApproved = computed(() => stats.value?.cards_by_status?.approved || 0)
 const inboxPending = computed(() => stats.value?.inbox_pending || 0)
@@ -63,9 +65,15 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 
 <template>
   <div>
-    <div style="margin-bottom: 28px;">
-      <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('dashboard.title') }}</h1>
-      <p style="color: #71717a; font-size: 14px;">{{ $t('dashboard.subtitle') }}</p>
+    <div style="margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start;">
+      <div>
+        <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('dashboard.title') }}</h1>
+        <p style="color: #71717a; font-size: 14px; margin: 0;">{{ $t('dashboard.subtitle') }}</p>
+      </div>
+      <NButton quaternary @click="helpModal = true">
+        <template #icon><NIcon><HelpCircleOutline /></NIcon></template>
+        {{ $t('common.help') }}
+      </NButton>
     </div>
 
     <NSpin :show="loading">
@@ -179,5 +187,29 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
         </div>
       </NCard>
     </NSpin>
+
+    <NModal v-model:show="helpModal" preset="card" :title="$t('dashboard.help.title')" style="width: 600px; background: #18181b;" :mask-closable="true">
+      <div class="help-content">
+        <p>{{ $t('dashboard.help.intro') }}</p>
+        <p><strong>{{ $t('dashboard.totalMemories') }}</strong>: {{ $t('dashboard.help.totalMemories') }}</p>
+        <p><strong>{{ $t('dashboard.inboxPending') }}</strong>: {{ $t('dashboard.help.inboxPending') }}</p>
+        <p><strong>{{ $t('dashboard.gateRequests24h') }}</strong>: {{ $t('dashboard.help.gateRequests') }}</p>
+        <p><strong>{{ $t('dashboard.dailyGrowth7d') }}</strong>: {{ $t('dashboard.help.dailyGrowth') }}</p>
+        <p><strong>{{ $t('dashboard.cardsByType') }}</strong>: {{ $t('dashboard.help.cardsByType') }}</p>
+      </div>
+    </NModal>
   </div>
 </template>
+
+<style scoped>
+.help-content p {
+  color: #d4d4d8;
+  font-size: 15px;
+  line-height: 1.85;
+  margin: 10px 0;
+}
+.help-content p strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+</style>

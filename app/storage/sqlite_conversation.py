@@ -163,3 +163,15 @@ async def get_turn_count(db_path: str, conversation_id: str) -> int:
         )
         row = await cursor.fetchone()
         return row[0] if row else 0
+
+
+async def get_all_messages(db_path: str, conversation_id: str) -> list[dict]:
+    """Return all messages in a conversation ordered by creation time."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, message_id ASC",
+            (conversation_id,),
+        )
+        rows = await cursor.fetchall()
+        return [{"role": row["role"], "content": row["content"]} for row in rows]

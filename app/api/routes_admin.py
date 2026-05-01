@@ -1846,7 +1846,10 @@ async def import_sillytavern(request: Request, data: dict = Body(...)):
         messages.append({"role": turn.role, "content": turn.content})
 
     turn_id = generate_id("turn_")
-    await save_turn_and_messages(chat_db_path, turn_id, conversation_id, messages)
+    request_id = generate_id("req_import_")
+    await save_turn_and_messages(
+        chat_db_path, turn_id, conversation_id, user_id, character_id, request_id, 0, messages,
+    )
 
     return {
         "status": "ok",

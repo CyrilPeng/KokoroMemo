@@ -532,6 +532,9 @@ export default {
       hcInjectAlways: 'Always inject',
       hcMaxChars: 'Max chars',
       hcSections: 'Sections (toggle + max items per section)',
+      hcColEnabled: 'Enabled',
+      hcColSection: 'Section',
+      hcColMax: 'Max Items',
       section: {
         boundary: 'Boundary',
         scene: 'Scene',

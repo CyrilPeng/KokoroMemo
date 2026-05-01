@@ -532,6 +532,9 @@ export default {
       hcInjectAlways: '始终注入',
       hcMaxChars: '最大字符数',
       hcSections: '注入段（开关 + 每段最大条数）',
+      hcColEnabled: '启用',
+      hcColSection: '段',
+      hcColMax: '最大条数',
       section: {
         boundary: '边界',
         scene: '场景',

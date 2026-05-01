@@ -1052,7 +1052,7 @@ onMounted(() => {
             <div class="adv-content">
               <div v-if="advancedSection === 'memoryTop'">
                 <h3 class="adv-section-title">{{ $t('settings.adv.memoryTop') }}</h3>
-                <NForm label-placement="left" label-width="200" :show-feedback="false" class="adv-form">
+                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.injectEnabled')"><NSwitch v-model:value="config.inject_enabled" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.extractionEnabled')"><NSwitch v-model:value="config.extraction_enabled" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.maxRecentTurns')"><NInputNumber v-model:value="config.max_recent_turns_for_query" :min="1" :max="50" style="width: 200px;" /></NFormItem>
@@ -1062,7 +1062,7 @@ onMounted(() => {
 
               <div v-else-if="advancedSection === 'conversation'">
                 <h3 class="adv-section-title">{{ $t('settings.adv.conversation') }}</h3>
-                <NForm label-placement="left" label-width="200" :show-feedback="false" class="adv-form">
+                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.convAutoGap')">
                     <NInputNumber v-model:value="config.conv_auto_gap" :min="0" :max="1440" style="width: 160px;" />
                     <span style="color: #71717a; font-size: 12px; margin-left: 12px;">{{ $t('settings.adv.convAutoGapHint') }}</span>
@@ -1074,7 +1074,7 @@ onMounted(() => {
 
               <div v-else-if="advancedSection === 'scopes'">
                 <h3 class="adv-section-title">{{ $t('settings.adv.scopes') }}</h3>
-                <NForm label-placement="left" label-width="200" :show-feedback="false" class="adv-form">
+                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.scopeGlobal')"><NSwitch v-model:value="config.scope_global" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.scopeCharacter')"><NSwitch v-model:value="config.scope_character" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.scopeConversation')"><NSwitch v-model:value="config.scope_conversation" /></NFormItem>
@@ -1083,7 +1083,7 @@ onMounted(() => {
 
               <div v-else-if="advancedSection === 'extraction'">
                 <h3 class="adv-section-title">{{ $t('settings.adv.extraction') }}</h3>
-                <NForm label-placement="left" label-width="200" :show-feedback="false" class="adv-form">
+                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.extMinImportance')">
                     <NSlider v-model:value="config.ext_min_importance" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 360px;" />
                   </NFormItem>
@@ -1098,7 +1098,7 @@ onMounted(() => {
               <div v-else-if="advancedSection === 'scoring'">
                 <h3 class="adv-section-title">{{ $t('settings.adv.scoring') }}</h3>
                 <p class="adv-hint">{{ $t('settings.adv.scoringHint', { total: scoringTotal.toFixed(2) }) }}</p>
-                <NForm label-placement="left" label-width="200" :show-feedback="false" class="adv-form">
+                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.scoreVector')"><NSlider v-model:value="config.score_vector" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 420px;" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.scoreImportance')"><NSlider v-model:value="config.score_importance" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 420px;" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.scoreRecency')"><NSlider v-model:value="config.score_recency" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 420px;" /></NFormItem>
@@ -1123,7 +1123,7 @@ onMounted(() => {
 
               <div v-else-if="advancedSection === 'hotContext'">
                 <h3 class="adv-section-title">{{ $t('settings.adv.hotContext') }}</h3>
-                <NForm label-placement="left" label-width="200" :show-feedback="false" class="adv-form">
+                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.hcEnabled')"><NSwitch v-model:value="config.hc_enabled" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.hcInjectAlways')"><NSwitch v-model:value="config.hc_inject_always" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.hcMaxChars')"><NInputNumber v-model:value="config.hc_max_chars" :min="100" :max="10000" :step="100" style="width: 200px;" /></NFormItem>

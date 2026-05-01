@@ -7,10 +7,11 @@ import {
 import { useI18n } from 'vue-i18n'
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
+import type { InboxItem } from '../types/memory'
 
 const message = useMessage()
 const { t } = useI18n()
-const items = ref<any[]>([])
+const items = ref<InboxItem[]>([])
 const loading = ref(true)
 const total = ref(0)
 const page = ref(1)
@@ -27,7 +28,7 @@ const statusOptions = computed(() => [
   { label: t('inbox.statusFilter.rejected'), value: 'rejected' },
 ])
 
-function parsePayload(row: any): any {
+function parsePayload(row: InboxItem): Record<string, any> {
   try { return JSON.parse(row.payload_json || '{}') } catch { return {} }
 }
 
@@ -53,32 +54,32 @@ function riskTag(risk: string) {
 const columns = computed(() => [
   {
     title: t('inbox.column.content'), key: 'content', minWidth: 280, ellipsis: { tooltip: true },
-    render: (row: any) => parsePayload(row).content || '—',
+    render: (row: InboxItem) => parsePayload(row).content || '—',
   },
   {
     title: t('inbox.column.type'), key: 'card_type', width: 100,
-    render: (row: any) => typeLabel(parsePayload(row).card_type),
+    render: (row: InboxItem) => typeLabel(parsePayload(row).card_type),
   },
   {
     title: t('inbox.column.scope'), key: 'scope', width: 90,
-    render: (row: any) => scopeLabel(parsePayload(row).scope),
+    render: (row: InboxItem) => scopeLabel(parsePayload(row).scope),
   },
   {
     title: t('inbox.column.risk'), key: 'risk_level', width: 90,
-    render: (row: any) => riskTag(row.risk_level),
+    render: (row: InboxItem) => riskTag(row.risk_level),
   },
   {
     title: t('inbox.column.source'), key: 'conversation_id', width: 140, ellipsis: { tooltip: true },
-    render: (row: any) => row.conversation_id || '—',
+    render: (row: InboxItem) => row.conversation_id || '—',
   },
   {
     title: t('inbox.column.reason'), key: 'reason', minWidth: 160, ellipsis: { tooltip: true },
-    render: (row: any) => row.reason || '—',
+    render: (row: InboxItem) => row.reason || '—',
   },
   { title: t('inbox.column.createdAt'), key: 'created_at', width: 150 },
   {
     title: t('inbox.column.actions'), key: 'actions', width: 180,
-    render: (row: any) => row.status === 'pending'
+    render: (row: InboxItem) => row.status === 'pending'
       ? h(NSpace, { size: 4 }, { default: () => [
           h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => approveItem(row.inbox_id) }, {
             trigger: () => h(NButton, { size: 'tiny', type: 'primary' }, { default: () => t('inbox.actions.approve') }),

@@ -8,6 +8,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
+import type { MemoryCard } from '../types/memory'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -67,15 +68,15 @@ const scopeEditOptions = [
 ]
 
 const columns = [
-  { title: t('memories.column.library'), key: 'library_id', width: 130, render: (row: any) => libraryName(row.library_id) },
+  { title: t('memories.column.library'), key: 'library_id', width: 130, render: (row: MemoryCard) => libraryName(row.library_id) },
   { title: t('memories.column.content'), key: 'content', ellipsis: { tooltip: true }, minWidth: 240 },
-  { title: t('memories.column.type'), key: 'memory_type', width: 90, render: (row: any) => typeLabel(row.memory_type) },
-  { title: t('memories.column.scope'), key: 'scope', width: 80, render: (row: any) => t(`memories.scopeLabels.${row.scope}`) || row.scope },
-  { title: t('memories.column.importance'), key: 'importance', width: 80, render: (row: any) => `${(row.importance * 100).toFixed(0)}%` },
+  { title: t('memories.column.type'), key: 'memory_type', width: 90, render: (row: MemoryCard) => typeLabel(row.memory_type ?? row.card_type) },
+  { title: t('memories.column.scope'), key: 'scope', width: 80, render: (row: MemoryCard) => t(`memories.scopeLabels.${row.scope}`) || row.scope },
+  { title: t('memories.column.importance'), key: 'importance', width: 80, render: (row: MemoryCard) => `${(row.importance * 100).toFixed(0)}%` },
   { title: t('memories.column.createdAt'), key: 'created_at', width: 150 },
   {
     title: t('memories.column.actions'), key: 'actions', width: 130,
-    render: (row: any) => h(NSpace, { size: 4 }, { default: () => [
+    render: (row: MemoryCard) => h(NSpace, { size: 4 }, { default: () => [
       h(NButton, { size: 'tiny', type: 'info', quaternary: true, onClick: () => openEditModal(row) }, { default: () => t('common.edit') }),
       h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => deleteCard(row.card_id) }, {
         trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => t('common.delete') }),
@@ -128,7 +129,7 @@ function openCreateModal() {
   showEditModal.value = true
 }
 
-function openEditModal(row: any) {
+function openEditModal(row: MemoryCard) {
   editingCard.value = row
   editForm.value = { library_id: row.library_id || selectedLibraryId.value, content: row.content || '', card_type: row.memory_type || 'preference', scope: row.scope || 'global', importance: row.importance || 0.5, confidence: row.confidence || 0.7, is_pinned: !!row.is_pinned }
   showEditModal.value = true

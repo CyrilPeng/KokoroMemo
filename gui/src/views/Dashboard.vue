@@ -3,8 +3,15 @@ import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic, NIcon, NModal } from 'naive-ui'
 import { HelpCircleOutline } from '@vicons/ionicons5'
+import { useI18n } from 'vue-i18n'
 import { apiFetch, getServerUrl } from '../api'
 const router = useRouter()
+const { t } = useI18n()
+function typeLabel(type: string): string {
+  const key = `memories.typeLabels.${type}`
+  const translated = t(key)
+  return translated === key ? type : translated
+}
 const health = ref<any>(null)
 const stats = ref<any>(null)
 const loading = ref(true)
@@ -171,7 +178,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
             <div style="color: #71717a; font-size: 13px; margin-bottom: 8px;">{{ $t('dashboard.cardsByType') }}</div>
             <NSpace>
               <NTag v-for="(count, type) in stats.cards_by_type" :key="type" size="small" round>
-                {{ type }}: {{ count }}
+                {{ typeLabel(String(type)) }}: {{ count }}
               </NTag>
             </NSpace>
           </NCard>

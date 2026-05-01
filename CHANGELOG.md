@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.4 (2026-05-01)
+
+### 改进
+
+- **版本号一处管理** — `pyproject.toml` 作为唯一版本来源，后端通过 `tomllib` 读取，前端通过 `/health` 接口动态获取；GUI 侧边栏版本号不再硬编码
+- **i18n 模块化** — `zh-CN.ts` 和 `en-US.ts`（各 ~800 行）按功能域拆分为 8 个子模块（common / dashboard / memories / inbox / graph / characters / state / settings），顶层文件仅做聚合导出
+- **Settings.vue 配置映射** — `loadConfig` 从 ~90 行手动赋值重构为声明式 `CONFIG_FIELDS` 映射表 + `applyConfigToForm` 循环，新增字段只需加一行映射
+
+### 修复
+
+- **`pyproject.toml` 版本滞后** — 之前版本停留在 `0.2.3`，与实际发布版本严重不同步
+
 ## v0.5.3 (2026-05-01)
 
 ### 修复

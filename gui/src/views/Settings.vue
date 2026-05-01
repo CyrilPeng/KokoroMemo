@@ -390,94 +390,107 @@ async function pickFolder() {
   }
 }
 
+function getNestedValue(obj: any, path: string): any {
+  return path.split('.').reduce((o, k) => o?.[k], obj)
+}
+
+function applyConfigToForm(data: any) {
+  for (const [key, apiPath, , transform] of CONFIG_FIELDS) {
+    const raw = getNestedValue(data, apiPath)
+    if (raw !== undefined) {
+      ;(config.value as any)[key] = transform ? transform(raw) : raw
+    }
+  }
+  // Special cases not in mapping table
+  const rg = data.memory?.retrieval_gate || {}
+  config.value.rg_trigger_keywords = Array.isArray(rg.trigger_keywords) ? [...rg.trigger_keywords] : []
+  const hc = data.memory?.hot_context || {}
+  config.value.hc_include_sections = { ...(hc.include_sections || {}) }
+  config.value.hc_section_order = Array.isArray(hc.section_order) ? [...hc.section_order] : []
+  config.value.hc_max_items = { ...(hc.max_items_per_section || {}) }
+  timezone.value = data.server?.timezone || ''
+}
+
+const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform?: (v: any) => any][] = [
+  ['server_port',                        'server.port',                                       14514],
+  ['storage_root_dir',                   'storage.root_dir',                                  './data'],
+  ['llm_forward_mode',                   'llm.forward_mode',                                  'override'],
+  ['llm_provider',                       'llm.provider',                                      'openai_compatible'],
+  ['llm_base_url',                       'llm.base_url',                                      ''],
+  ['llm_api_key',                        'llm.api_key',                                       ''],
+  ['llm_model',                          'llm.model',                                         ''],
+  ['embedding_enabled',                  'embedding.enabled',                                 true],
+  ['embedding_provider',                 'embedding.provider',                                'modelark'],
+  ['embedding_base_url',                 'embedding.base_url',                                ''],
+  ['embedding_api_key',                  'embedding.api_key',                                 ''],
+  ['embedding_model',                    'embedding.model',                                   ''],
+  ['embedding_dimension',                'embedding.dimension',                               4096],
+  ['rerank_enabled',                     'rerank.enabled',                                    false],
+  ['rerank_provider',                    'rerank.provider',                                   'modelark'],
+  ['rerank_base_url',                    'rerank.base_url',                                   ''],
+  ['rerank_api_key',                     'rerank.api_key',                                    ''],
+  ['rerank_model',                       'rerank.model',                                      ''],
+  ['rerank_max_docs',                    'rerank.max_documents_per_request',                  20],
+  ['memory_enabled',                     'memory.enabled',                                    true],
+  ['max_injected_chars',                 'memory.max_injected_chars',                         1500],
+  ['final_top_k',                        'memory.final_top_k',                                6],
+  ['judge_enabled',                      'memory.judge.enabled',                              false],
+  ['judge_provider',                     'memory.judge.provider',                             'openai_compatible'],
+  ['judge_base_url',                     'memory.judge.base_url',                             ''],
+  ['judge_api_key',                      'memory.judge.api_key',                              ''],
+  ['judge_model',                        'memory.judge.model',                                ''],
+  ['judge_timeout_seconds',              'memory.judge.timeout_seconds',                      30],
+  ['judge_temperature',                  'memory.judge.temperature',                          0],
+  ['judge_mode',                         'memory.judge.mode',                                 'model_only'],
+  ['judge_user_rules',                   'memory.judge.user_rules',                           '', (v: any) => (Array.isArray(v) ? v : []).join('\n')],
+  ['judge_prompt',                       'memory.judge.prompt',                               ''],
+  ['state_filler_enabled',               'memory.state_updater.enabled',                      true],
+  ['state_filler_mode',                  'memory.state_updater.mode',                         'model_template'],
+  ['state_filler_provider',              'memory.state_updater.provider',                     'openai_compatible'],
+  ['state_filler_base_url',              'memory.state_updater.base_url',                     ''],
+  ['state_filler_api_key',               'memory.state_updater.api_key',                      ''],
+  ['state_filler_model',                 'memory.state_updater.model',                        ''],
+  ['state_filler_timeout_seconds',       'memory.state_updater.timeout_seconds',              30],
+  ['state_filler_temperature',           'memory.state_updater.temperature',                  0],
+  ['state_filler_min_confidence',        'memory.state_updater.min_confidence',               0.55],
+  ['state_filler_prompt',                'memory.state_updater.prompt',                       ''],
+  ['conv_auto_gap',                      'conversation.auto_new_session_gap_minutes',          0],
+  ['conv_detect_prompt_change',          'conversation.detect_system_prompt_change',           false],
+  ['conv_detect_count_reset',            'conversation.detect_message_count_reset',            false],
+  ['inject_enabled',                     'memory.inject_enabled',                             true],
+  ['extraction_enabled',                 'memory.extraction_enabled',                         true],
+  ['max_recent_turns_for_query',         'memory.max_recent_turns_for_query',                 6],
+  ['vector_top_k',                       'memory.vector_top_k',                               30],
+  ['scope_global',                       'memory.scopes.include_global',                      true],
+  ['scope_character',                    'memory.scopes.include_character',                   true],
+  ['scope_conversation',                 'memory.scopes.include_conversation',                true],
+  ['ext_min_importance',                 'memory.extraction.min_importance',                  0.45],
+  ['ext_min_confidence',                 'memory.extraction.min_confidence',                  0.55],
+  ['ext_after_each_turn',                'memory.extraction.extract_after_each_turn',         true],
+  ['ext_fallback_rule_based',            'memory.extraction.fallback_rule_based',             true],
+  ['score_vector',                       'memory.scoring.vector_weight',                      0.55],
+  ['score_importance',                   'memory.scoring.importance_weight',                  0.20],
+  ['score_recency',                      'memory.scoring.recency_weight',                     0.10],
+  ['score_scope',                        'memory.scoring.scope_weight',                       0.10],
+  ['score_confidence',                   'memory.scoring.confidence_weight',                  0.05],
+  ['rg_enabled',                         'memory.retrieval_gate.enabled',                     true],
+  ['rg_mode',                            'memory.retrieval_gate.mode',                        'auto'],
+  ['rg_on_new_session',                  'memory.retrieval_gate.vector_search_on_new_session', true],
+  ['rg_every_n_turns',                   'memory.retrieval_gate.vector_search_every_n_turns', 6],
+  ['rg_state_conf_below',               'memory.retrieval_gate.vector_search_when_state_confidence_below', 0.65],
+  ['rg_skip_chars_below',               'memory.retrieval_gate.skip_when_latest_user_text_chars_below', 4],
+  ['rg_skip_when_state_sufficient',     'memory.retrieval_gate.skip_when_state_is_sufficient', true],
+  ['hc_enabled',                         'memory.hot_context.enabled',                        true],
+  ['hc_inject_always',                   'memory.hot_context.inject_always',                  true],
+  ['hc_max_chars',                       'memory.hot_context.max_chars',                      1200],
+]
+
 async function loadConfig() {
   loading.value = true
   try {
     const resp = await apiFetch('/admin/config')
     if (resp.ok) {
-      const data = await resp.json()
-      config.value.server_port = data.server?.port || 14514
-      timezone.value = data.server?.timezone || ''
-      config.value.storage_root_dir = data.storage?.root_dir || './data'
-      config.value.llm_forward_mode = data.llm?.forward_mode || 'override'
-      config.value.llm_provider = data.llm?.provider || 'openai_compatible'
-      config.value.llm_base_url = data.llm?.base_url || ''
-      config.value.llm_api_key = data.llm?.api_key || ''
-      config.value.llm_model = data.llm?.model || ''
-      config.value.embedding_enabled = data.embedding?.enabled ?? true
-      config.value.embedding_provider = data.embedding?.provider || 'modelark'
-      config.value.embedding_base_url = data.embedding?.base_url || ''
-      config.value.embedding_api_key = data.embedding?.api_key || ''
-      config.value.embedding_model = data.embedding?.model || ''
-      config.value.embedding_dimension = data.embedding?.dimension || 4096
-      config.value.rerank_enabled = data.rerank?.enabled ?? false
-      config.value.rerank_provider = data.rerank?.provider || 'modelark'
-      config.value.rerank_base_url = data.rerank?.base_url || ''
-      config.value.rerank_api_key = data.rerank?.api_key || ''
-      config.value.rerank_model = data.rerank?.model || ''
-      config.value.rerank_max_docs = data.rerank?.max_documents_per_request || 20
-      config.value.memory_enabled = data.memory?.enabled ?? true
-      config.value.max_injected_chars = data.memory?.max_injected_chars || 1500
-      config.value.final_top_k = data.memory?.final_top_k || 6
-      config.value.judge_enabled = data.memory?.judge?.enabled ?? false
-      config.value.judge_provider = data.memory?.judge?.provider || 'openai_compatible'
-      config.value.judge_base_url = data.memory?.judge?.base_url || ''
-      config.value.judge_api_key = data.memory?.judge?.api_key || ''
-      config.value.judge_model = data.memory?.judge?.model || ''
-      config.value.judge_timeout_seconds = data.memory?.judge?.timeout_seconds || 30
-      config.value.judge_temperature = data.memory?.judge?.temperature ?? 0
-      config.value.judge_mode = data.memory?.judge?.mode || 'model_only'
-      config.value.judge_user_rules = (data.memory?.judge?.user_rules || []).join('\n')
-      config.value.judge_prompt = data.memory?.judge?.prompt || ''
-      config.value.state_filler_enabled = data.memory?.state_updater?.enabled ?? true
-      config.value.state_filler_mode = data.memory?.state_updater?.mode || 'model_template'
-      config.value.state_filler_provider = data.memory?.state_updater?.provider || 'openai_compatible'
-      config.value.state_filler_base_url = data.memory?.state_updater?.base_url || ''
-      config.value.state_filler_api_key = data.memory?.state_updater?.api_key || ''
-      config.value.state_filler_model = data.memory?.state_updater?.model || ''
-      config.value.state_filler_timeout_seconds = data.memory?.state_updater?.timeout_seconds || 30
-      config.value.state_filler_temperature = data.memory?.state_updater?.temperature ?? 0
-      config.value.state_filler_min_confidence = data.memory?.state_updater?.min_confidence ?? 0.55
-      config.value.state_filler_prompt = data.memory?.state_updater?.prompt || ''
-      // Advanced
-      config.value.conv_auto_gap = data.conversation?.auto_new_session_gap_minutes ?? 0
-      config.value.conv_detect_prompt_change = data.conversation?.detect_system_prompt_change ?? false
-      config.value.conv_detect_count_reset = data.conversation?.detect_message_count_reset ?? false
-      config.value.inject_enabled = data.memory?.inject_enabled ?? true
-      config.value.extraction_enabled = data.memory?.extraction_enabled ?? true
-      config.value.max_recent_turns_for_query = data.memory?.max_recent_turns_for_query ?? 6
-      config.value.vector_top_k = data.memory?.vector_top_k ?? 30
-      const scopes = data.memory?.scopes || {}
-      config.value.scope_global = scopes.include_global ?? true
-      config.value.scope_character = scopes.include_character ?? true
-      config.value.scope_conversation = scopes.include_conversation ?? true
-      const ext = data.memory?.extraction || {}
-      config.value.ext_min_importance = ext.min_importance ?? 0.45
-      config.value.ext_min_confidence = ext.min_confidence ?? 0.55
-      config.value.ext_after_each_turn = ext.extract_after_each_turn ?? true
-      config.value.ext_fallback_rule_based = ext.fallback_rule_based ?? true
-      const sc = data.memory?.scoring || {}
-      config.value.score_vector = sc.vector_weight ?? 0.55
-      config.value.score_importance = sc.importance_weight ?? 0.20
-      config.value.score_recency = sc.recency_weight ?? 0.10
-      config.value.score_scope = sc.scope_weight ?? 0.10
-      config.value.score_confidence = sc.confidence_weight ?? 0.05
-      const rg = data.memory?.retrieval_gate || {}
-      config.value.rg_enabled = rg.enabled ?? true
-      config.value.rg_mode = rg.mode || 'auto'
-      config.value.rg_on_new_session = rg.vector_search_on_new_session ?? true
-      config.value.rg_every_n_turns = rg.vector_search_every_n_turns ?? 6
-      config.value.rg_state_conf_below = rg.vector_search_when_state_confidence_below ?? 0.65
-      config.value.rg_trigger_keywords = Array.isArray(rg.trigger_keywords) ? [...rg.trigger_keywords] : []
-      config.value.rg_skip_chars_below = rg.skip_when_latest_user_text_chars_below ?? 4
-      config.value.rg_skip_when_state_sufficient = rg.skip_when_state_is_sufficient ?? true
-      const hc = data.memory?.hot_context || {}
-      config.value.hc_enabled = hc.enabled ?? true
-      config.value.hc_inject_always = hc.inject_always ?? true
-      config.value.hc_max_chars = hc.max_chars ?? 1200
-      config.value.hc_include_sections = { ...(hc.include_sections || {}) }
-      config.value.hc_section_order = Array.isArray(hc.section_order) ? [...hc.section_order] : []
-      config.value.hc_max_items = { ...(hc.max_items_per_section || {}) }
+      applyConfigToForm(await resp.json())
     }
   } catch (e) {
     // use defaults

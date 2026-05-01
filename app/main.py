@@ -2,8 +2,31 @@
 
 from __future__ import annotations
 
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    tomllib = None  # type: ignore[assignment]
+
+
+def _read_version() -> str:
+    """Read version from pyproject.toml (single source of truth)."""
+    if tomllib is not None:
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        if pyproject.exists():
+            try:
+                data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+                return data.get("project", {}).get("version", "0.0.0")
+            except Exception:
+                pass
+    try:
+        from importlib.metadata import version as _get_version
+        return _get_version("kokoromemo")
+    except Exception:
+        return "0.0.0"
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -49,7 +72,7 @@ async def lifespan(app: FastAPI):
     logger.info("KokoroMemo shutting down")
 
 
-app = FastAPI(title="KokoroMemo", version="0.5.3", lifespan=lifespan)
+app = FastAPI(title="KokoroMemo", version=_read_version(), lifespan=lifespan)
 app.state.app_version = app.version
 
 

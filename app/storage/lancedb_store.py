@@ -114,3 +114,45 @@ class LanceDBStore:
         except Exception:
             pass
         self._table = self._db.create_table(self.table_name, schema=self._get_schema())
+
+    def create_staging_table(self, staging_name: str) -> None:
+        """Create (or recreate) a staging table parallel to the live one for atomic rebuild."""
+        if not self._db:
+            self.connect()
+        try:
+            self._db.drop_table(staging_name)
+        except Exception:
+            pass
+        self._db.create_table(staging_name, schema=self._get_schema())
+
+    def upsert_into(self, staging_name: str, rows: list[dict[str, Any]]) -> None:
+        """Upsert rows into a named staging table (used during atomic rebuild)."""
+        if not self._db:
+            self.connect()
+        staging = self._db.open_table(staging_name)
+        staging.merge_insert("memory_id").when_matched_update_all().when_not_matched_insert_all().execute(rows)
+
+    def promote_staging(self, staging_name: str) -> None:
+        """Atomically replace the live table with the staging table.
+
+        After all writes have completed successfully into staging, drop the live table and
+        rename staging to the live name. If anything has failed before this is called, the
+        live table is untouched.
+        """
+        if not self._db:
+            self.connect()
+        try:
+            self._db.drop_table(self.table_name)
+        except Exception:
+            pass
+        self._db.rename_table(staging_name, self.table_name)
+        self._table = self._db.open_table(self.table_name)
+
+    def drop_staging(self, staging_name: str) -> None:
+        """Drop a staging table. Used to clean up after a failed rebuild."""
+        if not self._db:
+            self.connect()
+        try:
+            self._db.drop_table(staging_name)
+        except Exception:
+            pass

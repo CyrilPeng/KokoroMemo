@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.5.3 (2026-05-01)
+
+### 修复
+
+- **`memory.scopes` 过滤未生效** — 召回路径补全 `allowed_scopes` 参数，4 路（pinned/vector/recent/graph）均按设置页"高级 / 注入作用域"开关过滤
+- **索引迁移调用签名 bug** — `_run_index_migration` 之前以错误参数调用 `rebuild_vector_index_v2`，运行时 TypeError；现在先 reset_services 再以正确签名调用
+- **SillyTavern 导入两处 bug** — `save_turn_and_messages` 缺 4 个参数 + `get_all_messages` 函数缺失，之前任何上传都会 500
+- **鉴权加固** — 未配置 admin_token 时拒绝远程客户端访问；启动告警
+
+### 新增
+
+- **CI 工作流** — push/PR 自动跑 pytest + 前端 vue-tsc/build，提前拦截 TS 错误
+- **向量索引原子化重建** — staging 表 + atomic rename，迁移中途失败不会丢老索引
+- **关键路径测试** — SillyTavern 导入、character_defaults、retrieval_gate keyword_only、事件总线、memory_graph 端点、scopes 过滤短路（共 7 个新测试）
+- **前端类型定义** — `gui/src/types/memory.ts` 与 `state.ts`，Memories/Inbox 表格列函数类型化
+
+### 改进
+
+- **DESIGN.md 完善** — 新增聊天补全时序图（mermaid）+ 错误处理与降级矩阵（11 类失败场景）
+
 ## v0.5.2 (2026-05-01)
 
 ### 改进

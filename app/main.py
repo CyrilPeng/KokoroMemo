@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="KokoroMemo", version="0.5.3", lifespan=lifespan)
+app.state.app_version = app.version
 
 
 def create_app() -> FastAPI:

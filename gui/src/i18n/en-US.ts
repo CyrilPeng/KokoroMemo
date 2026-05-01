@@ -30,7 +30,7 @@ export default {
     builtin: 'Built-in',
     unnamed: 'Unnamed',
     none: 'None',
-    version: 'v0.3.0 · Local Long-term Memory',
+    tagline: 'Local Long-term Memory',
   },
   events: {
     inboxNew: 'New candidate memory pending: {content}',

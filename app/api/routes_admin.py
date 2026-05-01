@@ -49,13 +49,14 @@ def _require_admin(request: Request) -> None:
 
 
 @router.get("/health")
-async def health():
+async def health(request: Request):
     from app.core.state import get_config
 
     cfg = get_config()
     return {
         "status": "ok",
         "server": "ok",
+        "version": getattr(request.app.state, "app_version", "unknown"),
         "embedding": {
             "enabled": cfg.embedding.enabled,
             "model": cfg.embedding.model,

@@ -30,7 +30,7 @@ export default {
     builtin: '内置',
     unnamed: '未命名',
     none: '无',
-    version: 'v0.3.0 · 本地长期记忆',
+    tagline: '本地长期记忆',
   },
   events: {
     inboxNew: '新候选记忆待审核：{content}',

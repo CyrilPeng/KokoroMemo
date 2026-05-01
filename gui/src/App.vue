@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, h, onMounted } from 'vue'
+import { computed, h, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import EventBridge from './components/EventBridge.vue'
+import { apiFetch } from './api'
 import {
   NConfigProvider,
   NLayout,
@@ -31,6 +32,17 @@ import {
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
+
+const serverVersion = ref('')
+onMounted(async () => {
+  try {
+    const resp = await apiFetch('/health')
+    if (resp.ok) {
+      const data = await resp.json()
+      serverVersion.value = data.version || ''
+    }
+  } catch {}
+})
 
 function renderIcon(icon: any) {
   return () => h(NIcon, null, { default: () => h(icon) })
@@ -123,7 +135,7 @@ const themeOverrides: GlobalThemeOverrides = {
             <NIcon :size="18" style="cursor: pointer; color: #71717a;" @click="openGitHub">
               <LogoGithub />
             </NIcon>
-            <span style="font-size: 12px; color: #52525b;">{{ $t('common.version') }}</span>
+            <span style="font-size: 12px; color: #52525b;">{{ serverVersion ? `v${serverVersion} · ${$t('common.tagline')}` : $t('common.tagline') }}</span>
           </div>
         </NLayoutSider>
         <NLayoutContent :native-scrollbar="false" content-style="padding: 32px;">

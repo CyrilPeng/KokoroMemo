@@ -34,6 +34,16 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger("kokoromemo")
     logger.info("KokoroMemo started on %s:%d", cfg.server.host, cfg.server.port)
 
+    # Security warning: binding to non-loopback without admin token is risky.
+    if cfg.server.host not in {"127.0.0.1", "localhost", "::1"}:
+        if not cfg.server.get_admin_token():
+            logger.warning(
+                "Server bound to %s without an admin_token; admin endpoints will refuse remote "
+                "requests unless server.allow_remote_access is true. Set ADMIN_TOKEN or "
+                "admin_token in config to enable secure remote access.",
+                cfg.server.host,
+            )
+
     yield
 
     logger.info("KokoroMemo shutting down")

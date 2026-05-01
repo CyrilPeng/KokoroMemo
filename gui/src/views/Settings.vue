@@ -1035,7 +1035,6 @@ onMounted(() => {
           <template #header>
             <NSpace align="center">
               <span>{{ $t('settings.adv.title') }}</span>
-              <NButton quaternary size="tiny" @click="helpModal = 'advanced'"><span class="help-icon">?</span></NButton>
             </NSpace>
           </template>
           <p style="color: #71717a; font-size: 13px; margin: 0 0 14px;">{{ $t('settings.adv.subtitle') }}</p>
@@ -1051,7 +1050,10 @@ onMounted(() => {
             </div>
             <div class="adv-content">
               <div v-if="advancedSection === 'memoryTop'">
-                <h3 class="adv-section-title">{{ $t('settings.adv.memoryTop') }}</h3>
+                <div class="adv-section-header">
+                  <h3 class="adv-section-title">{{ $t('settings.adv.memoryTop') }}</h3>
+                  <NButton quaternary size="tiny" @click="helpModal = 'adv_memoryTop'"><span class="help-icon">?</span></NButton>
+                </div>
                 <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.injectEnabled')"><NSwitch v-model:value="config.inject_enabled" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.extractionEnabled')"><NSwitch v-model:value="config.extraction_enabled" /></NFormItem>
@@ -1061,7 +1063,10 @@ onMounted(() => {
               </div>
 
               <div v-else-if="advancedSection === 'conversation'">
-                <h3 class="adv-section-title">{{ $t('settings.adv.conversation') }}</h3>
+                <div class="adv-section-header">
+                  <h3 class="adv-section-title">{{ $t('settings.adv.conversation') }}</h3>
+                  <NButton quaternary size="tiny" @click="helpModal = 'adv_conversation'"><span class="help-icon">?</span></NButton>
+                </div>
                 <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.convAutoGap')">
                     <NInputNumber v-model:value="config.conv_auto_gap" :min="0" :max="1440" style="width: 160px;" />
@@ -1073,7 +1078,10 @@ onMounted(() => {
               </div>
 
               <div v-else-if="advancedSection === 'scopes'">
-                <h3 class="adv-section-title">{{ $t('settings.adv.scopes') }}</h3>
+                <div class="adv-section-header">
+                  <h3 class="adv-section-title">{{ $t('settings.adv.scopes') }}</h3>
+                  <NButton quaternary size="tiny" @click="helpModal = 'adv_scopes'"><span class="help-icon">?</span></NButton>
+                </div>
                 <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.scopeGlobal')"><NSwitch v-model:value="config.scope_global" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.scopeCharacter')"><NSwitch v-model:value="config.scope_character" /></NFormItem>
@@ -1082,7 +1090,10 @@ onMounted(() => {
               </div>
 
               <div v-else-if="advancedSection === 'extraction'">
-                <h3 class="adv-section-title">{{ $t('settings.adv.extraction') }}</h3>
+                <div class="adv-section-header">
+                  <h3 class="adv-section-title">{{ $t('settings.adv.extraction') }}</h3>
+                  <NButton quaternary size="tiny" @click="helpModal = 'adv_extraction'"><span class="help-icon">?</span></NButton>
+                </div>
                 <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.extMinImportance')">
                     <NSlider v-model:value="config.ext_min_importance" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 360px;" />
@@ -1096,7 +1107,10 @@ onMounted(() => {
               </div>
 
               <div v-else-if="advancedSection === 'scoring'">
-                <h3 class="adv-section-title">{{ $t('settings.adv.scoring') }}</h3>
+                <div class="adv-section-header">
+                  <h3 class="adv-section-title">{{ $t('settings.adv.scoring') }}</h3>
+                  <NButton quaternary size="tiny" @click="helpModal = 'adv_scoring'"><span class="help-icon">?</span></NButton>
+                </div>
                 <p class="adv-hint">{{ $t('settings.adv.scoringHint', { total: scoringTotal.toFixed(2) }) }}</p>
                 <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.scoreVector')"><NSlider v-model:value="config.score_vector" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 420px;" /></NFormItem>
@@ -1108,7 +1122,10 @@ onMounted(() => {
               </div>
 
               <div v-else-if="advancedSection === 'gate'">
-                <h3 class="adv-section-title">{{ $t('settings.adv.retrievalGate') }}</h3>
+                <div class="adv-section-header">
+                  <h3 class="adv-section-title">{{ $t('settings.adv.retrievalGate') }}</h3>
+                  <NButton quaternary size="tiny" @click="helpModal = 'adv_gate'"><span class="help-icon">?</span></NButton>
+                </div>
                 <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.gateEnabled')"><NSwitch v-model:value="config.rg_enabled" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.gateMode')"><NSelect v-model:value="config.rg_mode" :options="retrievalGateModes" style="width: 220px;" /></NFormItem>
@@ -1122,7 +1139,10 @@ onMounted(() => {
               </div>
 
               <div v-else-if="advancedSection === 'hotContext'">
-                <h3 class="adv-section-title">{{ $t('settings.adv.hotContext') }}</h3>
+                <div class="adv-section-header">
+                  <h3 class="adv-section-title">{{ $t('settings.adv.hotContext') }}</h3>
+                  <NButton quaternary size="tiny" @click="helpModal = 'adv_hotContext'"><span class="help-icon">?</span></NButton>
+                </div>
                 <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
                   <NFormItem :label="$t('settings.adv.hcEnabled')"><NSwitch v-model:value="config.hc_enabled" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.hcInjectAlways')"><NSwitch v-model:value="config.hc_inject_always" /></NFormItem>
@@ -1190,15 +1210,55 @@ onMounted(() => {
         <p><strong>{{ $t('settings.closeToTray') }}</strong>: {{ $t('settings.closeToTrayHelp') }}</p>
         <p><strong>{{ $t('settings.updateCheck') }}</strong>: {{ $t('settings.updateCheckHelp') }}</p>
       </div>
-      <div v-else-if="helpModal === 'advanced'" class="help-content">
-        <p>{{ $t('settings.adv.help.intro') }}</p>
-        <p><strong>{{ $t('settings.adv.conversation') }}</strong>: {{ $t('settings.adv.help.conversation') }}</p>
-        <p><strong>{{ $t('settings.adv.memoryTop') }}</strong>: {{ $t('settings.adv.help.memoryTop') }}</p>
-        <p><strong>{{ $t('settings.adv.scopes') }}</strong>: {{ $t('settings.adv.help.scopes') }}</p>
-        <p><strong>{{ $t('settings.adv.extraction') }}</strong>: {{ $t('settings.adv.help.extraction') }}</p>
-        <p><strong>{{ $t('settings.adv.scoring') }}</strong>: {{ $t('settings.adv.help.scoring') }}</p>
-        <p><strong>{{ $t('settings.adv.retrievalGate') }}</strong>: {{ $t('settings.adv.help.retrievalGate') }}</p>
-        <p><strong>{{ $t('settings.adv.hotContext') }}</strong>: {{ $t('settings.adv.help.hotContext') }}</p>
+      <div v-else-if="helpModal === 'adv_memoryTop'" class="help-content">
+        <p>{{ $t('settings.adv.helpDetail.memoryTop.intro') }}</p>
+        <p><strong>{{ $t('settings.adv.injectEnabled') }}</strong>: {{ $t('settings.adv.helpDetail.memoryTop.inject') }}</p>
+        <p><strong>{{ $t('settings.adv.extractionEnabled') }}</strong>: {{ $t('settings.adv.helpDetail.memoryTop.extraction') }}</p>
+        <p><strong>{{ $t('settings.adv.maxRecentTurns') }}</strong>: {{ $t('settings.adv.helpDetail.memoryTop.recentTurns') }}</p>
+        <p><strong>{{ $t('settings.adv.vectorTopK') }}</strong>: {{ $t('settings.adv.helpDetail.memoryTop.topK') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'adv_conversation'" class="help-content">
+        <p>{{ $t('settings.adv.helpDetail.conversation.intro') }}</p>
+        <p><strong>{{ $t('settings.adv.convAutoGap') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.gap') }}</p>
+        <p><strong>{{ $t('settings.adv.convDetectPrompt') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.prompt') }}</p>
+        <p><strong>{{ $t('settings.adv.convDetectCount') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.count') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'adv_scopes'" class="help-content">
+        <p>{{ $t('settings.adv.helpDetail.scopes.intro') }}</p>
+        <p><strong>{{ $t('settings.adv.scopeGlobal') }}</strong>: {{ $t('settings.adv.helpDetail.scopes.global') }}</p>
+        <p><strong>{{ $t('settings.adv.scopeCharacter') }}</strong>: {{ $t('settings.adv.helpDetail.scopes.character') }}</p>
+        <p><strong>{{ $t('settings.adv.scopeConversation') }}</strong>: {{ $t('settings.adv.helpDetail.scopes.conversation') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'adv_extraction'" class="help-content">
+        <p>{{ $t('settings.adv.helpDetail.extraction.intro') }}</p>
+        <p><strong>{{ $t('settings.adv.extMinImportance') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.importance') }}</p>
+        <p><strong>{{ $t('settings.adv.extMinConfidence') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.confidence') }}</p>
+        <p><strong>{{ $t('settings.adv.extAfterEachTurn') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.afterEachTurn') }}</p>
+        <p><strong>{{ $t('settings.adv.extFallbackRules') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.fallback') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'adv_scoring'" class="help-content">
+        <p>{{ $t('settings.adv.helpDetail.scoring.intro') }}</p>
+        <p><strong>{{ $t('settings.adv.scoreVector') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.vector') }}</p>
+        <p><strong>{{ $t('settings.adv.scoreImportance') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.importance') }}</p>
+        <p><strong>{{ $t('settings.adv.scoreRecency') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.recency') }}</p>
+        <p><strong>{{ $t('settings.adv.scoreScope') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.scope') }}</p>
+        <p><strong>{{ $t('settings.adv.scoreConfidence') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.confidence') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'adv_gate'" class="help-content">
+        <p>{{ $t('settings.adv.helpDetail.gate.intro') }}</p>
+        <p><strong>{{ $t('settings.adv.gateMode') }}</strong>: {{ $t('settings.adv.helpDetail.gate.mode') }}</p>
+        <p><strong>{{ $t('settings.adv.gateOnNewSession') }}</strong>: {{ $t('settings.adv.helpDetail.gate.newSession') }}</p>
+        <p><strong>{{ $t('settings.adv.gateEveryNTurns') }}</strong>: {{ $t('settings.adv.helpDetail.gate.everyN') }}</p>
+        <p><strong>{{ $t('settings.adv.gateStateConfBelow') }}</strong>: {{ $t('settings.adv.helpDetail.gate.confBelow') }}</p>
+        <p><strong>{{ $t('settings.adv.gateTriggerKeywords') }}</strong>: {{ $t('settings.adv.helpDetail.gate.keywords') }}</p>
+        <p><strong>{{ $t('settings.adv.gateSkipCharsBelow') }}</strong>: {{ $t('settings.adv.helpDetail.gate.skipChars') }}</p>
+        <p><strong>{{ $t('settings.adv.gateSkipWhenSufficient') }}</strong>: {{ $t('settings.adv.helpDetail.gate.skipSufficient') }}</p>
+      </div>
+      <div v-else-if="helpModal === 'adv_hotContext'" class="help-content">
+        <p>{{ $t('settings.adv.helpDetail.hotContext.intro') }}</p>
+        <p><strong>{{ $t('settings.adv.hcInjectAlways') }}</strong>: {{ $t('settings.adv.helpDetail.hotContext.always') }}</p>
+        <p><strong>{{ $t('settings.adv.hcMaxChars') }}</strong>: {{ $t('settings.adv.helpDetail.hotContext.maxChars') }}</p>
+        <p><strong>{{ $t('settings.adv.hcSections') }}</strong>: {{ $t('settings.adv.helpDetail.hotContext.sections') }}</p>
       </div>
       <div v-else-if="helpModal === 'vectorMaintenance'" class="help-content">
         <p>{{ $t('settings.vectorHelp.intro') }}</p>
@@ -1255,11 +1315,17 @@ onMounted(() => {
   min-width: 0;
   padding: 4px 4px 4px 8px;
 }
+.adv-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
 .adv-section-title {
   font-size: 16px;
   font-weight: 600;
   color: #e4e4e7;
-  margin: 0 0 16px;
+  margin: 0;
 }
 .adv-hint {
   color: #71717a;

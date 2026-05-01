@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.5.2 (2026-05-01)
+
+### 改进
+
+- **高级配置页 UI 重构** — 改为左侧菜单 + 右侧面板布局，热上下文 14 段改为 NDataTable 三列表格，告别拥挤折叠面板
+- **高级配置 label 精简** — 所有超过 13 字的 label 文案缩短，label-width 从 200 → 220px，避免在窄屏换行
+- **高级配置每个分组独立帮助按钮** — 7 个分组（记忆总开关/会话检测/作用域/抽取/评分/门控/热上下文）各自有 ? 按钮，弹窗逐字段详解推荐值与典型场景
+- **向量索引维护操作 UX** — 重建 / 异步迁移 / sync 重试三个按钮改为独立行卡片，每个带说明文字 + 二次确认弹窗，避免误操作
+- **仪表盘、记忆库、待审核** 三个核心页面补齐帮助按钮（之前 7 个页面有 4 个有帮助）
+- **GUI 中英文混用全面清理** — 帮助弹窗中混入的英文枚举（pending/approved/rejected、global/character/conversation、preference/boundary/...、low/medium/high）改为中文优先；technical 字段名（conversation_id/character_id/system prompt/ADMIN_TOKEN）在用户可见标签中改用通俗中文
+- **表格枚举显示本地化** — 待审核页 card_type/scope 列、状态板"旧类别状态项" status 列、设置页迁移状态 Tag、仪表盘"按类型分布"、记忆图谱节点详情/图例 全部接入 i18n
+- **状态板表格行内 NPopconfirm** — 重置/删除按钮的二次确认框补全 `positiveText`/`negativeText`，不再显示英文 Confirm/Cancel
+- 设置页 3 条硬编码中文 toast 改用 i18n 键
+
+### 修复
+
+- 修复 i18n 中 `common.deleted` 误写为 "已 deleted" 的双语残留
+
 ## v0.5.1 (2026-05-01)
 
 ### 修复

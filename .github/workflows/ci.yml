@@ -49,7 +49,7 @@ jobs:
           cache-dependency-path: gui/package-lock.json
 
       - name: Install frontend deps
-        run: npm ci
+        run: npm install
 
       - name: Type check & build
         run: npm run build

@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5.5 (2026-05-02)
+
+### 新增
+
+- **Web UI 模式** — 后端启动时自动检测 `gui/dist` 目录，存在则同时提供 Web 管理界面（手机浏览器访问 `http://127.0.0.1:14514` 即可使用完整 GUI）
+- **Termux 一键部署** — 新增 `scripts/termux-setup.sh`，安卓手机通过 Termux 即可本地运行后端 + Web UI，自动从 GitHub Release 下载前端构建产物
+- **Release 附带 WebUI-dist.zip** — GitHub Release 自动打包 `gui/dist/` 为独立 zip，供 Termux 或无 Node.js 环境使用
+
+### 改进
+
+- **Tauri API 版本锁定** — `@tauri-apps/api` 锁定为 `2.10.1`，消除与 Rust 端 tauri 2.10.3 的版本不匹配警告
+- **CI 跨平台兼容** — 工作流 `npm ci` 改为 `npm install`，解决 `sharp` optional 依赖在 Linux/Windows 间的 lockfile 不一致
+
 ## v0.5.4 (2026-05-01)
 
 ### 新增

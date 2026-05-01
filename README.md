@@ -330,9 +330,10 @@ pkg update && pkg install python git
 git clone https://github.com/CyrilPeng/KokoroMemo.git
 cd KokoroMemo
 pip install -e .
-# 前端构建产物 gui/dist 需要从 Release 下载或在 PC 上构建后拷贝到手机
 python -m app.main
 ```
+
+部署脚本会自动从 GitHub Release 下载当前版本的 `WebUI-dist.zip` 并解压到 `gui/dist/`。如需手动获取，可从 [Release 页面](https://github.com/CyrilPeng/KokoroMemo/releases/latest) 下载。
 
 **使用方式：**
 
@@ -666,7 +667,7 @@ macOS:            KokoroMemo-版本号-macOS-arm64.dmg
 Linux:            KokoroMemo-版本号-Linux-x64.AppImage
 ```
 
-安卓用户可参考下方 [安卓 Termux 部署](#安卓-termux-部署) 章节，或在 Release 中下载 `Source code` 并使用 Termux 运行。
+安卓用户可参考下方 [安卓 Termux 部署](#安卓-termux-部署) 章节，一键脚本会自动从 Release 下载 Web UI 前端。
 
 Windows 便携版解压后会生成同名文件夹，文件夹内仅包含 `KokoroMemo.exe`。这个 exe 已内嵌前端和后端，双击启动后会自动启动本地后端服务，客户端仍然连接：
 

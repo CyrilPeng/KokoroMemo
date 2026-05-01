@@ -37,23 +37,30 @@ import tomllib, pathlib
 p = pathlib.Path('pyproject.toml')
 print(tomllib.loads(p.read_text())['project']['version'])
 ")
-    DOWNLOAD_URL="https://github.com/CyrilPeng/KokoroMemo/releases/download/v${VERSION}/KokoroMemo-${VERSION}-WebUI-dist.zip"
+    ZIP_NAME="KokoroMemo-${VERSION}-WebUI-dist.zip"
     ZIP_FILE="/tmp/kokoromemo-webui-dist.zip"
+    DOWNLOAD_URLS=(
+        "https://github.com/CyrilPeng/KokoroMemo/releases/download/v${VERSION}/${ZIP_NAME}"
+        "https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/download/v${VERSION}/${ZIP_NAME}"
+        "https://gitee.com/CyrilPeng/KokoroMemo/releases/download/v${VERSION}/${ZIP_NAME}"
+    )
 
     echo "      版本: v${VERSION}"
-    echo "      下载: ${DOWNLOAD_URL}"
 
-    if python -c "
+    DOWNLOADED=false
+    for url in "${DOWNLOAD_URLS[@]}"; do
+        echo "      尝试: ${url}"
+        if python -c "
 import urllib.request, sys
-url = sys.argv[1]
-dst = sys.argv[2]
-try:
-    urllib.request.urlretrieve(url, dst)
-    print('OK')
-except Exception as e:
-    print(f'FAILED: {e}', file=sys.stderr)
-    sys.exit(1)
-" "$DOWNLOAD_URL" "$ZIP_FILE"; then
+urllib.request.urlretrieve(sys.argv[1], sys.argv[2])
+" "$url" "$ZIP_FILE" 2>/dev/null; then
+            DOWNLOADED=true
+            break
+        fi
+        echo "      失败，尝试下一个源..."
+    done
+
+    if $DOWNLOADED; then
         echo "      解压到 gui/dist/..."
         mkdir -p gui/dist
         python -c "
@@ -69,7 +76,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
         fi
         echo "      Web UI 前端就绪。"
     else
-        echo "      下载失败。后端仍可正常运行（API 代理 + 记忆系统），"
+        echo "      所有下载源均失败。后端仍可正常运行（API 代理 + 记忆系统），"
         echo "      只是无法访问 Web 管理界面。"
         echo "      手动下载: https://github.com/CyrilPeng/KokoroMemo/releases/latest"
     fi

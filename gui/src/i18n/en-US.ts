@@ -304,6 +304,12 @@ export default {
   state: {
     title: 'Session State',
     subtitle: 'Manage session config, state board template, and memory mounts.',
+    statusLabels: {
+      active: 'Active',
+      resolved: 'Resolved',
+      closed: 'Closed',
+      expired: 'Expired',
+    },
     configCard: 'Session Configuration',
     conversationId: 'Session ID',
     inputConversationId: 'Enter conversation_id',
@@ -716,6 +722,15 @@ export default {
     saveHint: 'Config is saved to config.yaml and takes effect immediately. Service restarts if port or storage directory changes.',
     saveConfig: 'Save Config',
     configSaved: 'Config saved',
+    restartingService: 'Config saved, restarting service…',
+    serviceRestarted: 'Service restarted',
+    autoRestartFailed: 'Auto-restart failed; please restart the service manually',
+    migrationStatus: {
+      idle: 'Idle',
+      running: 'Running',
+      completed: 'Completed',
+      failed: 'Failed',
+    },
     indexRebuilt: 'Index rebuilt: {count} memories indexed',
     rebuildFailed: 'Rebuild failed',
     fetchModelsFailed: 'Request failed, check if backend is running',

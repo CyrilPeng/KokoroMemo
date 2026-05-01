@@ -953,11 +953,11 @@ const boardColumns = [
   { title: t('state.column.actions'), key: 'actions', width: 140, render: (row: any) => row.item
     ? h(NSpace, { size: 4, align: 'center', wrap: false }, { default: () => [
         actionIconBtn(CreateOutline, t('state.actions.edit'), () => openEditModal(row.item, row.field)),
-        h(NPopconfirm, { onPositiveClick: () => resetItem(row.item) }, {
+        h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => resetItem(row.item) }, {
           trigger: () => actionIconBtn(RefreshOutline, t('state.actions.reset'), () => {}, 'warning'),
           default: () => t('state.messages.confirmReset'),
         }),
-        h(NPopconfirm, { onPositiveClick: () => deleteItem(row.item) }, {
+        h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => deleteItem(row.item) }, {
           trigger: () => actionIconBtn(TrashOutline, t('state.actions.delete'), () => {}, 'error'),
           default: () => t('state.messages.confirmDelete'),
         }),
@@ -973,15 +973,20 @@ const legacyColumns = [
   { title: t('state.column.key'), key: 'item_key', width: 160 },
   { title: t('state.column.content'), key: 'item_value', ellipsis: { tooltip: true } },
   { title: t('state.column.priority'), key: 'priority', width: 80 },
-  { title: t('state.column.status'), key: 'status', width: 90, render: (row: any) => h(NTag, { size: 'small', type: row.status === 'active' ? 'success' : row.status === 'resolved' ? 'warning' : 'default' }, { default: () => row.status }) },
+  { title: t('state.column.status'), key: 'status', width: 90, render: (row: any) => {
+    const labelKey = `state.statusLabels.${row.status}`
+    const translated = t(labelKey)
+    const label = translated === labelKey ? row.status : translated
+    return h(NTag, { size: 'small', type: row.status === 'active' ? 'success' : row.status === 'resolved' ? 'warning' : 'default' }, { default: () => label })
+  } },
   { title: t('state.column.source'), key: 'source', width: 120 },
   { title: t('state.column.actions'), key: 'actions', width: 140, render: (row: any) => h(NSpace, { size: 4, align: 'center', wrap: false }, { default: () => [
     actionIconBtn(CreateOutline, t('state.actions.edit'), () => openEditModal(row)),
-    h(NPopconfirm, { onPositiveClick: () => resetItem(row) }, {
+    h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => resetItem(row) }, {
       trigger: () => actionIconBtn(RefreshOutline, t('state.actions.reset'), () => {}, 'warning'),
       default: () => t('state.messages.confirmReset'),
     }),
-    h(NPopconfirm, { onPositiveClick: () => deleteItem(row) }, {
+    h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => deleteItem(row) }, {
       trigger: () => actionIconBtn(TrashOutline, t('state.actions.delete'), () => {}, 'error'),
       default: () => t('state.messages.confirmDelete'),
     }),

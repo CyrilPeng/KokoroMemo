@@ -31,6 +31,20 @@ function parsePayload(row: any): any {
   try { return JSON.parse(row.payload_json || '{}') } catch { return {} }
 }
 
+function typeLabel(type: string): string {
+  if (!type) return '—'
+  const key = `memories.typeLabels.${type}`
+  const translated = t(key)
+  return translated === key ? type : translated
+}
+
+function scopeLabel(scope: string): string {
+  if (!scope) return '—'
+  const key = `memories.scopeLabels.${scope}`
+  const translated = t(key)
+  return translated === key ? scope : translated
+}
+
 function riskTag(risk: string) {
   const type = risk === 'high' ? 'error' : risk === 'medium' ? 'warning' : 'success'
   return h(NTag, { size: 'small', type }, { default: () => risk || 'low' })
@@ -43,11 +57,11 @@ const columns = computed(() => [
   },
   {
     title: t('inbox.column.type'), key: 'card_type', width: 100,
-    render: (row: any) => parsePayload(row).card_type || '—',
+    render: (row: any) => typeLabel(parsePayload(row).card_type),
   },
   {
     title: t('inbox.column.scope'), key: 'scope', width: 90,
-    render: (row: any) => parsePayload(row).scope || '—',
+    render: (row: any) => scopeLabel(parsePayload(row).scope),
   },
   {
     title: t('inbox.column.risk'), key: 'risk_level', width: 90,

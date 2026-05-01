@@ -599,15 +599,15 @@ async function saveConfig() {
     if (data.status === 'ok') {
       message.success(data.message || t('settings.configSaved'))
     } else if (data.status === 'restart_required') {
-      message.success(data.message || '配置已保存，正在重启服务...')
+      message.success(data.message || t('settings.restartingService'))
       try {
         await invoke('restart_backend')
         // Re-resolve port — it may have changed after restart
         const newUrl = await resolveBackendUrl()
         backendUrl.value = newUrl
-        message.success('服务已重启')
+        message.success(t('settings.serviceRestarted'))
       } catch (e) {
-        message.warning('自动重启失败，请手动重启服务')
+        message.warning(t('settings.autoRestartFailed'))
       }
     } else {
       message.error(data.message || t('common.saveFailed'))
@@ -680,6 +680,12 @@ const migrationProgressPercent = computed(() => {
   if (!total) return 0
   return Math.min(100, Math.round((progress / total) * 100))
 })
+
+function migrationStatusLabel(status: string): string {
+  const key = `settings.migrationStatus.${status}`
+  const translated = t(key)
+  return translated === key ? status : translated
+}
 
 async function retryVectorSync() {
   try {
@@ -907,7 +913,7 @@ onMounted(() => {
             <div v-if="migrationStatus?.status && migrationStatus.status !== 'idle'" style="margin-top: 12px;">
               <NSpace align="center" :size="8">
                 <NTag size="small" :type="migrationStatus.status === 'running' ? 'info' : migrationStatus.status === 'completed' ? 'success' : 'error'">
-                  {{ migrationStatus.status }}
+                  {{ migrationStatusLabel(migrationStatus.status) }}
                 </NTag>
                 <span v-if="migrationStatus.error" style="color: #ef4444; font-size: 12px;">{{ migrationStatus.error }}</span>
                 <span v-else-if="migrationStatus.status === 'running'" style="color: #a1a1aa; font-size: 12px;">

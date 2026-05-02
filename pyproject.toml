@@ -1,6 +1,6 @@
 [project]
 name = "kokoromemo"
-version = "0.5.5"
+version = "0.5.6"
 description = "Local long-term memory proxy for AI role-playing applications"
 requires-python = ">=3.11"
 dependencies = [

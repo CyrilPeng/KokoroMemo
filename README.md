@@ -316,6 +316,8 @@ http://127.0.0.1:14514
 
 KokoroMemo 可以通过 [Termux](https://f-droid.org/packages/com.termux/) 直接运行在安卓手机上，无需 PC 或远程服务器。AIRP 客户端和管理界面均在手机本地完成。
 
+脚本使用 `proot-distro` 在 Termux 中运行完整 Ubuntu 环境，避免 ARM 架构下的原生依赖编译问题（pydantic-core、uvloop 等）。
+
 **一键安装（GitHub）：**
 
 ```bash
@@ -344,17 +346,19 @@ sys.exit(subprocess.call(['bash',p]))
 "
 ```
 
-脚本会自动完成：克隆项目（GitHub / gh-proxy / Gitee 三重回退）→ 安装 Python 依赖 → 下载 Web UI 前端 → 生成配置文件。
+脚本会自动完成：安装 proot-distro + Ubuntu → 克隆项目（三重回退）→ 安装全部 Python 依赖 → 下载 Web UI 前端 → 生成配置文件 → 创建 `~/start-kokoromemo` 启动脚本。
 
-**手动安装：**
+**日常使用：**
 
 ```bash
-apt update -y && apt full-upgrade -y
-pkg install python git
-git clone https://github.com/CyrilPeng/KokoroMemo.git ~/kokoromemo
-cd ~/kokoromemo
-pip install -e .
-python -m app.main
+~/start-kokoromemo
+```
+
+**更新：**
+
+```bash
+cd ~/kokoromemo && git pull
+proot-distro login ubuntu -- bash -c "cd /data/data/com.termux/files/home/kokoromemo && pip3 install --break-system-packages -e ."
 ```
 
 手动安装时需自行获取 `gui/dist/`：从 [Release 页面](https://github.com/CyrilPeng/KokoroMemo/releases/latest) 下载 `WebUI-dist.zip` 解压到 `gui/dist/` 目录。

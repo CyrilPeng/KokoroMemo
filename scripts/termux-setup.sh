@@ -42,7 +42,9 @@ fi
 
 # 3. Python 依赖
 echo "[3/6] 安装 Python 依赖..."
-pip install -e . 2>&1 | tail -3
+# Termux 提供预编译的 numpy，pip 编译会失败（ARM 架构）
+pkg install -y python-numpy 2>/dev/null || true
+pip install -e . 2>&1 | tail -5
 
 # 4. 下载并解压 Web UI 前端
 if [ -d "gui/dist" ] && [ -f "gui/dist/index.html" ]; then

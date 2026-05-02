@@ -51,6 +51,7 @@ const CURRENT_VERSION_FALLBACK = '0.5.6'
 
 const currentBackendUrl = computed(() => backendUrl.value || getServerUrl())
 const openaiBaseUrl = computed(() => `${currentBackendUrl.value.replace(/\/$/, '')}/v1`)
+const effectiveListeningPort = computed(() => actualServerPort.value || config.value.server_port)
 const portMismatch = computed(() => Boolean(actualServerPort.value && actualServerPort.value !== config.value.server_port))
 
 function normalizeVersion(version: string) {
@@ -1059,6 +1060,14 @@ onMounted(() => {
                 </NSpace>
               </NFormItem>
               <NFormItem :label="$t('settings.localPort')">
+                <NSpace vertical :size="8" style="flex: 1;">
+                  <NSpace align="center">
+                    <code style="padding: 6px 10px; background: #27272a; border: 1px solid #3f3f46; border-radius: 6px; color: #e4e4e7; font-size: 13px;">{{ effectiveListeningPort }}</code>
+                    <NTag v-if="portMismatch" type="warning" size="small">{{ $t('settings.autoSwitchedPort') }}</NTag>
+                  </NSpace>
+                </NSpace>
+              </NFormItem>
+              <NFormItem :label="$t('settings.preferredPort')">
                 <NInputNumber v-model:value="config.server_port" :min="1024" :max="65535" style="width: 200px;" />
               </NFormItem>
               <NFormItem :label="$t('settings.storageDir')">
@@ -1268,6 +1277,7 @@ onMounted(() => {
       <div v-else-if="helpModal === 'server'" class="help-content">
         <p><strong>{{ $t('settings.openaiBaseUrl') }}</strong>: {{ $t('settings.openaiBaseUrlHelp') }}</p>
         <p><strong>{{ $t('settings.localPort') }}</strong>: {{ $t('settings.localPortHelp') }}</p>
+        <p><strong>{{ $t('settings.preferredPort') }}</strong>: {{ $t('settings.preferredPortHelp') }}</p>
         <p><strong>{{ $t('settings.storageDir') }}</strong>: {{ $t('settings.storageDirHelp') }}</p>
         <p><strong>{{ $t('settings.timezone') }}</strong>: {{ $t('settings.timezoneHelp') }}</p>
         <p><strong>{{ $t('settings.language') }}</strong>: {{ $t('settings.languageHelp') }}</p>

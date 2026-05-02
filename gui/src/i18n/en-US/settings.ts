@@ -161,7 +161,7 @@ export default {
     updateCheckFailed: 'Update check failed',
     updateAvailableDetail: 'New version available: current {current}, latest {latest}.',
     noUpdateDetail: 'You are on the latest version: current {current}, latest {latest}.',
-    closeToTrayHelp: 'When enabled, the window close button hides the app to the system tray and keeps the backend running. Use the tray menu to quit. Enabled by default.',
+    closeToTrayHelp: 'When enabled, the window close button hides the app to the system tray and keeps the backend running. When disabled, closing the window exits KokoroMemo and stops the backend. Disabled by default.',
     llmConfig: 'LLM Configuration',
     forwardTag: 'Requests forwarded to this model',
     forwardHelp: 'Your AIRP client (e.g. SillyTavern) sends requests locally, and KokoroMemo acts as a transparent proxy forwarding conversations to this cloud model while automatically injecting long-term memories and the state board.',

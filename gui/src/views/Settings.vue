@@ -150,7 +150,7 @@ async function copyText(text: string) {
 
 
 const language = ref(getLanguage())
-const closeToTray = ref(localStorage.getItem('kokoromemo.closeToTray') !== 'false')
+const closeToTray = ref(localStorage.getItem('kokoromemo.closeToTray') === 'true')
 const languageOptions = [
   { label: '中文', value: 'zh-CN' },
   { label: 'English', value: 'en-US' },

@@ -64,7 +64,7 @@ function handleMenuUpdate(key: string) {
 
 
 async function syncCloseToTraySetting() {
-  const enabled = localStorage.getItem('kokoromemo.closeToTray') !== 'false'
+  const enabled = localStorage.getItem('kokoromemo.closeToTray') === 'true'
   try {
     await invoke('set_close_to_tray', { enabled })
   } catch (e) {

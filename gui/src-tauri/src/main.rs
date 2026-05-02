@@ -51,7 +51,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             backend_child: Mutex::new(None),
-            close_to_tray: AtomicBool::new(true),
+            close_to_tray: AtomicBool::new(false),
             quitting: AtomicBool::new(false),
         }
     }

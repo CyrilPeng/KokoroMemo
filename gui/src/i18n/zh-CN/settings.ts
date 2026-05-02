@@ -161,7 +161,7 @@ export default {
     updateCheckFailed: '检查更新失败',
     updateAvailableDetail: '发现新版本：当前 {current}，最新 {latest}。',
     noUpdateDetail: '当前已是最新版本：当前 {current}，最新 {latest}。',
-    closeToTrayHelp: '启用后点击窗口关闭按钮只隐藏到系统托盘，后端服务继续运行；可从托盘菜单退出。默认启用。',
+    closeToTrayHelp: '启用后点击窗口关闭按钮只隐藏到系统托盘，后端服务继续运行；关闭该项时关闭窗口会退出 KokoroMemo 并停止后端。默认关闭。',
     llmConfig: '对话大模型配置',
     forwardTag: '请求将转发到此模型',
     forwardHelp: '你的 AIRP 客户端（如 SillyTavern）请求发到本地后，KokoroMemo 作为透明代理将对话转发到这里配置的云端大模型，并在转发过程中自动注入长期记忆和会话状态板。',

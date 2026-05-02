@@ -46,7 +46,7 @@ async def fill_conversation_state_tables(
         return result
 
     store = SQLiteStateStore(db_path)
-    template = await store.get_default_table_template()
+    template = await store.get_conversation_table_template(conversation_id)
     if not template:
         result.notes.append("state_table_template_not_found")
         return result

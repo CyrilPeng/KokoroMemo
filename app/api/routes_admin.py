@@ -1418,7 +1418,7 @@ async def get_conversation_state_tables(conversation_id: str, request: Request):
     from app.storage.sqlite_state import SQLiteStateStore
 
     store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
-    template = await store.get_default_table_template()
+    template = await store.get_conversation_table_template(conversation_id)
     if not template:
         raise HTTPException(status_code=404, detail="State table template not found")
     rows = await store.list_table_rows(conversation_id, template.template_id)
@@ -1438,7 +1438,7 @@ async def upsert_conversation_state_table_row(conversation_id: str, table_key: s
     from app.storage.sqlite_state import SQLiteStateStore
 
     store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
-    template = await store.get_default_table_template()
+    template = await store.get_conversation_table_template(conversation_id)
     if not template:
         raise HTTPException(status_code=404, detail="State table template not found")
     table = next((item for item in template.tables if item.table_key == table_key), None)
@@ -1610,7 +1610,7 @@ async def preview_state_board(conversation_id: str, request: Request):
     store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
     items = await store.list_active_items(conversation_id)
     template = await store.get_conversation_template(conversation_id)
-    table_template = await store.get_default_table_template()
+    table_template = await store.get_conversation_table_template(conversation_id)
     table_rows = await store.list_table_rows(conversation_id, table_template.template_id if table_template else None)
     hot = cfg.memory.hot_context
     options = StateRenderOptions(

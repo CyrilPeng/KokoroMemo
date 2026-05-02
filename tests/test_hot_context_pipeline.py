@@ -91,6 +91,33 @@ async def test_non_stream_request_injects_state_board(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_state_only_policy_skips_memory_retrieval(monkeypatch):
+    test_dir = make_test_dir()
+    try:
+        cfg = configure_app(test_dir)
+        provider = FakeChatProvider()
+        monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
+        cfg.embedding.enabled = True
+        store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+        await store.set_default_conversation_config({"profile_id": "rimtalk_colony"})
+        await store.ensure_conversation_config("conv_state_only")
+
+        def fail_embedding(_cfg):
+            raise AssertionError("memory retrieval should be skipped by state_only policy")
+
+        monkeypatch.setattr("app.api.routes_openai.get_embedding_provider", fail_embedding)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post("/v1/chat/completions", json={
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "殖民地今天发生了什么？"}],
+                "metadata": {"conversation_id": "conv_state_only"},
+            })
+        assert resp.status_code == 200
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_short_text_skips_vector_retrieval(monkeypatch):
     test_dir = make_test_dir()
     try:

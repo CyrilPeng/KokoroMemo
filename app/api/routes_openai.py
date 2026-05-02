@@ -102,12 +102,25 @@ async def chat_completions(request: Request):
 
     state_items: list[ConversationStateItem] = []
     state_store: SQLiteStateStore | None = None
-    if cfg.memory.enabled and cfg.memory.hot_context.enabled:
+    conversation_config = None
+    if cfg.memory.enabled:
         try:
             state_store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+            conversation_config = await state_store.ensure_conversation_config(ctx.conversation_id)
+        except Exception as e:
+            logger.warning("Conversation policy loading failed (degraded): %s", e)
+
+    injection_policy = conversation_config.injection_policy if conversation_config else "mixed"
+    should_inject_state = injection_policy in {"state_only", "state_first", "mixed"}
+    should_inject_memory = injection_policy in {"memory_only", "state_first", "mixed"}
+
+    if cfg.memory.enabled and cfg.memory.hot_context.enabled and should_inject_state:
+        try:
+            if state_store is None:
+                state_store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
             state_items = await state_store.list_active_items(ctx.conversation_id)
             state_template = await state_store.get_conversation_template(ctx.conversation_id)
-            table_template = await state_store.get_default_table_template()
+            table_template = await state_store.get_conversation_table_template(ctx.conversation_id)
             table_rows = await state_store.list_table_rows(
                 ctx.conversation_id,
                 table_template.template_id if table_template else None,
@@ -132,7 +145,7 @@ async def chat_completions(request: Request):
         except Exception as e:
             logger.warning("Hot context injection failed (degraded): %s", e)
 
-    if cfg.memory.enabled and cfg.memory.inject_enabled and cfg.embedding.enabled:
+    if cfg.memory.enabled and cfg.memory.inject_enabled and cfg.embedding.enabled and should_inject_memory:
         try:
             query = build_retrieval_query(
                 messages, ctx.user_id, ctx.character_id, ctx.conversation_id,
@@ -361,7 +374,22 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
         logger.warning("Failed to persist response: %s", e)
         turn_id = None
 
-    if cfg.memory.enabled and cfg.memory.state_updater.enabled and cfg.memory.state_updater.update_after_each_turn:
+    conversation_config = None
+    if cfg.memory.enabled:
+        try:
+            conversation_config = await SQLiteStateStore(cfg.storage.sqlite.memory_db).ensure_conversation_config(ctx.conversation_id)
+        except Exception as e:
+            logger.warning("Conversation policy loading failed during extraction (degraded): %s", e)
+
+    state_update_policy = conversation_config.state_update_policy if conversation_config else "auto"
+    memory_write_policy = conversation_config.memory_write_policy if conversation_config else "candidate"
+
+    if (
+        cfg.memory.enabled
+        and cfg.memory.state_updater.enabled
+        and cfg.memory.state_updater.update_after_each_turn
+        and state_update_policy == "auto"
+    ):
         if assistant_text and _should_run_state_updater(cfg, turn_index if 'turn_index' in locals() else None):
             user_msg = _latest_user_message(original_messages)
             if user_msg:
@@ -432,6 +460,9 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
     # Memory extraction via card system
     if not cfg.memory.enabled or not cfg.memory.extraction_enabled:
         return
+    if memory_write_policy == "disabled":
+        logger.info("Memory extraction skipped for conv=%s by policy=disabled", ctx.conversation_id)
+        return
     if not assistant_text:
         return
 
@@ -450,6 +481,13 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
         store = get_lancedb_store(cfg)
         judge_config = None
         if cfg.memory.judge.enabled:
+            user_rules = cfg.memory.judge.user_rules
+            if memory_write_policy == "stable_only":
+                user_rules = (
+                    f"{user_rules}\n\n"
+                    "当前会话策略为 stable_only：只允许用户偏好、角色稳定设定、世界观常识、稳定关系等长期事实进入记忆候选；"
+                    "临时事件、机械状态、剧情进度、资源变化、任务进度、小人即时状态等必须判为不写入长期记忆。"
+                ).strip()
             judge_config = MemoryJudgeConfigView(
                 provider=cfg.memory.judge.provider,
                 base_url=cfg.memory.judge.base_url or cfg.llm.base_url,
@@ -458,7 +496,7 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
                 timeout_seconds=cfg.memory.judge.timeout_seconds,
                 temperature=cfg.memory.judge.temperature,
                 mode=cfg.memory.judge.mode,
-                user_rules=cfg.memory.judge.user_rules,
+                user_rules=user_rules,
                 prompt=cfg.memory.judge.prompt,
             )
 

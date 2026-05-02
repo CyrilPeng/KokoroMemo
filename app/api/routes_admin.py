@@ -68,6 +68,10 @@ async def update_conversation_config_api(conversation_id: str, request: Request,
     payload = dict(data)
     payload["conversation_id"] = conversation_id
     store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    if payload.get("template_id") and not await store.get_template(payload["template_id"]):
+        raise HTTPException(status_code=404, detail="Template not found")
+    if payload.get("table_template_id") and not await store.get_table_template(payload["table_template_id"]):
+        raise HTTPException(status_code=404, detail="State table template not found")
     config = await store.set_conversation_config(payload)
     return {"status": "ok", "config": config.to_dict()}
 

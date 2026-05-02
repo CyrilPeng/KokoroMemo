@@ -14,6 +14,11 @@ from app.memory.state_schema import (
     StateBoardField,
     StateBoardTab,
     StateBoardTemplate,
+    StateTableCell,
+    StateTableColumn,
+    StateTableRow,
+    StateTableSchema,
+    StateTableTemplate,
 )
 
 
@@ -165,6 +170,136 @@ CREATE TABLE IF NOT EXISTS retrieval_decisions (
 
 CREATE INDEX IF NOT EXISTS idx_retrieval_decisions_conversation
 ON retrieval_decisions(conversation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS state_table_templates (
+  template_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  scenario_type TEXT NOT NULL DEFAULT 'roleplay',
+  is_builtin INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS state_table_schemas (
+  table_id TEXT PRIMARY KEY,
+  template_id TEXT NOT NULL,
+  table_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  required INTEGER NOT NULL DEFAULT 0,
+  as_status INTEGER NOT NULL DEFAULT 0,
+  include_in_prompt INTEGER NOT NULL DEFAULT 1,
+  max_prompt_rows INTEGER NOT NULL DEFAULT 4,
+  prompt_priority INTEGER NOT NULL DEFAULT 50,
+  insert_rule TEXT,
+  update_rule TEXT,
+  delete_rule TEXT,
+  resolve_rule TEXT,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(template_id) REFERENCES state_table_templates(template_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_state_table_schemas_key
+ON state_table_schemas(template_id, table_key);
+
+CREATE TABLE IF NOT EXISTS state_table_columns (
+  column_id TEXT PRIMARY KEY,
+  table_id TEXT NOT NULL,
+  column_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  value_type TEXT NOT NULL DEFAULT 'text',
+  required INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  include_in_prompt INTEGER NOT NULL DEFAULT 1,
+  max_chars INTEGER NOT NULL DEFAULT 240,
+  default_value TEXT,
+  options_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(table_id) REFERENCES state_table_schemas(table_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_state_table_columns_key
+ON state_table_columns(table_id, column_key);
+
+CREATE TABLE IF NOT EXISTS state_table_rows (
+  row_id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  template_id TEXT NOT NULL,
+  table_id TEXT NOT NULL,
+  table_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  priority INTEGER NOT NULL DEFAULT 50,
+  confidence REAL NOT NULL DEFAULT 0.7,
+  source TEXT NOT NULL DEFAULT 'manual',
+  source_turn_id TEXT,
+  source_message_ids_json TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(template_id) REFERENCES state_table_templates(template_id),
+  FOREIGN KEY(table_id) REFERENCES state_table_schemas(table_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_state_table_rows_conversation
+ON state_table_rows(conversation_id, template_id, table_key, status, priority);
+
+CREATE TABLE IF NOT EXISTS state_table_cells (
+  cell_id TEXT PRIMARY KEY,
+  row_id TEXT NOT NULL,
+  column_id TEXT,
+  column_key TEXT NOT NULL,
+  value TEXT,
+  confidence REAL NOT NULL DEFAULT 0.7,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(row_id) REFERENCES state_table_rows(row_id),
+  FOREIGN KEY(column_id) REFERENCES state_table_columns(column_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_state_table_cells_key
+ON state_table_cells(row_id, column_key);
+
+CREATE TABLE IF NOT EXISTS state_table_events (
+  event_id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  request_id TEXT,
+  turn_id TEXT,
+  event_type TEXT NOT NULL,
+  table_key TEXT,
+  row_id TEXT,
+  before_json TEXT,
+  after_json TEXT,
+  operation_json TEXT,
+  model_output TEXT,
+  reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_state_table_events_conversation
+ON state_table_events(conversation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS state_table_debug_runs (
+  run_id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  turn_id TEXT,
+  mode TEXT NOT NULL DEFAULT 'manual',
+  input_messages_json TEXT,
+  prompt_json TEXT,
+  raw_model_output TEXT,
+  parsed_operations_json TEXT,
+  applied_result_json TEXT,
+  status TEXT NOT NULL DEFAULT 'ok',
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 """
 
 
@@ -213,6 +348,7 @@ async def init_state_db(db_path: str) -> None:
             "UPDATE conversation_state_items SET item_value = content WHERE item_value IS NULL"
         )
         await _ensure_builtin_templates(db)
+        await _ensure_builtin_table_templates(db)
         await db.commit()
 
 
@@ -326,6 +462,167 @@ BUILTIN_STATE_TEMPLATES = [
 ]
 
 
+BUILTIN_STATE_TABLE_TEMPLATES = [
+    {
+        "template_id": "tpl_rimtalk_roleplay_tables",
+        "name": "RimTalk 角色扮演表格版",
+        "description": "面向连续角色扮演的结构化状态板，强调当前场景、角色状态、关系、规则、承诺、事件和物品。",
+        "scenario_type": "roleplay",
+        "tables": [
+            {
+                "table_key": "current_scene",
+                "name": "当前场景",
+                "description": "只记录正在发生的地点、时间、局面和下一步，不写长期设定。",
+                "as_status": True,
+                "max_prompt_rows": 2,
+                "prompt_priority": 100,
+                "columns": [
+                    ("scene", "场景", "当前发生的具体场景或地点", True, 220),
+                    ("time", "时间", "剧情内时间或阶段", False, 80),
+                    ("focus", "焦点", "本轮互动最需要延续的行动或冲突", True, 220),
+                    ("next_step", "下一步", "已经明确但尚未完成的下一步", False, 180),
+                ],
+            },
+            {
+                "table_key": "character_state",
+                "name": "角色状态",
+                "description": "记录角色当前身份、情绪、身体状态、口癖和短期目标。",
+                "max_prompt_rows": 6,
+                "prompt_priority": 90,
+                "columns": [
+                    ("character", "角色", "角色名或称呼", True, 80),
+                    ("identity", "身份", "本会话中需要保持的角色身份", False, 160),
+                    ("mood", "情绪", "当前情绪或态度", False, 120),
+                    ("state", "状态", "身体/能力/处境等即时状态", False, 180),
+                    ("goal", "短期目标", "角色当前想做的事", False, 180),
+                    ("speech", "口癖/语气", "需要延续的表达习惯", False, 160),
+                ],
+            },
+            {
+                "table_key": "relationship_state",
+                "name": "关系状态",
+                "description": "记录用户与角色、角色之间的关系阶段和最近变化。",
+                "max_prompt_rows": 6,
+                "prompt_priority": 80,
+                "columns": [
+                    ("subject", "主体", "关系的一方", True, 80),
+                    ("object", "对象", "关系的另一方", True, 80),
+                    ("relationship", "关系", "关系阶段或称谓", True, 160),
+                    ("attitude", "态度", "当前好感、信任、警惕等", False, 160),
+                    ("recent_change", "最近变化", "最近一轮或事件造成的变化", False, 200),
+                ],
+            },
+            {
+                "table_key": "roleplay_rules",
+                "name": "扮演规则",
+                "description": "记录用户明确要求保持的扮演规则、边界、称呼和偏好。",
+                "max_prompt_rows": 8,
+                "prompt_priority": 95,
+                "columns": [
+                    ("rule", "规则", "必须遵守的扮演规则或边界", True, 240),
+                    ("scope", "范围", "适用角色、场景或全局", False, 120),
+                    ("source", "来源", "用户明确要求/剧情约定/系统推断", False, 120),
+                ],
+            },
+            {
+                "table_key": "promises_tasks",
+                "name": "承诺与任务",
+                "description": "记录尚未完成的承诺、命令、约定和短期任务。",
+                "max_prompt_rows": 8,
+                "prompt_priority": 75,
+                "columns": [
+                    ("task", "事项", "未完成事项", True, 220),
+                    ("owner", "负责人", "谁承诺或需要执行", False, 80),
+                    ("status", "状态", "待办/进行中/完成/取消", False, 80),
+                    ("due", "时机", "触发条件或截止时机", False, 120),
+                ],
+            },
+            {
+                "table_key": "important_events",
+                "name": "重要事件",
+                "description": "记录影响后续对话的关键事件，不记录流水账。",
+                "max_prompt_rows": 6,
+                "prompt_priority": 65,
+                "columns": [
+                    ("event", "事件", "关键事件摘要", True, 240),
+                    ("impact", "影响", "对关系、剧情或状态造成的影响", False, 220),
+                    ("time", "时间", "发生时间或阶段", False, 100),
+                ],
+            },
+            {
+                "table_key": "important_items",
+                "name": "重要物品",
+                "description": "记录剧情中需要记住的物品、证据、资源和归属。",
+                "max_prompt_rows": 6,
+                "prompt_priority": 55,
+                "columns": [
+                    ("item", "物品", "物品或资源名称", True, 120),
+                    ("owner", "持有者", "当前持有者或归属", False, 100),
+                    ("state", "状态", "数量、损坏、位置等", False, 160),
+                    ("meaning", "意义", "为什么重要", False, 180),
+                ],
+            },
+        ],
+    },
+    {
+        "template_id": "tpl_roleplay_light_tables",
+        "name": "轻量角色扮演表格版",
+        "description": "适合日常陪伴和轻量 RP，只保留当前互动、规则、关系和近期摘要。",
+        "scenario_type": "roleplay_light",
+        "tables": [
+            {
+                "table_key": "current_interaction",
+                "name": "当前互动",
+                "description": "当前聊天场景和短期目标。",
+                "as_status": True,
+                "max_prompt_rows": 3,
+                "prompt_priority": 100,
+                "columns": [
+                    ("topic", "话题", "当前正在聊什么", True, 180),
+                    ("mood", "氛围", "当前情绪氛围", False, 120),
+                    ("next_step", "下一步", "接下来应延续的动作", False, 180),
+                ],
+            },
+            {
+                "table_key": "roleplay_rules",
+                "name": "互动规则",
+                "description": "称呼、口癖、边界和偏好。",
+                "max_prompt_rows": 6,
+                "prompt_priority": 90,
+                "columns": [
+                    ("rule", "规则", "需要持续遵守的规则", True, 240),
+                    ("scope", "范围", "适用范围", False, 120),
+                ],
+            },
+            {
+                "table_key": "relationship_state",
+                "name": "关系状态",
+                "description": "用户和角色的关系阶段。",
+                "max_prompt_rows": 4,
+                "prompt_priority": 80,
+                "columns": [
+                    ("subject", "主体", "关系主体", True, 80),
+                    ("object", "对象", "关系对象", True, 80),
+                    ("relationship", "关系", "当前关系", True, 160),
+                    ("recent_change", "最近变化", "最近变化", False, 180),
+                ],
+            },
+            {
+                "table_key": "recent_summary",
+                "name": "近期摘要",
+                "description": "短期剧情摘要。",
+                "max_prompt_rows": 3,
+                "prompt_priority": 60,
+                "columns": [
+                    ("summary", "摘要", "最近几轮需要延续的信息", True, 260),
+                    ("impact", "影响", "对下一轮的影响", False, 180),
+                ],
+            },
+        ],
+    },
+]
+
+
 async def _ensure_builtin_templates(db: aiosqlite.Connection) -> None:
     for template in BUILTIN_STATE_TEMPLATES:
         await db.execute(
@@ -364,6 +661,88 @@ async def _ensure_builtin_templates(db: aiosqlite.Connection) -> None:
                         sort_order = excluded.sort_order,
                         updated_at = datetime('now', 'localtime')""",
                     (field_id, template["template_id"], tab_id, field_key, label, description, field_index),
+                )
+
+
+async def _ensure_builtin_table_templates(db: aiosqlite.Connection) -> None:
+    for template in BUILTIN_STATE_TABLE_TEMPLATES:
+        await db.execute(
+            """INSERT INTO state_table_templates
+               (template_id, name, description, scenario_type, is_builtin, status, version)
+               VALUES (?, ?, ?, ?, 1, 'active', 1)
+               ON CONFLICT(template_id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                scenario_type = excluded.scenario_type,
+                is_builtin = 1,
+                status = 'active',
+                updated_at = datetime('now', 'localtime')""",
+            (
+                template["template_id"],
+                template["name"],
+                template["description"],
+                template.get("scenario_type", "roleplay"),
+            ),
+        )
+        for table_index, table in enumerate(template["tables"]):
+            table_id = f"{template['template_id']}__{table['table_key']}"
+            await db.execute(
+                """INSERT INTO state_table_schemas
+                   (table_id, template_id, table_key, name, description, sort_order,
+                    enabled, required, as_status, include_in_prompt, max_prompt_rows,
+                    prompt_priority, insert_rule, update_rule, delete_rule, resolve_rule, note)
+                   VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(table_id) DO UPDATE SET
+                    name = excluded.name,
+                    description = excluded.description,
+                    sort_order = excluded.sort_order,
+                    enabled = excluded.enabled,
+                    required = excluded.required,
+                    as_status = excluded.as_status,
+                    include_in_prompt = excluded.include_in_prompt,
+                    max_prompt_rows = excluded.max_prompt_rows,
+                    prompt_priority = excluded.prompt_priority,
+                    insert_rule = excluded.insert_rule,
+                    update_rule = excluded.update_rule,
+                    delete_rule = excluded.delete_rule,
+                    resolve_rule = excluded.resolve_rule,
+                    note = excluded.note,
+                    updated_at = datetime('now', 'localtime')""",
+                (
+                    table_id,
+                    template["template_id"],
+                    table["table_key"],
+                    table["name"],
+                    table.get("description", ""),
+                    table_index,
+                    int(bool(table.get("required", False))),
+                    int(bool(table.get("as_status", False))),
+                    int(table.get("max_prompt_rows", 4)),
+                    int(table.get("prompt_priority", 50)),
+                    table.get("insert_rule", ""),
+                    table.get("update_rule", ""),
+                    table.get("delete_rule", ""),
+                    table.get("resolve_rule", ""),
+                    table.get("note", ""),
+                ),
+            )
+            for column_index, column in enumerate(table["columns"]):
+                column_key, name, description, required, max_chars = column
+                column_id = f"{table_id}__{column_key}"
+                await db.execute(
+                    """INSERT INTO state_table_columns
+                       (column_id, table_id, column_key, name, description, value_type,
+                        required, sort_order, include_in_prompt, max_chars, default_value, options_json)
+                       VALUES (?, ?, ?, ?, ?, 'text', ?, ?, 1, ?, '', '{}')
+                       ON CONFLICT(column_id) DO UPDATE SET
+                        name = excluded.name,
+                        description = excluded.description,
+                        required = excluded.required,
+                        sort_order = excluded.sort_order,
+                        include_in_prompt = excluded.include_in_prompt,
+                        max_chars = excluded.max_chars,
+                        updated_at = datetime('now', 'localtime')""",
+                    (column_id, table_id, column_key, name, description, int(bool(required)), column_index, int(max_chars)),
                 )
 def _row_to_item(row: aiosqlite.Row) -> ConversationStateItem:
     return ConversationStateItem(
@@ -439,6 +818,88 @@ def _row_to_template(row: aiosqlite.Row) -> StateBoardTemplate:
     )
 
 
+def _row_to_table_column(row: aiosqlite.Row) -> StateTableColumn:
+    return StateTableColumn(
+        column_id=row["column_id"],
+        table_id=row["table_id"],
+        column_key=row["column_key"],
+        name=row["name"],
+        description=row["description"] or "",
+        value_type=row["value_type"],
+        required=bool(row["required"]),
+        sort_order=int(row["sort_order"]),
+        include_in_prompt=bool(row["include_in_prompt"]),
+        max_chars=int(row["max_chars"]),
+        default_value=row["default_value"] or "",
+        options=_json_loads(row["options_json"], {}),
+    )
+
+
+def _row_to_table_schema(row: aiosqlite.Row) -> StateTableSchema:
+    return StateTableSchema(
+        table_id=row["table_id"],
+        template_id=row["template_id"],
+        table_key=row["table_key"],
+        name=row["name"],
+        description=row["description"] or "",
+        sort_order=int(row["sort_order"]),
+        enabled=bool(row["enabled"]),
+        required=bool(row["required"]),
+        as_status=bool(row["as_status"]),
+        include_in_prompt=bool(row["include_in_prompt"]),
+        max_prompt_rows=int(row["max_prompt_rows"]),
+        prompt_priority=int(row["prompt_priority"]),
+        insert_rule=row["insert_rule"] or "",
+        update_rule=row["update_rule"] or "",
+        delete_rule=row["delete_rule"] or "",
+        resolve_rule=row["resolve_rule"] or "",
+        note=row["note"] or "",
+    )
+
+
+def _row_to_table_template(row: aiosqlite.Row) -> StateTableTemplate:
+    return StateTableTemplate(
+        template_id=row["template_id"],
+        name=row["name"],
+        description=row["description"] or "",
+        scenario_type=row["scenario_type"] or "roleplay",
+        is_builtin=bool(row["is_builtin"]),
+        status=row["status"],
+        version=int(row["version"]),
+    )
+
+
+def _row_to_table_cell(row: aiosqlite.Row) -> StateTableCell:
+    return StateTableCell(
+        cell_id=row["cell_id"],
+        row_id=row["row_id"],
+        column_id=row["column_id"],
+        column_key=row["column_key"],
+        value=row["value"] or "",
+        confidence=float(row["confidence"]),
+        updated_at=row["updated_at"],
+    )
+
+
+def _row_to_table_row(row: aiosqlite.Row) -> StateTableRow:
+    return StateTableRow(
+        row_id=row["row_id"],
+        conversation_id=row["conversation_id"],
+        template_id=row["template_id"],
+        table_id=row["table_id"],
+        table_key=row["table_key"],
+        status=row["status"],
+        priority=int(row["priority"]),
+        confidence=float(row["confidence"]),
+        source=row["source"],
+        source_turn_id=row["source_turn_id"],
+        source_message_ids=_json_loads(row["source_message_ids_json"], []),
+        metadata=_json_loads(row["metadata_json"], {}),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
 class SQLiteStateStore:
     """Small async repository for conversation hot-state."""
 
@@ -447,6 +908,207 @@ class SQLiteStateStore:
 
     async def init_schema(self) -> None:
         await init_state_db(self.db_path)
+
+    async def list_table_templates(self, include_inactive: bool = False) -> list[StateTableTemplate]:
+        await self.init_schema()
+        where = "" if include_inactive else "WHERE status = 'active'"
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                f"SELECT * FROM state_table_templates {where} ORDER BY is_builtin DESC, name ASC"
+            )
+            return [_row_to_table_template(row) for row in await cursor.fetchall()]
+
+    async def get_table_template(self, template_id: str) -> StateTableTemplate | None:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM state_table_templates WHERE template_id = ?", (template_id,))
+            template_row = await cursor.fetchone()
+            if not template_row:
+                return None
+            template = _row_to_table_template(template_row)
+            table_cursor = await db.execute(
+                """SELECT * FROM state_table_schemas
+                   WHERE template_id = ? ORDER BY sort_order ASC, name ASC""",
+                (template_id,),
+            )
+            tables = [_row_to_table_schema(row) for row in await table_cursor.fetchall()]
+            for table in tables:
+                column_cursor = await db.execute(
+                    """SELECT * FROM state_table_columns
+                       WHERE table_id = ? ORDER BY sort_order ASC, name ASC""",
+                    (table.table_id,),
+                )
+                table.columns = [_row_to_table_column(row) for row in await column_cursor.fetchall()]
+            template.tables = tables
+            return template
+
+    async def get_default_table_template(self) -> StateTableTemplate | None:
+        return await self.get_table_template("tpl_rimtalk_roleplay_tables")
+
+    async def list_table_rows(
+        self,
+        conversation_id: str,
+        template_id: str | None = None,
+        table_key: str | None = None,
+        status: str | None = "active",
+        limit: int = 500,
+    ) -> list[StateTableRow]:
+        await self.init_schema()
+        where = ["conversation_id = ?"]
+        params: list[Any] = [conversation_id]
+        if template_id:
+            where.append("template_id = ?")
+            params.append(template_id)
+        if table_key:
+            where.append("table_key = ?")
+            params.append(table_key)
+        if status:
+            where.append("status = ?")
+            params.append(status)
+        where_sql = " AND ".join(where)
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                f"""SELECT * FROM state_table_rows WHERE {where_sql}
+                    ORDER BY priority DESC, updated_at DESC, created_at DESC LIMIT ?""",
+                params + [limit],
+            )
+            rows = [_row_to_table_row(row) for row in await cursor.fetchall()]
+            if not rows:
+                return []
+            row_ids = [row.row_id for row in rows if row.row_id]
+            placeholders = ",".join("?" for _ in row_ids)
+            cell_cursor = await db.execute(
+                f"SELECT * FROM state_table_cells WHERE row_id IN ({placeholders}) ORDER BY updated_at ASC",
+                row_ids,
+            )
+            cells_by_row: dict[str, dict[str, StateTableCell]] = {}
+            for cell_row in await cell_cursor.fetchall():
+                cell = _row_to_table_cell(cell_row)
+                cells_by_row.setdefault(cell.row_id, {})[cell.column_key] = cell
+            for row in rows:
+                row.cells = cells_by_row.get(row.row_id or "", {})
+            return rows
+
+    async def upsert_table_row(self, row: StateTableRow, values: dict[str, Any] | None = None) -> str:
+        await self.init_schema()
+        row_id = row.row_id or generate_id("state_row_")
+        values = values or {key: cell.value for key, cell in row.cells.items()}
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO state_table_rows
+                   (row_id, conversation_id, template_id, table_id, table_key, status, priority,
+                    confidence, source, source_turn_id, source_message_ids_json, metadata_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(row_id) DO UPDATE SET
+                    conversation_id = excluded.conversation_id,
+                    template_id = excluded.template_id,
+                    table_id = excluded.table_id,
+                    table_key = excluded.table_key,
+                    status = excluded.status,
+                    priority = excluded.priority,
+                    confidence = excluded.confidence,
+                    source = excluded.source,
+                    source_turn_id = excluded.source_turn_id,
+                    source_message_ids_json = excluded.source_message_ids_json,
+                    metadata_json = excluded.metadata_json,
+                    updated_at = datetime('now', 'localtime')""",
+                (
+                    row_id,
+                    row.conversation_id,
+                    row.template_id,
+                    row.table_id,
+                    row.table_key,
+                    row.status,
+                    row.priority,
+                    row.confidence,
+                    row.source,
+                    row.source_turn_id,
+                    json.dumps(row.source_message_ids, ensure_ascii=False),
+                    json.dumps(row.metadata, ensure_ascii=False),
+                ),
+            )
+            column_ids: dict[str, str | None] = {}
+            cursor = await db.execute("SELECT column_key, column_id FROM state_table_columns WHERE table_id = ?", (row.table_id,))
+            for column_key, column_id in await cursor.fetchall():
+                column_ids[column_key] = column_id
+            for column_key, value in values.items():
+                cell_id = row.cells.get(column_key).cell_id if column_key in row.cells else generate_id("state_cell_")
+                cell_value = "" if value is None else str(value)
+                await db.execute(
+                    """INSERT INTO state_table_cells (cell_id, row_id, column_id, column_key, value, confidence)
+                       VALUES (?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(row_id, column_key) DO UPDATE SET
+                        column_id = excluded.column_id,
+                        value = excluded.value,
+                        confidence = excluded.confidence,
+                        updated_at = datetime('now', 'localtime')""",
+                    (cell_id, row_id, column_ids.get(column_key), column_key, cell_value, row.confidence),
+                )
+            await db.commit()
+        return row_id
+
+    async def update_table_row_status(self, row_id: str, status: str, reason: str | None = None) -> bool:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("SELECT conversation_id, table_key FROM state_table_rows WHERE row_id = ?", (row_id,))
+            existing = await cursor.fetchone()
+            if not existing:
+                return False
+            await db.execute(
+                "UPDATE state_table_rows SET status = ?, updated_at = datetime('now', 'localtime') WHERE row_id = ?",
+                (status, row_id),
+            )
+            await db.execute(
+                """INSERT INTO state_table_events
+                   (event_id, conversation_id, event_type, table_key, row_id, reason)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (generate_id("state_evt_"), existing[0], status, existing[1], row_id, reason or ""),
+            )
+            await db.commit()
+            return True
+
+    async def record_table_event(
+        self,
+        conversation_id: str,
+        event_type: str,
+        table_key: str | None = None,
+        row_id: str | None = None,
+        operation: dict[str, Any] | None = None,
+        before: dict[str, Any] | None = None,
+        after: dict[str, Any] | None = None,
+        reason: str | None = None,
+        request_id: str | None = None,
+        turn_id: str | None = None,
+        model_output: str | None = None,
+    ) -> str:
+        await self.init_schema()
+        event_id = generate_id("state_evt_")
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO state_table_events
+                   (event_id, conversation_id, request_id, turn_id, event_type, table_key, row_id,
+                    before_json, after_json, operation_json, model_output, reason)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    event_id,
+                    conversation_id,
+                    request_id,
+                    turn_id,
+                    event_type,
+                    table_key,
+                    row_id,
+                    json.dumps(before or {}, ensure_ascii=False),
+                    json.dumps(after or {}, ensure_ascii=False),
+                    json.dumps(operation or {}, ensure_ascii=False),
+                    model_output,
+                    reason or "",
+                ),
+            )
+            await db.commit()
+        return event_id
 
     async def list_templates(self, include_inactive: bool = False) -> list[StateBoardTemplate]:
         await self.init_schema()

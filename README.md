@@ -314,26 +314,47 @@ http://127.0.0.1:14514
 
 KokoroMemo 可以通过 [Termux](https://f-droid.org/packages/com.termux/) 直接运行在安卓手机上，无需 PC 或远程服务器。AIRP 客户端和管理界面均在手机本地完成。
 
-**一键安装：**
+**一键安装（GitHub）：**
 
 ```bash
-pkg install git
-git clone https://github.com/CyrilPeng/KokoroMemo.git
-cd KokoroMemo
-bash scripts/termux-setup.sh
+python -c "
+import urllib.request,subprocess,sys,os
+p=os.path.expanduser('~/km-setup.sh')
+for u in [
+  'https://gh-proxy.org/https://raw.githubusercontent.com/CyrilPeng/KokoroMemo/main/scripts/termux-setup.sh',
+  'https://raw.githubusercontent.com/CyrilPeng/KokoroMemo/main/scripts/termux-setup.sh',
+]:
+  try: urllib.request.urlretrieve(u,p); break
+  except: pass
+else: print('下载失败，请检查网络'); sys.exit(1)
+sys.exit(subprocess.call(['bash',p]))
+"
 ```
+
+**一键安装（Gitee，国内推荐）：**
+
+```bash
+python -c "
+import urllib.request,subprocess,sys,os
+p=os.path.expanduser('~/km-setup.sh')
+urllib.request.urlretrieve('https://raw.giteeusercontent.com/Cyril_P/KokoroMemo/raw/main/scripts/termux-setup.sh',p)
+sys.exit(subprocess.call(['bash',p]))
+"
+```
+
+脚本会自动完成：克隆项目（GitHub / gh-proxy / Gitee 三重回退）→ 安装 Python 依赖 → 下载 Web UI 前端 → 生成配置文件。
 
 **手动安装：**
 
 ```bash
 pkg update && pkg install python git
-git clone https://github.com/CyrilPeng/KokoroMemo.git
-cd KokoroMemo
+git clone https://github.com/CyrilPeng/KokoroMemo.git ~/kokoromemo
+cd ~/kokoromemo
 pip install -e .
 python -m app.main
 ```
 
-部署脚本会自动从 GitHub Release 下载当前版本的 `WebUI-dist.zip` 并解压到 `gui/dist/`。如需手动获取，可从 [Release 页面](https://github.com/CyrilPeng/KokoroMemo/releases/latest) 下载。
+手动安装时需自行获取 `gui/dist/`：从 [Release 页面](https://github.com/CyrilPeng/KokoroMemo/releases/latest) 下载 `WebUI-dist.zip` 解压到 `gui/dist/` 目录。
 
 **使用方式：**
 

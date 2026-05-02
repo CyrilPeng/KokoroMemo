@@ -13,12 +13,30 @@ pkg install -y python git
 
 # 2. 克隆项目
 INSTALL_DIR="$HOME/kokoromemo"
+CLONE_URLS=(
+    "https://github.com/CyrilPeng/KokoroMemo.git"
+    "https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo.git"
+    "https://gitee.com/Cyril_P/KokoroMemo.git"
+)
 if [ -d "$INSTALL_DIR" ]; then
     echo "[2/6] 项目目录已存在，更新中..."
-    cd "$INSTALL_DIR" && git pull
+    cd "$INSTALL_DIR" && git pull || echo "      git pull 失败，使用当前版本继续。"
 else
     echo "[2/6] 克隆项目..."
-    git clone https://github.com/CyrilPeng/KokoroMemo.git "$INSTALL_DIR"
+    CLONED=false
+    for url in "${CLONE_URLS[@]}"; do
+        echo "      尝试: ${url}"
+        if git clone "$url" "$INSTALL_DIR" 2>&1; then
+            CLONED=true
+            break
+        fi
+        rm -rf "$INSTALL_DIR"
+        echo "      失败，尝试下一个源..."
+    done
+    if ! $CLONED; then
+        echo "      所有克隆源均失败，请检查网络。"
+        exit 1
+    fi
     cd "$INSTALL_DIR"
 fi
 
@@ -38,11 +56,11 @@ p = pathlib.Path('pyproject.toml')
 print(tomllib.loads(p.read_text())['project']['version'])
 ")
     ZIP_NAME="KokoroMemo-${VERSION}-WebUI-dist.zip"
-    ZIP_FILE="/tmp/kokoromemo-webui-dist.zip"
+    ZIP_FILE="$HOME/kokoromemo-webui-dist.zip"
     DOWNLOAD_URLS=(
         "https://github.com/CyrilPeng/KokoroMemo/releases/download/v${VERSION}/${ZIP_NAME}"
         "https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/download/v${VERSION}/${ZIP_NAME}"
-        "https://gitee.com/CyrilPeng/KokoroMemo/releases/download/v${VERSION}/${ZIP_NAME}"
+        "https://gitee.com/Cyril_P/KokoroMemo/releases/download/v${VERSION}/${ZIP_NAME}"
     )
 
     echo "      版本: v${VERSION}"

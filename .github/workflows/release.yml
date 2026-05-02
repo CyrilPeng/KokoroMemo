@@ -33,6 +33,20 @@ jobs:
           pip install -r requirements.txt
           pip install nuitka ordered-set zstandard
 
+      - name: Stamp backend version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python - <<PY
+          from pathlib import Path
+          version = "${version}"
+          Path("app/_version.py").write_text(
+              '"""Build-time version fallback for packaged binaries."""\n\n'
+              f'__version__ = "{version}"\n',
+              encoding="utf-8",
+          )
+          PY
+
       - name: Build with Nuitka
         run: |
           python -m nuitka --standalone --onefile \

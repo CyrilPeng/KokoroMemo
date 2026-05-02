@@ -47,6 +47,20 @@ async def test_updated_defaults_apply_only_to_new_conversations():
     assert new_config.injection_policy == "state_only"
 
 
+@pytest.mark.asyncio
+async def test_profile_table_templates_are_available():
+    db_path = _db_path()
+    store = SQLiteStateStore(db_path)
+
+    rimtalk = await store.get_table_template("tpl_rimtalk_colony_tables")
+    ttrpg = await store.get_table_template("tpl_ttrpg_story_tables")
+
+    assert rimtalk is not None
+    assert {table.table_key for table in rimtalk.tables} >= {"colony_overview", "pawn_state", "resources"}
+    assert ttrpg is not None
+    assert {table.table_key for table in ttrpg.tables} >= {"party", "quests_clues", "story_flags"}
+
+
 def test_builtin_profiles_cover_required_modes():
     profile_ids = {profile.profile_id for profile in list_profiles()}
     assert {"airp_roleplay", "rimtalk_colony", "ttrpg_story", "memory_only", "proxy_only"} <= profile_ids

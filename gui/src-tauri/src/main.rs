@@ -72,6 +72,18 @@ fn get_close_to_tray(state: tauri::State<'_, AppState>) -> bool {
     state.close_to_tray.load(Ordering::Relaxed)
 }
 
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    if path.is_dir() {
+        return Err("target path is a directory".to_string());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::write(path, contents).map_err(|error| error.to_string())
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -324,6 +336,7 @@ fn main() {
             greet,
             set_close_to_tray,
             get_close_to_tray,
+            write_text_file,
             restart_backend,
             get_backend_port
         ])

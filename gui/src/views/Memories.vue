@@ -8,6 +8,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
+import { saveJsonExport } from '../export'
 import type { MemoryCard } from '../types/memory'
 
 const message = useMessage()
@@ -235,14 +236,8 @@ async function exportLibrary() {
   try {
     const resp = await apiFetch(`/admin/memory-libraries/${selectedLibraryId.value}/export`)
     const data = await resp.json()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `library_${selectedLibraryId.value}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    message.success(t('memories.libraryExported'))
+    const savedPath = await saveJsonExport(`library_${selectedLibraryId.value}.json`, data)
+    if (savedPath) message.success(t('memories.libraryExported'))
   } catch (e: any) {
     message.error(e.message || t('common.exportFailed'))
   }

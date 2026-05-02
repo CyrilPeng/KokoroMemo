@@ -31,6 +31,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { AddOutline, EllipsisHorizontal, HelpCircleOutline, CreateOutline, RefreshOutline, TrashOutline, AddCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
+import { saveJsonExport } from '../export'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -849,14 +850,8 @@ async function exportSinglePreset(presetId: string) {
   try {
     const resp = await apiFetch(`/admin/memory-mount-presets/${presetId}/export`, { headers: authHeaders() })
     const data = await resp.json()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `mount_preset_${presetId}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    message.success(t('state.messages.presetExported'))
+    const savedPath = await saveJsonExport(`mount_preset_${presetId}.json`, data)
+    if (savedPath) message.success(t('state.messages.presetExported'))
   } catch (e: any) {
     message.error(e.message || t('common.exportFailed'))
   }
@@ -867,14 +862,8 @@ async function exportTemplate() {
   try {
     const resp = await apiFetch(`/admin/state/templates/${selectedTemplateId.value}/export`, { headers: authHeaders() })
     const data = await resp.json()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `template_${selectedTemplateId.value}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    message.success(t('state.messages.templateExported'))
+    const savedPath = await saveJsonExport(`template_${selectedTemplateId.value}.json`, data)
+    if (savedPath) message.success(t('state.messages.templateExported'))
   } catch (e: any) {
     message.error(e.message || t('common.exportFailed'))
   }
@@ -910,14 +899,8 @@ async function exportConversationConfig() {
   try {
     const resp = await apiFetch(`/admin/conversations/${conversationId.value}/export`, { headers: authHeaders() })
     const data = await resp.json()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `conversation_state_${conversationId.value}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    message.success(t('state.messages.conversationExported'))
+    const savedPath = await saveJsonExport(`conversation_state_${conversationId.value}.json`, data)
+    if (savedPath) message.success(t('state.messages.conversationExported'))
   } catch (e: any) {
     message.error(e.message || t('common.exportFailed'))
   }
@@ -1038,14 +1021,8 @@ async function exportAllPresets() {
       const data = await resp.json()
       exported.push(data)
     }
-    const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'mount_presets.json'
-    a.click()
-    URL.revokeObjectURL(url)
-    message.success(t('state.messages.presetsExported', { count: exported.length }))
+    const savedPath = await saveJsonExport('mount_presets.json', exported)
+    if (savedPath) message.success(t('state.messages.presetsExported', { count: exported.length }))
   } catch (e: any) {
     message.error(e.message || t('common.exportFailed'))
   }

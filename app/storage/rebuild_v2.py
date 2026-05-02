@@ -1,11 +1,10 @@
-"""Rebuild LanceDB vector index from approved cards + active summaries only."""
+"""Rebuild vector index from approved cards + active summaries only."""
 
 from __future__ import annotations
 
 import logging
 
 from app.providers.embedding_base import EmbeddingProvider
-from app.storage.lancedb_store import LanceDBStore
 from app.storage.sqlite_cards import get_approved_cards
 
 logger = logging.getLogger("kokoromemo.rebuild_v2")
@@ -13,7 +12,7 @@ logger = logging.getLogger("kokoromemo.rebuild_v2")
 
 async def rebuild_vector_index_v2(
     cards_db_path: str,
-    lancedb_store: LanceDBStore,
+    lancedb_store,
     embedding_provider: EmbeddingProvider,
     batch_size: int = 16,
     atomic: bool = True,

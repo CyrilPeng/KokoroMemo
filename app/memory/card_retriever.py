@@ -19,7 +19,6 @@ from app.core.time_util import naive_local_now
 
 from app.memory.query_builder import RetrievalQuery
 from app.providers.embedding_base import EmbeddingProvider
-from app.storage.lancedb_store import LanceDBStore
 from app.memory.graph import get_active_edges_for_cards
 from app.storage.sqlite_cards import get_cards_by_ids, get_pinned_cards, get_recent_important_cards
 from app.storage.sqlite_cards import get_mounted_library_ids
@@ -70,7 +69,7 @@ def _scope_score(scope: str) -> float:
 async def retrieve_cards(
     query: RetrievalQuery,
     embedding_provider: EmbeddingProvider,
-    lancedb_store: LanceDBStore,
+    lancedb_store,
     cards_db_path: str,
     vector_top_k: int = 30,
     final_top_k: int = 8,

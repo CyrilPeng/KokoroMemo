@@ -6,18 +6,24 @@ import asyncio
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 from app.core.config import AppConfig
 from app.providers.embedding_base import EmbeddingProvider
 from app.providers.embedding_dummy import DummyEmbeddingProvider
 from app.providers.embedding_openai_compatible import OpenAICompatibleEmbeddingProvider
-from app.storage.lancedb_store import LanceDBStore
+
+try:
+    from app.storage.lancedb_store import LanceDBStore
+    _LANCEDB_AVAILABLE = True
+except ImportError:
+    _LANCEDB_AVAILABLE = False
 
 logger = logging.getLogger("kokoromemo.services")
 
 _embedding_provider: EmbeddingProvider | None = None
 _embedding_signature: tuple | None = None
-_lancedb_store: LanceDBStore | None = None
+_lancedb_store: Any = None
 _lancedb_signature: tuple | None = None
 _index_migration_status: dict | None = None
 
@@ -140,7 +146,7 @@ def get_embedding_provider(cfg: AppConfig) -> EmbeddingProvider | None:
     return _embedding_provider
 
 
-def get_lancedb_store(cfg: AppConfig) -> LanceDBStore | None:
+def get_lancedb_store(cfg: AppConfig) -> Any:
     global _lancedb_store, _lancedb_signature
     lancedb_path = resolve_lancedb_path(cfg)
     signature = (
@@ -155,11 +161,22 @@ def get_lancedb_store(cfg: AppConfig) -> LanceDBStore | None:
     if not cfg.embedding.enabled:
         return None
 
-    _lancedb_store = LanceDBStore(
-        db_path=lancedb_path,
-        table_name=cfg.storage.lancedb.table,
-        dimension=cfg.embedding.dimension or 4096,
-    )
+    if _LANCEDB_AVAILABLE:
+        _lancedb_store = LanceDBStore(
+            db_path=lancedb_path,
+            table_name=cfg.storage.lancedb.table,
+            dimension=cfg.embedding.dimension or 4096,
+        )
+    else:
+        from app.storage.sqlite_vector_store import SqliteVectorStore
+        sqlite_path = str(Path(lancedb_path) / "vectors.sqlite")
+        _lancedb_store = SqliteVectorStore(
+            db_path=sqlite_path,
+            table_name=cfg.storage.lancedb.table,
+            dimension=cfg.embedding.dimension or 4096,
+        )
+        logger.info("LanceDB unavailable, using SQLite vector fallback: %s", sqlite_path)
+
     _lancedb_store.connect()
     _lancedb_signature = signature
     return _lancedb_store

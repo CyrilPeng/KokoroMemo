@@ -1,11 +1,10 @@
-"""Helpers for syncing approved memory cards to LanceDB."""
+"""Helpers for syncing approved memory cards to the vector store."""
 
 from __future__ import annotations
 
 import json
 
 from app.providers.embedding_base import EmbeddingProvider
-from app.storage.lancedb_store import LanceDBStore
 from app.storage.sqlite_cards import (
     enqueue_job,
     get_cards_by_ids,
@@ -19,7 +18,7 @@ async def sync_card_vector(
     db_path: str,
     card_id: str,
     embedding_provider: EmbeddingProvider,
-    lancedb_store: LanceDBStore,
+    lancedb_store,
 ) -> None:
     cards = await get_cards_by_ids(db_path, [card_id])
     card = cards.get(card_id)
@@ -61,7 +60,7 @@ async def enqueue_card_vector_sync(db_path: str, card_id: str, error: str | None
 async def retry_card_vector_sync_jobs(
     db_path: str,
     embedding_provider: EmbeddingProvider,
-    lancedb_store: LanceDBStore,
+    lancedb_store,
     limit: int = 50,
 ) -> dict:
     jobs = await get_pending_jobs(db_path, job_type="card_vector_sync", limit=limit)

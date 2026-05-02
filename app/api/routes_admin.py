@@ -1049,6 +1049,82 @@ def _template_to_dict(template, include_tabs: bool = True) -> dict:
     return data
 
 
+def _state_table_column_to_dict(column) -> dict:
+    return {
+        "column_id": column.column_id,
+        "table_id": column.table_id,
+        "column_key": column.column_key,
+        "name": column.name,
+        "description": column.description,
+        "value_type": column.value_type,
+        "required": column.required,
+        "sort_order": column.sort_order,
+        "include_in_prompt": column.include_in_prompt,
+        "max_chars": column.max_chars,
+        "default_value": column.default_value,
+        "options": column.options,
+    }
+
+
+def _state_table_schema_to_dict(table) -> dict:
+    return {
+        "table_id": table.table_id,
+        "template_id": table.template_id,
+        "table_key": table.table_key,
+        "name": table.name,
+        "description": table.description,
+        "sort_order": table.sort_order,
+        "enabled": table.enabled,
+        "required": table.required,
+        "as_status": table.as_status,
+        "include_in_prompt": table.include_in_prompt,
+        "max_prompt_rows": table.max_prompt_rows,
+        "prompt_priority": table.prompt_priority,
+        "insert_rule": table.insert_rule,
+        "update_rule": table.update_rule,
+        "delete_rule": table.delete_rule,
+        "resolve_rule": table.resolve_rule,
+        "note": table.note,
+        "columns": [_state_table_column_to_dict(column) for column in table.columns],
+    }
+
+
+def _state_table_template_to_dict(template, include_tables: bool = True) -> dict:
+    data = {
+        "template_id": template.template_id,
+        "name": template.name,
+        "description": template.description,
+        "scenario_type": template.scenario_type,
+        "is_builtin": template.is_builtin,
+        "status": template.status,
+        "version": template.version,
+    }
+    if include_tables:
+        data["tables"] = [_state_table_schema_to_dict(table) for table in template.tables]
+    return data
+
+
+def _state_table_row_to_dict(row) -> dict:
+    return {
+        "row_id": row.row_id,
+        "conversation_id": row.conversation_id,
+        "template_id": row.template_id,
+        "table_id": row.table_id,
+        "table_key": row.table_key,
+        "status": row.status,
+        "priority": row.priority,
+        "confidence": row.confidence,
+        "source": row.source,
+        "source_turn_id": row.source_turn_id,
+        "source_message_ids": row.source_message_ids,
+        "metadata": row.metadata,
+        "cells": {key: {"cell_id": cell.cell_id, "value": cell.value, "confidence": cell.confidence, "updated_at": cell.updated_at} for key, cell in row.cells.items()},
+        "values": {key: cell.value for key, cell in row.cells.items()},
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
 def _template_from_payload(data: dict):
     from app.memory.state_schema import StateBoardField, StateBoardTab, StateBoardTemplate
 
@@ -1112,6 +1188,32 @@ async def list_state_templates(request: Request):
     store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
     templates = await store.list_templates()
     return {"items": [_template_to_dict(template, include_tabs=False) for template in templates]}
+
+
+@router.get("/admin/state/table-templates")
+async def list_state_table_templates(request: Request):
+    """List available table-based state board templates."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    templates = await store.list_table_templates()
+    return {"items": [_state_table_template_to_dict(template, include_tables=False) for template in templates]}
+
+
+@router.get("/admin/state/table-templates/{template_id}")
+async def get_state_table_template(template_id: str, request: Request):
+    """Get a full table-based state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    template = await store.get_table_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="State table template not found")
+    return _state_table_template_to_dict(template)
 
 
 @router.get("/admin/state/templates/{template_id}")
@@ -1241,6 +1343,76 @@ async def get_conversation_state(
     return {"items": [_state_item_to_dict(item) for item in items], "total": total, "limit": limit, "offset": offset}
 
 
+@router.get("/admin/conversations/{conversation_id}/state/tables")
+async def get_conversation_state_tables(conversation_id: str, request: Request):
+    """Return the table-based state board for a conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    template = await store.get_default_table_template()
+    if not template:
+        raise HTTPException(status_code=404, detail="State table template not found")
+    rows = await store.list_table_rows(conversation_id, template.template_id)
+    return {
+        "conversation_id": conversation_id,
+        "template": _state_table_template_to_dict(template),
+        "rows": [_state_table_row_to_dict(row) for row in rows],
+    }
+
+
+@router.post("/admin/conversations/{conversation_id}/state/tables/{table_key}/rows")
+async def upsert_conversation_state_table_row(conversation_id: str, table_key: str, request: Request, data: dict = Body(...)):
+    """Create or update one row in a table-based state board."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.memory.state_schema import StateTableRow
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    template = await store.get_default_table_template()
+    if not template:
+        raise HTTPException(status_code=404, detail="State table template not found")
+    table = next((item for item in template.tables if item.table_key == table_key), None)
+    if not table:
+        raise HTTPException(status_code=404, detail="State table not found")
+    values = data.get("values") if isinstance(data.get("values"), dict) else {}
+    row = StateTableRow(
+        row_id=data.get("row_id"),
+        conversation_id=conversation_id,
+        template_id=template.template_id or "",
+        table_id=table.table_id or "",
+        table_key=table.table_key,
+        status=data.get("status", "active"),
+        priority=int(data.get("priority", table.prompt_priority)),
+        confidence=float(data.get("confidence", 0.9)),
+        source="manual",
+        metadata=data.get("metadata", {}),
+    )
+    row_id = await store.upsert_table_row(row, values)
+    await store.record_table_event(
+        conversation_id,
+        "manual_upsert_row",
+        table_key=table.table_key,
+        row_id=row_id,
+        after=values,
+        reason=data.get("reason", "GUI manual edit"),
+    )
+    return {"status": "ok", "row_id": row_id}
+
+
+@router.delete("/admin/state/table-rows/{row_id}")
+async def delete_conversation_state_table_row(row_id: str, request: Request):
+    """Resolve one row in a table-based state board."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    ok = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_table_row_status(row_id, "resolved", "GUI delete")
+    return {"status": "ok" if ok else "error", "message": None if ok else "State table row not found"}
+
+
 @router.get("/admin/conversations/{conversation_id}/state/events")
 async def get_conversation_state_events(
     conversation_id: str,
@@ -1364,21 +1536,27 @@ async def preview_state_board(conversation_id: str, request: Request):
     from app.core.state import get_config
     from app.memory.state_renderer import render_state_board
     from app.memory.state_schema import StateRenderOptions
+    from app.memory.state_table_renderer import render_state_tables
     from app.storage.sqlite_state import SQLiteStateStore
 
     cfg = get_config()
     store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
     items = await store.list_active_items(conversation_id)
     template = await store.get_conversation_template(conversation_id)
+    table_template = await store.get_default_table_template()
+    table_rows = await store.list_table_rows(conversation_id, table_template.template_id if table_template else None)
     hot = cfg.memory.hot_context
-    text = render_state_board(
+    options = StateRenderOptions(
+        max_chars=hot.max_chars,
+        include_sections=hot.include_sections,
+        section_order=hot.section_order,
+        max_items_per_section=hot.max_items_per_section,
+    )
+    text = render_state_tables(table_template, table_rows, options, lang=cfg.language)
+    if not text:
+        text = render_state_board(
         items,
-        StateRenderOptions(
-            max_chars=hot.max_chars,
-            include_sections=hot.include_sections,
-            section_order=hot.section_order,
-            max_items_per_section=hot.max_items_per_section,
-        ),
+        options,
         template,
         lang=cfg.language,
     )
@@ -1386,7 +1564,7 @@ async def preview_state_board(conversation_id: str, request: Request):
         "preview": text,
         "char_count": len(text),
         "max_chars": hot.max_chars,
-        "item_count": len(items),
+        "item_count": len(table_rows) if table_rows else len(items),
     }
 
 
@@ -1413,8 +1591,36 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
     _require_admin(request)
     from app.core.state import get_config
     from app.memory.state_filler import StateFillerConfigView, fill_conversation_state
+    from app.memory.state_table_filler import fill_conversation_state_tables
 
     cfg = get_config()
+    filler_config = StateFillerConfigView(
+        provider=data.get("provider") or cfg.memory.state_updater.provider,
+        base_url=data.get("base_url") or cfg.memory.state_updater.base_url or cfg.memory.judge.base_url or cfg.llm.base_url,
+        api_key=data.get("api_key") or cfg.memory.state_updater.get_api_key() or cfg.memory.judge.get_api_key() or cfg.llm.get_api_key(),
+        model=data.get("model") or cfg.memory.state_updater.model or cfg.memory.judge.model or cfg.llm.model,
+        timeout_seconds=int(data.get("timeout_seconds") or cfg.memory.state_updater.timeout_seconds),
+        temperature=float(data.get("temperature") if data.get("temperature") is not None else cfg.memory.state_updater.temperature),
+        min_confidence=float(data.get("min_confidence") if data.get("min_confidence") is not None else cfg.memory.state_updater.min_confidence),
+        prompt=data.get("prompt") or cfg.memory.state_updater.prompt,
+    )
+    table_result = await fill_conversation_state_tables(
+        db_path=cfg.storage.sqlite.memory_db,
+        conversation_id=conversation_id,
+        user_message=data.get("user_message", ""),
+        assistant_message=data.get("assistant_message", ""),
+        config=filler_config,
+        lang=cfg.language,
+    )
+    if table_result.applied > 0 or data.get("table_only", True):
+        return {
+            "status": "ok",
+            "mode": "table",
+            "applied": table_result.applied,
+            "skipped": table_result.skipped,
+            "operations": [operation.__dict__ for operation in table_result.operations],
+            "notes": table_result.notes,
+        }
     result = await fill_conversation_state(
         db_path=cfg.storage.sqlite.memory_db,
         conversation_id=conversation_id,
@@ -1422,19 +1628,12 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
         character_id=data.get("character_id"),
         user_message=data.get("user_message", ""),
         assistant_message=data.get("assistant_message", ""),
-        config=StateFillerConfigView(
-            provider=data.get("provider") or cfg.memory.state_updater.provider,
-            base_url=data.get("base_url") or cfg.memory.state_updater.base_url or cfg.memory.judge.base_url or cfg.llm.base_url,
-            api_key=data.get("api_key") or cfg.memory.state_updater.get_api_key() or cfg.memory.judge.get_api_key() or cfg.llm.get_api_key(),
-            model=data.get("model") or cfg.memory.state_updater.model or cfg.memory.judge.model or cfg.llm.model,
-            timeout_seconds=int(data.get("timeout_seconds") or cfg.memory.state_updater.timeout_seconds),
-            temperature=float(data.get("temperature") if data.get("temperature") is not None else cfg.memory.state_updater.temperature),
-            min_confidence=float(data.get("min_confidence") if data.get("min_confidence") is not None else cfg.memory.state_updater.min_confidence),
-            prompt=data.get("prompt") or cfg.memory.state_updater.prompt,
-        ),
+        config=filler_config,
+        lang=cfg.language,
     )
     return {
         "status": "ok",
+        "mode": "legacy",
         "applied": result.applied,
         "skipped": result.skipped,
         "updates": [update.__dict__ for update in result.updates],

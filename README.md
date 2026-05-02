@@ -197,17 +197,19 @@ KokoroMemo 不会默认让 AI 无限自动整理长期记忆。
 废弃旧卡并保存新卡
 ```
 
-### SQLite + LanceDB
+### SQLite + LanceDB（可降级）
 
 KokoroMemo 采用本地双层存储：
 
 ```text
 SQLite  = 记忆本体 / 完整对话 / 卡片 / 标签 / 关系边 / 摘要 / 审核记录 / 任务队列
-LanceDB = approved 记忆卡片与摘要的语义索引
+LanceDB = approved 记忆卡片与摘要的语义索引（可选）
 ```
 
 LanceDB 不是唯一数据源。它只是一个可重建的检索索引。  
 真正长期可信的数据保存在 SQLite 中。
+
+当 LanceDB 不可用时（如安卓 Termux 环境），系统自动降级为 SQLite + numpy 向量存储，使用暴力余弦相似度搜索。在 AIRP 典型场景（<5000 张卡片）下耗时 <50ms，用户无感。
 
 ### 图结构关系索引
 
@@ -368,7 +370,7 @@ AIRP 客户端（如 SillyTavern 移动版）:  Base URL 填 http://127.0.0.1:14
 
 Termux 通知栏 → 长按 → 锁定；系统设置 → 电池 → Termux → 不受限。防止系统杀死后台进程。
 
-**注意：** 安卓端 LanceDB / PyArrow 体积较大（~500MB），首次安装需耐心等待编译。如磁盘空间有限，可考虑禁用 Embedding（`embedding.enabled: false`），退化为关键词匹配模式。
+**注意：** 安卓端如果 LanceDB / PyArrow 无法安装（ARM 架构），KokoroMemo 会自动降级为 SQLite + numpy 向量存储，语义检索功能不受影响，无需额外配置。
 
 ---
 
@@ -1525,7 +1527,8 @@ kokoromemo/
       sqlite_conversation.py        # 逐会话对话日志
       sqlite_memory.py              # 记忆相关表
       sqlite_state.py               # 状态板存储
-      lancedb_store.py              # 向量存储封装
+      lancedb_store.py              # LanceDB 向量存储封装
+      sqlite_vector_store.py        # SQLite+numpy 向量存储（LanceDB 不可用时自动降级）
       vector_sync.py                # 卡片到向量同步
 
     importers/

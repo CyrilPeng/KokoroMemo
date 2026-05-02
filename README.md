@@ -1689,3 +1689,13 @@ KokoroMemo 的设计灵感来自 AIRP 用户对长期陪伴、角色连续性和
 ## License
 
 MIT License. 详见 [LICENSE](LICENSE) 文件。
+
+## 会话状态板 v2（表格化状态）
+
+从 v0.5.8 开始，会话状态板主流程重构为“表格模板 + 行级状态 + 操作式更新”：
+
+- 新增 `state_table_templates`、`state_table_schemas`、`state_table_columns`、`state_table_rows`、`state_table_cells`、`state_table_events` 等表，旧字段式状态板保留为兼容兜底。
+- 默认模板 `tpl_rimtalk_roleplay_tables` 包含当前场景、角色状态、关系状态、扮演规则、承诺与任务、重要事件、重要物品七张表。
+- State Filler 优先要求模型输出 JSON 行级操作：`insert_row`、`update_row`、`upsert_row`、`resolve_row`、`delete_row`，避免把不同信息混到同一个大文本字段。
+- 热上下文注入优先渲染表格状态，并按表格优先级与每表最大行数压缩；没有表格状态时自动回退旧状态板渲染。
+- GUI `/state` 已重做为表格工作台，支持按表查看、新增、编辑、删除状态行，查看真实注入预览，并手动运行表格填充调试。

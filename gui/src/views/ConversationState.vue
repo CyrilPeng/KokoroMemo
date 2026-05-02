@@ -76,6 +76,7 @@ const adminToken = ref(localStorage.getItem('kokoromemo.adminToken') || '')
 const template = ref<any | null>(null)
 const rows = ref<StateRow[]>([])
 const config = ref<ConversationConfig | null>(null)
+const defaultConfig = ref<ConversationConfig | null>(null)
 const profiles = ref<any[]>([])
 const boardTemplates = ref<any[]>([])
 const tableTemplates = ref<any[]>([])
@@ -196,6 +197,17 @@ async function fetchOptions() {
   }
 }
 
+async function fetchDefaultConfig() {
+  try {
+    const resp = await apiFetch('/admin/conversation-defaults', { headers: authHeaders() })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.detail || data.message || '加载新会话默认配置失败')
+    defaultConfig.value = data
+  } catch (error: any) {
+    message.error(error.message || '加载新会话默认配置失败')
+  }
+}
+
 function applyProfileToConfig(profileId: string) {
   if (!config.value) return
   const profile = profiles.value.find((item) => item.profile_id === profileId)
@@ -209,6 +221,42 @@ function applyProfileToConfig(profileId: string) {
     memory_write_policy: profile.memory_write_policy,
     state_update_policy: profile.state_update_policy,
     injection_policy: profile.injection_policy,
+  }
+}
+
+function applyProfileToDefault(profileId: string) {
+  if (!defaultConfig.value) return
+  const profile = profiles.value.find((item) => item.profile_id === profileId)
+  if (!profile) return
+  defaultConfig.value = {
+    ...defaultConfig.value,
+    profile_id: profile.profile_id,
+    template_id: profile.template_id,
+    table_template_id: profile.table_template_id,
+    mount_preset_id: profile.mount_preset_id,
+    memory_write_policy: profile.memory_write_policy,
+    state_update_policy: profile.state_update_policy,
+    injection_policy: profile.injection_policy,
+  }
+}
+
+async function saveDefaultConfig() {
+  if (!defaultConfig.value) return
+  saving.value = true
+  try {
+    const resp = await apiFetch('/admin/conversation-defaults', {
+      method: 'PUT',
+      headers: authHeaders(true),
+      body: JSON.stringify(defaultConfig.value),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存新会话默认配置失败')
+    defaultConfig.value = data.config
+    message.success('新会话默认配置已保存')
+  } catch (error: any) {
+    message.error(error.message || '保存新会话默认配置失败')
+  } finally {
+    saving.value = false
   }
 }
 
@@ -366,6 +414,7 @@ function columnsFor(table: StateTable) {
 
 onMounted(() => {
   fetchOptions()
+  fetchDefaultConfig()
   if (conversationId.value.trim()) fetchBoard()
 })
 </script>
@@ -404,6 +453,49 @@ onMounted(() => {
       <NAlert v-if="template" type="info" :show-icon="false">
         当前模板：{{ template.name }}。状态板已改为“表格模板 + 行级状态 + 操作式更新”，新增内容写入对应表格行，注入时按优先级压缩输出。
       </NAlert>
+
+      <NCard v-if="defaultConfig" title="新会话默认配置">
+        <NForm label-placement="top">
+          <NGrid :cols="24" :x-gap="12" :y-gap="12">
+            <NGridItem :span="8">
+              <NFormItem label="默认会话方案">
+                <NSelect v-model:value="defaultConfig.profile_id" :options="profileOptions" @update:value="applyProfileToDefault" />
+              </NFormItem>
+            </NGridItem>
+            <NGridItem :span="8">
+              <NFormItem label="默认表格模板">
+                <NSelect v-model:value="defaultConfig.table_template_id" filterable :options="tableTemplateOptions" />
+              </NFormItem>
+            </NGridItem>
+            <NGridItem :span="8">
+              <NFormItem label="默认挂载组合预设">
+                <NSelect v-model:value="defaultConfig.mount_preset_id" filterable :options="mountPresetOptions" />
+              </NFormItem>
+            </NGridItem>
+            <NGridItem :span="8">
+              <NFormItem label="默认长期记忆写入">
+                <NSelect v-model:value="defaultConfig.memory_write_policy" :options="memoryPolicyOptions" />
+              </NFormItem>
+            </NGridItem>
+            <NGridItem :span="8">
+              <NFormItem label="默认状态板更新">
+                <NSelect v-model:value="defaultConfig.state_update_policy" :options="statePolicyOptions" />
+              </NFormItem>
+            </NGridItem>
+            <NGridItem :span="8">
+              <NFormItem label="默认注入策略">
+                <NSelect v-model:value="defaultConfig.injection_policy" :options="injectionPolicyOptions" />
+              </NFormItem>
+            </NGridItem>
+          </NGrid>
+          <NSpace justify="space-between" align="center">
+            <NAlert type="info" :show-icon="false" style="flex: 1">
+              仅影响之后第一次出现的新 conversation_id；已有会话不会被自动覆盖。
+            </NAlert>
+            <NButton type="primary" :loading="saving" @click="saveDefaultConfig">保存新会话默认配置</NButton>
+          </NSpace>
+        </NForm>
+      </NCard>
 
       <NCard v-if="config" title="当前会话策略">
         <NForm label-placement="top">
@@ -534,6 +626,7 @@ onMounted(() => {
         <p><b>状态行</b>：每行是一条可被插入、更新或删除的状态。AI 填充器会尽量更新既有行，避免把所有内容堆到一个大文本框。</p>
         <p><b>会话策略</b>：决定当前会话是否写入长期记忆、是否自动更新状态板，以及请求时注入长期记忆还是状态板。没有状态数据时也可以先保存策略。</p>
         <p><b>RimTalk / 殖民地模拟</b>：建议套用对应方案，长期记忆写入选择“关闭”，注入策略选择“仅状态板”，避免把资源、小人状态、临时事件写入长期记忆。</p>
+        <p><b>新会话默认配置</b>：决定第一次出现的新 conversation_id 使用什么模板和策略。请在开始 RimTalk 或跑团前先选好默认方案，第一轮对话就会使用正确状态板。</p>
         <p><b>注入预览</b>：展示真正注入模型的压缩文本，超过字符预算时按表格优先级截断。</p>
         <p><b>AI 填充调试</b>：粘贴一轮用户消息和助手回复，观察表格操作结果。只应记录影响后续连续性的内容，避免流水账。</p>
       </NSpace>

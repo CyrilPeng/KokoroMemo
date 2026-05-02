@@ -46,7 +46,7 @@ const updateInfo = ref<{
   error: '',
 })
 const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/CyrilPeng/KokoroMemo/releases/latest'
-const CURRENT_VERSION_FALLBACK = '0.1.0'
+const CURRENT_VERSION_FALLBACK = '0.5.5'
 
 function normalizeVersion(version: string) {
   return version.trim().replace(/^v/i, '').split(/[+-]/)[0]
@@ -67,6 +67,13 @@ async function getCurrentAppVersion() {
   try {
     return await getVersion()
   } catch (e) {
+    try {
+      const resp = await apiFetch('/health')
+      if (resp.ok) {
+        const data = await resp.json()
+        return data.version || CURRENT_VERSION_FALLBACK
+      }
+    } catch {}
     return CURRENT_VERSION_FALLBACK
   }
 }
@@ -409,6 +416,12 @@ function applyConfigToForm(data: any) {
   config.value.hc_section_order = Array.isArray(hc.section_order) ? [...hc.section_order] : []
   config.value.hc_max_items = { ...(hc.max_items_per_section || {}) }
   timezone.value = data.server?.timezone || ''
+  if (data.server?.actual_port) {
+    config.value.server_port = data.server.actual_port
+    const actualUrl = `http://127.0.0.1:${data.server.actual_port}`
+    backendUrl.value = actualUrl
+    setServerUrl(actualUrl)
+  }
 }
 
 const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform?: (v: any) => any][] = [

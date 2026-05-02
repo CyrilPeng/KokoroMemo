@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,6 +15,10 @@ else:
 
 def _read_version() -> str:
     """Read version from pyproject.toml (single source of truth)."""
+    env_version = os.getenv("KOKOROMEMO_VERSION")
+    if env_version:
+        return env_version.lstrip("v")
+
     if tomllib is not None:
         pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
         if pyproject.exists():
@@ -26,6 +31,12 @@ def _read_version() -> str:
         from importlib.metadata import version as _get_version
         return _get_version("kokoromemo")
     except Exception:
+        pass
+
+    try:
+        from app._version import __version__
+        return __version__
+    except Exception:
         return "0.0.0"
 
 from dotenv import load_dotenv
@@ -33,7 +44,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import load_config
+from app.core.config import load_config, resolve_config_path
 from app.core.logging import setup_logging
 from app.core.state import set_config
 from app.core.time_util import set_configured_timezone
@@ -74,6 +85,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="KokoroMemo", version=_read_version(), lifespan=lifespan)
 app.state.app_version = app.version
+app.state.actual_port = None
 
 
 def create_app() -> FastAPI:
@@ -172,7 +184,9 @@ def _find_available_port(host: str, preferred: int) -> int:
 def _write_port_file(port: int) -> None:
     """Write actual port to .port file for Tauri sidecar discovery."""
     try:
-        Path(".port").write_text(str(port), encoding="utf-8")
+        config_path = resolve_config_path(for_write=True)
+        base_dir = config_path.parent if config_path else Path.cwd()
+        (base_dir / ".port").write_text(str(port), encoding="utf-8")
     except Exception:
         pass
 
@@ -184,6 +198,8 @@ if __name__ == "__main__":
     cfg = load_config()
     host = cfg.server.host
     port = _find_available_port(host, cfg.server.port)
+    os.environ["KOKOROMEMO_ACTUAL_PORT"] = str(port)
+    app.state.actual_port = port
     _write_port_file(port)
 
     if port != cfg.server.port:

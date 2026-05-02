@@ -102,6 +102,25 @@ fn backend_work_dir(_app: &tauri::AppHandle) -> PathBuf {
     }
 }
 
+fn repo_root_dir() -> Option<PathBuf> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .parent()
+        .and_then(|path| path.parent())
+        .map(PathBuf::from)
+}
+
+fn config_dir(app: &tauri::AppHandle) -> PathBuf {
+    #[cfg(debug_assertions)]
+    {
+        return repo_root_dir().unwrap_or_else(|| backend_work_dir(app));
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        backend_work_dir(app)
+    }
+}
+
 #[cfg(all(windows, kokoromemo_embedded_backend))]
 const EMBEDDED_BACKEND: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -165,12 +184,7 @@ fn spawn_backend(app: tauri::AppHandle) {
         {
             #[cfg(debug_assertions)]
             let command = {
-                let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                let project_root = manifest_dir
-                    .parent()
-                    .and_then(|path| path.parent())
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| work_dir.clone());
+                let project_root = repo_root_dir().unwrap_or_else(|| work_dir.clone());
                 app.shell()
                     .command("python")
                     .args(["-m", "app.main"])
@@ -231,16 +245,19 @@ async fn restart_backend(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 async fn get_backend_port(app: tauri::AppHandle) -> Result<u16, String> {
     let work_dir = backend_work_dir(&app);
-    let port_file = work_dir.join(".port");
+    let config_dir = config_dir(&app);
+    let port_files = [config_dir.join(".port"), work_dir.join(".port")];
     // Poll for .port file — backend may still be starting
     for _ in 0..30 {
-        if let Ok(content) = fs::read_to_string(&port_file) {
-            if let Ok(port) = content.trim().parse::<u16>() {
-                if port > 0 {
-                    // Verify the port is actually listening
-                    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
-                    if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)).is_ok() {
-                        return Ok(port);
+        for port_file in &port_files {
+            if let Ok(content) = fs::read_to_string(port_file) {
+                if let Ok(port) = content.trim().parse::<u16>() {
+                    if port > 0 {
+                        // Verify the port is actually listening
+                        let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+                        if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)).is_ok() {
+                            return Ok(port);
+                        }
                     }
                 }
             }

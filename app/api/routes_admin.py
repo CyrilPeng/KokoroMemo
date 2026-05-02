@@ -53,6 +53,14 @@ async def health(request: Request):
     from app.core.state import get_config
 
     cfg = get_config()
+    actual_port = getattr(request.app.state, "actual_port", None)
+    if actual_port is None:
+        import os
+        actual_port = os.getenv("KOKOROMEMO_ACTUAL_PORT")
+    try:
+        actual_port = int(actual_port) if actual_port else cfg.server.port
+    except (TypeError, ValueError):
+        actual_port = cfg.server.port
     return {
         "status": "ok",
         "server": "ok",
@@ -67,7 +75,9 @@ async def health(request: Request):
             "model": cfg.rerank.model if cfg.rerank.enabled else None,
         },
         "llm": {"model": cfg.llm.model},
-        "server_port": cfg.server.port,
+        "configured_port": cfg.server.port,
+        "server_port": actual_port,
+        "actual_port": actual_port,
     }
 
 
@@ -177,17 +187,30 @@ async def fetch_models(data: dict = Body(...)):
 
 
 @router.get("/admin/config")
-async def get_current_config():
+async def get_current_config(request: Request):
     """Return current configuration (safe fields only)."""
     from app.core.services import resolve_lancedb_path
     from app.core.state import get_config
 
     cfg = get_config()
+    import os
+    actual_port = getattr(request.app.state, "actual_port", None)
+    actual_port = os.getenv("KOKOROMEMO_ACTUAL_PORT") or actual_port or cfg.server.port
+    try:
+        actual_port = int(actual_port)
+    except (TypeError, ValueError):
+        actual_port = cfg.server.port
     llm_key = cfg.llm.get_api_key()
     embedding_key = cfg.embedding.get_api_key()
     rerank_key = cfg.rerank.get_api_key()
     return {
-        "server": {"host": cfg.server.host, "port": cfg.server.port, "webui_port": cfg.server.webui_port, "timezone": cfg.server.timezone},
+        "server": {
+            "host": cfg.server.host,
+            "port": cfg.server.port,
+            "actual_port": actual_port,
+            "webui_port": cfg.server.webui_port,
+            "timezone": cfg.server.timezone,
+        },
         "storage": {"root_dir": cfg.storage.root_dir},
         "vector_index": {"path": resolve_lancedb_path(cfg), "table": cfg.storage.lancedb.table},
         "embedding": {
@@ -301,20 +324,18 @@ async def get_current_config():
 @router.post("/admin/config")
 async def save_config(data: dict = Body(...)):
     """Save configuration to config.yaml and reload."""
-    from app.core.config import load_config, _merge_dataclass
+    from app.core.config import load_config, resolve_config_path
     from app.core.services import reset_services
     from app.core.state import get_config, set_config
 
     cfg = get_config()
 
     # Find config file path
-    config_path = Path("config.yaml")
-    if not config_path.exists():
-        config_path = Path("config.example.yaml")
+    config_path = resolve_config_path()
 
     # Read existing YAML
     existing = {}
-    if config_path.exists():
+    if config_path and config_path.exists():
         with open(config_path, "r", encoding="utf-8") as f:
             existing = yaml.safe_load(f) or {}
 
@@ -363,8 +384,9 @@ async def save_config(data: dict = Body(...)):
                 suffix = ldb_val[len(default_prefix):]
                 lancedb["path"] = str(Path(new_root) / suffix)
 
-    # Write to config.yaml
-    out_path = Path("config.yaml")
+    # Write to the active config.yaml location, not an arbitrary process cwd.
+    out_path = resolve_config_path(for_write=True) or Path("config.yaml").resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         yaml.dump(existing, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 

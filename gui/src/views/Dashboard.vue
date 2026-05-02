@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic, NIcon, NModal } from 'naive-ui'
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
-import { apiFetch, getServerUrl } from '../api'
+import { apiFetch, getServerUrl, setServerUrl } from '../api'
 const router = useRouter()
 const { t } = useI18n()
 function typeLabel(type: string): string {
@@ -40,6 +40,11 @@ async function fetchHealth() {
     serverUrl.value = getServerUrl()
     const resp = await apiFetch('/health')
     health.value = await resp.json()
+    if (health.value?.actual_port) {
+      const actualUrl = `http://127.0.0.1:${health.value.actual_port}`
+      serverUrl.value = actualUrl
+      setServerUrl(actualUrl)
+    }
   } catch (e) {
     health.value = null
   }
@@ -100,7 +105,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
                 </NButton>
               </div>
               <div style="margin-top: 12px; font-size: 13px; color: #52525b;">
-                {{ $t('dashboard.listeningPort') }} {{ health.server_port || 14514 }}
+                {{ $t('dashboard.listeningPort') }} {{ health.server_port || health.actual_port || '-' }}
               </div>
             </NCard>
           </NGridItem>

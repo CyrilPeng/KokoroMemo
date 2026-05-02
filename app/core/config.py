@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -292,6 +293,7 @@ class ConversationConfig:
 @dataclass
 class AppConfig:
     language: str = "zh"
+    config_path: str = ""
     server: ServerConfig = field(default_factory=ServerConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
@@ -316,22 +318,69 @@ def _merge_dataclass(dc: Any, data: dict) -> Any:
     return dc
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _exe_dir() -> Path | None:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return None
+
+
+def _config_search_dirs() -> list[Path]:
+    dirs = [Path.cwd(), _repo_root()]
+    exe_dir = _exe_dir()
+    if exe_dir is not None:
+        dirs.insert(0, exe_dir)
+
+    result: list[Path] = []
+    for directory in dirs:
+        resolved = directory.resolve()
+        if resolved not in result:
+            result.append(resolved)
+    return result
+
+
+def resolve_config_path(config_path: str | Path | None = None, for_write: bool = False) -> Path | None:
+    """Resolve the active config path independent of the process cwd."""
+    if config_path is not None:
+        return Path(config_path).resolve()
+
+    env_path = os.getenv("KOKOROMEMO_CONFIG_PATH")
+    if env_path:
+        return Path(env_path).resolve()
+
+    names = ("config.yaml", "config.local.yaml", "config.example.yaml")
+    for directory in _config_search_dirs():
+        for name in names:
+            candidate = directory / name
+            if candidate.exists():
+                if for_write and candidate.name == "config.example.yaml":
+                    return directory / "config.yaml"
+                return candidate
+
+    if for_write:
+        return _config_search_dirs()[0] / "config.yaml"
+    return None
+
+
 def load_config(config_path: str | Path | None = None) -> AppConfig:
     """Load config from YAML file, falling back to defaults."""
     cfg = AppConfig()
     default_root = cfg.storage.root_dir
 
-    if config_path is None:
-        candidates = ["config.yaml", "config.local.yaml", "config.example.yaml"]
-        for c in candidates:
-            if Path(c).exists():
-                config_path = c
-                break
+    resolved_path = resolve_config_path(config_path)
 
-    if config_path and Path(config_path).exists():
-        with open(config_path, "r", encoding="utf-8") as f:
+    if resolved_path and resolved_path.exists():
+        cfg.config_path = str(resolved_path)
+        with open(resolved_path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
         _merge_dataclass(cfg, raw)
+        cfg.config_path = str(resolved_path)
+    else:
+        write_path = resolve_config_path(config_path, for_write=True)
+        cfg.config_path = str(write_path) if write_path else ""
 
     # When root_dir changed but child paths still point to old default,
     # re-derive them relative to the new root_dir.

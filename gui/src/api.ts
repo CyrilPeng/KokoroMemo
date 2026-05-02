@@ -5,9 +5,9 @@ let _resolvedUrl: string | null = null
 export function getServerUrl() {
   const stored = localStorage.getItem('kokoromemo.serverUrl')
   if (_resolvedUrl) return _resolvedUrl
-  if (stored) return stored
   // Web mode (not Tauri): backend serves the frontend, use same origin
   if (!(window as any).__TAURI_INTERNALS__) return window.location.origin
+  if (stored) return stored
   return DEFAULT_SERVER_URL
 }
 
@@ -36,7 +36,9 @@ export async function resolveBackendUrl(): Promise<string> {
       console.warn('get_backend_port failed, falling back to default:', e)
     }
   }
-  const url = localStorage.getItem('kokoromemo.serverUrl') || DEFAULT_SERVER_URL
+  const url = !(window as any).__TAURI_INTERNALS__
+    ? window.location.origin
+    : localStorage.getItem('kokoromemo.serverUrl') || DEFAULT_SERVER_URL
   _resolvedUrl = url
   return url
 }

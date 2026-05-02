@@ -17,6 +17,7 @@ import { getVersion } from '@tauri-apps/api/app'
 const message = useMessage()
 const { t } = useI18n()
 const backendUrl = ref(getServerUrl())
+const actualServerPort = ref<number | null>(null)
 const loading = ref(true)
 
 const llmModels = ref<{label: string, value: string}[]>([])
@@ -46,7 +47,11 @@ const updateInfo = ref<{
   error: '',
 })
 const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/CyrilPeng/KokoroMemo/releases/latest'
-const CURRENT_VERSION_FALLBACK = '0.5.5'
+const CURRENT_VERSION_FALLBACK = '0.5.6'
+
+const currentBackendUrl = computed(() => backendUrl.value || getServerUrl())
+const openaiBaseUrl = computed(() => `${currentBackendUrl.value.replace(/\/$/, '')}/v1`)
+const portMismatch = computed(() => Boolean(actualServerPort.value && actualServerPort.value !== config.value.server_port))
 
 function normalizeVersion(version: string) {
   return version.trim().replace(/^v/i, '').split(/[+-]/)[0]
@@ -118,6 +123,28 @@ async function checkForUpdates(silent = false) {
 function openReleasePage() {
   if (updateInfo.value.releaseUrl) {
     window.open(updateInfo.value.releaseUrl, '_blank', 'noopener,noreferrer')
+  }
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success(t('common.copied'))
+  } catch (e) {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    try {
+      document.execCommand('copy')
+      message.success(t('common.copied'))
+    } catch {
+      message.error(t('common.copyFailed'))
+    } finally {
+      document.body.removeChild(textarea)
+    }
   }
 }
 
@@ -417,10 +444,12 @@ function applyConfigToForm(data: any) {
   config.value.hc_max_items = { ...(hc.max_items_per_section || {}) }
   timezone.value = data.server?.timezone || ''
   if (data.server?.actual_port) {
-    config.value.server_port = data.server.actual_port
+    actualServerPort.value = data.server.actual_port
     const actualUrl = `http://127.0.0.1:${data.server.actual_port}`
     backendUrl.value = actualUrl
     setServerUrl(actualUrl)
+  } else {
+    actualServerPort.value = data.server?.port || null
   }
 }
 
@@ -513,7 +542,6 @@ async function loadConfig() {
 
 async function saveConfig() {
   try {
-    setServerUrl(backendUrl.value)
     const payload: any = {
       server: { port: config.value.server_port, timezone: timezone.value || undefined },
       storage: { root_dir: config.value.storage_root_dir },
@@ -631,6 +659,8 @@ async function saveConfig() {
         // Re-resolve port — it may have changed after restart
         const newUrl = await resolveBackendUrl()
         backendUrl.value = newUrl
+        const port = Number(newUrl.split(':').pop())
+        actualServerPort.value = Number.isFinite(port) ? port : actualServerPort.value
         message.success(t('settings.serviceRestarted'))
       } catch (e) {
         message.warning(t('settings.autoRestartFailed'))
@@ -1017,8 +1047,16 @@ onMounted(() => {
               </NSpace>
             </template>
             <NForm label-placement="left" label-width="160" :show-feedback="false" style="gap: 12px; display: flex; flex-direction: column;">
-              <NFormItem :label="$t('settings.guiBackendUrl')">
-                <NInput v-model:value="backendUrl" placeholder="http://127.0.0.1:14514" style="width: 320px;" />
+              <NFormItem :label="$t('settings.openaiBaseUrl')">
+                <NSpace vertical :size="8" style="flex: 1;">
+                  <NSpace align="center">
+                    <code style="padding: 6px 10px; background: #27272a; border: 1px solid #3f3f46; border-radius: 6px; color: #e4e4e7; font-size: 13px;">{{ openaiBaseUrl }}</code>
+                    <NButton size="small" @click="copyText(openaiBaseUrl)">{{ $t('common.copy') }}</NButton>
+                  </NSpace>
+                  <NAlert v-if="portMismatch" type="warning" :show-icon="false" style="max-width: 560px;">
+                    {{ $t('settings.actualPortMismatch', { configured: config.server_port, actual: actualServerPort }) }}
+                  </NAlert>
+                </NSpace>
               </NFormItem>
               <NFormItem :label="$t('settings.localPort')">
                 <NInputNumber v-model:value="config.server_port" :min="1024" :max="65535" style="width: 200px;" />
@@ -1228,7 +1266,7 @@ onMounted(() => {
         <p><strong>{{ $t('settings.userRules') }}</strong>: {{ $t('settings.userRulesHelp') }}</p>
       </div>
       <div v-else-if="helpModal === 'server'" class="help-content">
-        <p><strong>{{ $t('settings.guiBackendUrl') }}</strong>: {{ $t('settings.guiBackendUrlHelp') }}</p>
+        <p><strong>{{ $t('settings.openaiBaseUrl') }}</strong>: {{ $t('settings.openaiBaseUrlHelp') }}</p>
         <p><strong>{{ $t('settings.localPort') }}</strong>: {{ $t('settings.localPortHelp') }}</p>
         <p><strong>{{ $t('settings.storageDir') }}</strong>: {{ $t('settings.storageDirHelp') }}</p>
         <p><strong>{{ $t('settings.timezone') }}</strong>: {{ $t('settings.timezoneHelp') }}</p>

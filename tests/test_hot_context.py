@@ -263,7 +263,27 @@ async def test_builtin_template_renders_field_tabs():
         rendered = render_state_board(items, StateRenderOptions(max_chars=500), template)
         assert item_id
         assert "通用角色扮演" in rendered
-        assert "用户称呼：用户希望被称为主人" in rendered
+        assert "称呼用户为：用户希望被称为主人" in rendered
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_template_field_default_value_is_not_rendered_as_state():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        store = SQLiteStateStore(str(memory_db))
+        template = await store.get_conversation_template("conv1")
+        with sqlite3.connect(memory_db) as db:
+            db.execute(
+                "UPDATE state_board_fields SET default_value = ? WHERE field_key = ?",
+                ("测试值123", "user_addressing"),
+            )
+            db.commit()
+        template = await store.get_conversation_template("conv1")
+        rendered = render_state_board([], StateRenderOptions(max_chars=500), template)
+        assert rendered == ""
     finally:
         cleanup_test_dir(test_dir)
 
@@ -284,8 +304,10 @@ async def test_builtin_template_has_roleplay_and_speech_fields():
 class FakeStateFillerProvider:
     def __init__(self, content: str):
         self.content = content
+        self.bodies: list[dict] = []
 
     async def chat(self, body: dict, timeout: int) -> dict:
+        self.bodies.append(body)
         return {"choices": [{"message": {"content": self.content}}]}
 
     async def stream_chat(self, body: dict, timeout: int):
@@ -310,6 +332,36 @@ async def test_state_filler_updates_template_field(monkeypatch):
         items = await SQLiteStateStore(str(memory_db)).list_active_items("conv1")
         assert items[0].field_key == "user_addressing"
         assert items[0].content == "用户希望被称为主人"
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_state_filler_does_not_treat_field_default_as_current(monkeypatch):
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        store = SQLiteStateStore(str(memory_db))
+        await store.get_conversation_template("conv1")
+        with sqlite3.connect(memory_db) as db:
+            db.execute(
+                "UPDATE state_board_fields SET default_value = ? WHERE field_key = ?",
+                ("测试值123", "user_addressing"),
+            )
+            db.commit()
+
+        provider = FakeStateFillerProvider('{"updates":[]}')
+        monkeypatch.setattr("app.memory.state_filler.create_llm_provider", lambda **kwargs: provider)
+        await fill_conversation_state(
+            db_path=str(memory_db),
+            conversation_id="conv1",
+            user_message="你好",
+            assistant_message="你好。",
+            config=StateFillerConfigView(provider="openai_compatible", base_url="http://fake", api_key="key", model="cheap-model"),
+        )
+
+        system_prompt = provider.bodies[0]["messages"][0]["content"]
+        assert "测试值123" not in system_prompt
     finally:
         cleanup_test_dir(test_dir)
 

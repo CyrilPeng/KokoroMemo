@@ -175,7 +175,7 @@ def _build_prompt(
     field_lines = []
     for field in fields:
         current = current_by_field.get(field.field_id)
-        current_text = current.content if current else field.default_value
+        current_text = current.content if current else ""
         field_lines.append(
             f"- field_key={field.field_key}; label={field.label}; description={field.description}; current={current_text or empty_text}"
         )

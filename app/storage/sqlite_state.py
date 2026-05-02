@@ -252,8 +252,8 @@ BUILTIN_STATE_TEMPLATES = [
                 "label": "互动状态",
                 "description": "记录当前称呼、语气、关系和短期互动目标。",
                 "fields": [
-                    ("user_addressing", "用户称呼", "当前应如何称呼用户。"),
-                    ("character_addressing", "角色对用户称呼", "角色正在使用或被要求使用的称呼。"),
+                    ("user_addressing", "称呼用户为", "角色称呼用户时应使用的称呼；不是角色自己的名字。"),
+                    ("character_addressing", "用户称呼角色为", "用户称呼角色时使用的称呼；不是角色称呼用户的方式。"),
                     ("current_mood", "当前心情状态", "角色或对话的即时情绪氛围。"),
                     ("current_task", "当前任务", "本轮对话正在推进的短期目标。"),
                     ("roleplay_persona", "角色扮演身份", "用户要求角色保持的身份、物种、职业或扮演设定。"),

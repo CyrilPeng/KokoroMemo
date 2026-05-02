@@ -943,7 +943,7 @@ const boardColumns = [
   { title: t('state.column.field'), key: 'label', width: 160, render: (row: any) => row.field
     ? h('div', [h('div', row.field.label), h('div', { class: 'km-muted' }, row.field.field_key)])
     : h('div', [h('div', row.item?.title || row.item?.item_key || '—'), row.item?.title && row.item?.title !== row.item?.item_key ? h('div', { class: 'km-muted' }, row.item?.item_key) : null]) },
-  { title: t('state.column.value'), key: 'value', ellipsis: { tooltip: true }, render: (row: any) => row.item?.item_value || row.item?.content || row.field?.default_value || '—' },
+  { title: t('state.column.value'), key: 'value', ellipsis: { tooltip: true }, render: (row: any) => row.item?.item_value || row.item?.content || '—' },
   { title: t('state.column.confidence'), key: 'confidence', width: 90, render: (row: any) => row.item ? Number(row.item.confidence).toFixed(2) : '—' },
   { title: t('state.column.priority'), key: 'priority', width: 80, render: (row: any) => row.item?.priority ?? '—' },
   { title: t('state.column.linkedCards'), key: 'linked_cards', width: 120, render: (row: any) => row.item?.linked_card_ids?.length ? h(NTag, { size: 'small', type: 'info' }, { default: () => `${row.item.linked_card_ids.length}` }) : '—' },

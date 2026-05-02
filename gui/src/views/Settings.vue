@@ -19,6 +19,8 @@ const { t } = useI18n()
 const backendUrl = ref(getServerUrl())
 const actualServerPort = ref<number | null>(null)
 const loading = ref(true)
+const showPortModal = ref(false)
+const portDraft = ref<number | null>(null)
 
 const llmModels = ref<{label: string, value: string}[]>([])
 const embeddingModels = ref<{label: string, value: string}[]>([])
@@ -53,6 +55,11 @@ const currentBackendUrl = computed(() => backendUrl.value || getServerUrl())
 const openaiBaseUrl = computed(() => `${currentBackendUrl.value.replace(/\/$/, '')}/v1`)
 const effectiveListeningPort = computed(() => actualServerPort.value || config.value.server_port)
 const portMismatch = computed(() => Boolean(actualServerPort.value && actualServerPort.value !== config.value.server_port))
+
+function openPortModal() {
+  portDraft.value = config.value.server_port || effectiveListeningPort.value || 14514
+  showPortModal.value = true
+}
 
 function normalizeVersion(version: string) {
   return version.trim().replace(/^v/i, '').split(/[+-]/)[0]
@@ -541,7 +548,7 @@ async function loadConfig() {
   loading.value = false
 }
 
-async function saveConfig() {
+async function saveConfig(): Promise<boolean> {
   try {
     const payload: any = {
       server: { port: config.value.server_port, timezone: timezone.value || undefined },
@@ -653,6 +660,7 @@ async function saveConfig() {
     const data = await resp.json()
     if (data.status === 'ok') {
       message.success(data.message || t('settings.configSaved'))
+      return true
     } else if (data.status === 'restart_required') {
       message.success(data.message || t('settings.restartingService'))
       try {
@@ -663,14 +671,39 @@ async function saveConfig() {
         const port = Number(newUrl.split(':').pop())
         actualServerPort.value = Number.isFinite(port) ? port : actualServerPort.value
         message.success(t('settings.serviceRestarted'))
+        return true
       } catch (e) {
         message.warning(t('settings.autoRestartFailed'))
+        return false
       }
     } else {
       message.error(data.message || t('common.saveFailed'))
+      return false
     }
   } catch (e) {
     message.error(t('common.backendConnectionFailed'))
+    return false
+  }
+}
+
+async function confirmPortChange() {
+  const nextPort = Number(portDraft.value)
+  if (!Number.isFinite(nextPort) || nextPort < 1024 || nextPort > 65535) {
+    message.error(t('settings.invalidPort'))
+    return
+  }
+  if (nextPort === config.value.server_port) {
+    showPortModal.value = false
+    message.info(t('settings.portUnchanged'))
+    return
+  }
+  const previousPort = config.value.server_port
+  config.value.server_port = nextPort
+  const ok = await saveConfig()
+  if (ok) {
+    showPortModal.value = false
+  } else {
+    config.value.server_port = previousPort
   }
 }
 
@@ -1064,11 +1097,9 @@ onMounted(() => {
                   <NSpace align="center">
                     <code style="padding: 6px 10px; background: #27272a; border: 1px solid #3f3f46; border-radius: 6px; color: #e4e4e7; font-size: 13px;">{{ effectiveListeningPort }}</code>
                     <NTag v-if="portMismatch" type="warning" size="small">{{ $t('settings.autoSwitchedPort') }}</NTag>
+                    <NButton size="small" @click="openPortModal">{{ $t('settings.modifyPort') }}</NButton>
                   </NSpace>
                 </NSpace>
-              </NFormItem>
-              <NFormItem :label="$t('settings.preferredPort')">
-                <NInputNumber v-model:value="config.server_port" :min="1024" :max="65535" style="width: 200px;" />
               </NFormItem>
               <NFormItem :label="$t('settings.storageDir')">
                 <div style="display: flex; gap: 8px; flex: 1;">
@@ -1242,6 +1273,25 @@ onMounted(() => {
       </div>
     </div>
 
+    <NModal v-model:show="showPortModal" preset="card" :title="$t('settings.modifyPortTitle')" style="width: 520px; background: #18181b;">
+      <NSpace vertical :size="12">
+        <NAlert type="warning" :show-icon="false">
+          {{ $t('settings.modifyPortConfirm', { current: effectiveListeningPort }) }}
+        </NAlert>
+        <NForm label-placement="left" label-width="140" :show-feedback="false">
+          <NFormItem :label="$t('settings.localPort')">
+            <NInputNumber v-model:value="portDraft" :min="1024" :max="65535" style="width: 220px;" />
+          </NFormItem>
+        </NForm>
+      </NSpace>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showPortModal = false">{{ $t('common.cancel') }}</NButton>
+          <NButton type="primary" @click="confirmPortChange">{{ $t('settings.confirmModifyPort') }}</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
     <!-- Help Modals -->
     <NModal :show="!!helpModal" preset="card" :title="$t('settings.helpTitle')" style="width: 600px; background: #18181b;" :mask-closable="true" @update:show="(v: boolean) => { if (!v) helpModal = '' }">
       <div v-if="helpModal === 'llm'" class="help-content">
@@ -1277,7 +1327,6 @@ onMounted(() => {
       <div v-else-if="helpModal === 'server'" class="help-content">
         <p><strong>{{ $t('settings.openaiBaseUrl') }}</strong>: {{ $t('settings.openaiBaseUrlHelp') }}</p>
         <p><strong>{{ $t('settings.localPort') }}</strong>: {{ $t('settings.localPortHelp') }}</p>
-        <p><strong>{{ $t('settings.preferredPort') }}</strong>: {{ $t('settings.preferredPortHelp') }}</p>
         <p><strong>{{ $t('settings.storageDir') }}</strong>: {{ $t('settings.storageDirHelp') }}</p>
         <p><strong>{{ $t('settings.timezone') }}</strong>: {{ $t('settings.timezoneHelp') }}</p>
         <p><strong>{{ $t('settings.language') }}</strong>: {{ $t('settings.languageHelp') }}</p>

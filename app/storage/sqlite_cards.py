@@ -731,6 +731,25 @@ async def update_inbox_status(db_path: str, inbox_id: str, status: str, review_n
         await db.commit()
 
 
+async def transition_inbox_status(
+    db_path: str,
+    inbox_id: str,
+    from_status: str,
+    to_status: str,
+    review_note: str | None = None,
+) -> bool:
+    """Atomically move an inbox item between statuses if it is still in from_status."""
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            """UPDATE memory_inbox
+               SET status = ?, reviewed_at = datetime('now', 'localtime'), review_note = ?
+               WHERE inbox_id = ? AND status = ?""",
+            (to_status, review_note, inbox_id, from_status),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 async def get_inbox_item(db_path: str, inbox_id: str) -> dict | None:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row

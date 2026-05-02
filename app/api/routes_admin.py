@@ -893,7 +893,7 @@ async def approve_inbox_item(inbox_id: str):
     from app.core.ids import generate_id
     from app.storage.sqlite_cards import (
         get_inbox_item, update_inbox_status, insert_card, insert_card_version,
-        insert_review_action, get_write_library_id,
+        insert_review_action, get_write_library_id, transition_inbox_status,
     )
     from app.storage.vector_sync import enqueue_card_vector_sync, sync_card_vector
 
@@ -905,55 +905,64 @@ async def approve_inbox_item(inbox_id: str):
         return {"status": "error", "message": "Inbox item not found"}
     if item["status"] != "pending":
         return {"status": "error", "message": f"Item already {item['status']}"}
+    claimed = await transition_inbox_status(db_path, inbox_id, "pending", "approving")
+    if not claimed:
+        latest = await get_inbox_item(db_path, inbox_id)
+        latest_status = latest["status"] if latest else "missing"
+        return {"status": "error", "message": f"Item already {latest_status}"}
 
-    payload = json_mod.loads(item["payload_json"])
+    try:
+        payload = json_mod.loads(item["payload_json"])
 
-    # Create approved card
-    card_id = generate_id("card_")
-    library_id = payload.get("library_id") or await get_write_library_id(db_path, payload.get("conversation_id") or "default")
-    await insert_card(
-        db_path,
-        card_id=card_id,
-        library_id=library_id,
-        user_id=payload.get("user_id", ""),
-        character_id=payload.get("character_id"),
-        conversation_id=payload.get("conversation_id"),
-        scope=payload.get("scope", "global"),
-        card_type=payload.get("card_type", "preference"),
-        content=payload.get("content", ""),
-        importance=payload.get("importance", 0.5),
-        confidence=payload.get("confidence", 0.7),
-        status="approved",
-        evidence_text=payload.get("evidence_text"),
-    )
-    await insert_card_version(
-        db_path,
-        card_id=card_id,
-        content=payload.get("content", ""),
-        card_type=payload.get("card_type", "preference"),
-        summary=payload.get("summary"),
-        importance=payload.get("importance", 0.5),
-        confidence=payload.get("confidence", 0.7),
-    )
+        # Create approved card
+        card_id = generate_id("card_")
+        library_id = payload.get("library_id") or await get_write_library_id(db_path, payload.get("conversation_id") or "default")
+        await insert_card(
+            db_path,
+            card_id=card_id,
+            library_id=library_id,
+            user_id=payload.get("user_id", ""),
+            character_id=payload.get("character_id"),
+            conversation_id=payload.get("conversation_id"),
+            scope=payload.get("scope", "global"),
+            card_type=payload.get("card_type", "preference"),
+            content=payload.get("content", ""),
+            importance=payload.get("importance", 0.5),
+            confidence=payload.get("confidence", 0.7),
+            status="approved",
+            evidence_text=payload.get("evidence_text"),
+        )
+        await insert_card_version(
+            db_path,
+            card_id=card_id,
+            content=payload.get("content", ""),
+            card_type=payload.get("card_type", "preference"),
+            summary=payload.get("summary"),
+            importance=payload.get("importance", 0.5),
+            confidence=payload.get("confidence", 0.7),
+        )
 
-    # Vector sync
-    warning = None
-    ep = get_embedding_provider(cfg)
-    store = get_lancedb_store(cfg)
-    if ep and store:
-        try:
-            await sync_card_vector(db_path, card_id, ep, store)
-        except Exception as e:
-            warning = f"Vector sync failed: {e}"
-            await enqueue_card_vector_sync(db_path, card_id, str(e))
+        # Vector sync
+        warning = None
+        ep = get_embedding_provider(cfg)
+        store = get_lancedb_store(cfg)
+        if ep and store:
+            try:
+                await sync_card_vector(db_path, card_id, ep, store)
+            except Exception as e:
+                warning = f"Vector sync failed: {e}"
+                await enqueue_card_vector_sync(db_path, card_id, str(e))
 
-    # Mark inbox item as approved
-    await update_inbox_status(db_path, inbox_id, "approved")
-    await insert_review_action(db_path, action="approve", inbox_id=inbox_id, card_id=card_id)
-    result = {"status": "ok", "card_id": card_id}
-    if warning:
-        result["warning"] = warning
-    return result
+        # Mark inbox item as approved
+        await update_inbox_status(db_path, inbox_id, "approved")
+        await insert_review_action(db_path, action="approve", inbox_id=inbox_id, card_id=card_id)
+        result = {"status": "ok", "card_id": card_id}
+        if warning:
+            result["warning"] = warning
+        return result
+    except Exception:
+        await update_inbox_status(db_path, inbox_id, "pending")
+        raise
 
 
 @router.post("/admin/jobs/retry-vector-sync")
@@ -1642,10 +1651,10 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
 
 
 @router.post("/admin/inbox/{inbox_id}/reject")
-async def reject_inbox_item(inbox_id: str, note: str = Body(default="")):
+async def reject_inbox_item(inbox_id: str, data=Body(default="")):
     """Reject an inbox item."""
     from app.core.state import get_config
-    from app.storage.sqlite_cards import get_inbox_item, update_inbox_status, insert_review_action
+    from app.storage.sqlite_cards import get_inbox_item, insert_review_action, transition_inbox_status
 
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
@@ -1655,8 +1664,18 @@ async def reject_inbox_item(inbox_id: str, note: str = Body(default="")):
         return {"status": "error", "message": "Inbox item not found"}
     if item["status"] != "pending":
         return {"status": "error", "message": f"Item already {item['status']}"}
+    if isinstance(data, dict):
+        note = str(data.get("note") or "")
+    elif data is None:
+        note = ""
+    else:
+        note = str(data)
 
-    await update_inbox_status(db_path, inbox_id, "rejected", review_note=note)
+    claimed = await transition_inbox_status(db_path, inbox_id, "pending", "rejected", review_note=note)
+    if not claimed:
+        latest = await get_inbox_item(db_path, inbox_id)
+        latest_status = latest["status"] if latest else "missing"
+        return {"status": "error", "message": f"Item already {latest_status}"}
     await insert_review_action(db_path, action="reject", inbox_id=inbox_id, note=note)
     return {"status": "ok"}
 

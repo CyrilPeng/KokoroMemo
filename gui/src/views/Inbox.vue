@@ -21,6 +21,18 @@ const showRejectModal = ref(false)
 const rejectingId = ref('')
 const rejectNote = ref('')
 const helpModal = ref(false)
+const processingIds = ref<Set<string>>(new Set())
+
+function isProcessing(inboxId: string) {
+  return processingIds.value.has(inboxId)
+}
+
+function setProcessing(inboxId: string, processing: boolean) {
+  const next = new Set(processingIds.value)
+  if (processing) next.add(inboxId)
+  else next.delete(inboxId)
+  processingIds.value = next
+}
 
 const statusOptions = computed(() => [
   { label: t('inbox.statusFilter.pending'), value: 'pending' },
@@ -82,10 +94,10 @@ const columns = computed(() => [
     render: (row: InboxItem) => row.status === 'pending'
       ? h(NSpace, { size: 4 }, { default: () => [
           h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => approveItem(row.inbox_id) }, {
-            trigger: () => h(NButton, { size: 'tiny', type: 'primary' }, { default: () => t('inbox.actions.approve') }),
+            trigger: () => h(NButton, { size: 'tiny', type: 'primary', loading: isProcessing(row.inbox_id), disabled: isProcessing(row.inbox_id) }, { default: () => t('inbox.actions.approve') }),
             default: () => t('inbox.confirmApprove'),
           }),
-          h(NButton, { size: 'tiny', type: 'error', quaternary: true, onClick: () => openRejectModal(row.inbox_id) }, { default: () => t('inbox.actions.reject') }),
+          h(NButton, { size: 'tiny', type: 'error', quaternary: true, loading: isProcessing(row.inbox_id), disabled: isProcessing(row.inbox_id), onClick: () => openRejectModal(row.inbox_id) }, { default: () => t('inbox.actions.reject') }),
         ] })
       : h(NTag, { size: 'small', type: row.status === 'approved' ? 'success' : 'default' }, { default: () => row.status }),
   },
@@ -108,6 +120,8 @@ async function fetchInbox() {
 }
 
 async function approveItem(inboxId: string) {
+  if (isProcessing(inboxId)) return
+  setProcessing(inboxId, true)
   try {
     const resp = await apiFetch(`/admin/inbox/${inboxId}/approve`, { method: 'POST' })
     const data = await resp.json()
@@ -119,6 +133,8 @@ async function approveItem(inboxId: string) {
     }
   } catch (e: any) {
     message.error(e.message || String(e))
+  } finally {
+    setProcessing(inboxId, false)
   }
 }
 
@@ -129,6 +145,8 @@ function openRejectModal(inboxId: string) {
 }
 
 async function confirmReject() {
+  if (!rejectingId.value || isProcessing(rejectingId.value)) return
+  setProcessing(rejectingId.value, true)
   try {
     const resp = await apiFetch(`/admin/inbox/${rejectingId.value}/reject`, {
       method: 'POST',
@@ -145,6 +163,8 @@ async function confirmReject() {
     }
   } catch (e: any) {
     message.error(e.message || String(e))
+  } finally {
+    if (rejectingId.value) setProcessing(rejectingId.value, false)
   }
 }
 
@@ -207,7 +227,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
       <template #footer>
         <NSpace justify="end">
           <NButton @click="showRejectModal = false">{{ $t('common.cancel') }}</NButton>
-          <NButton type="error" @click="confirmReject">{{ $t('inbox.actions.reject') }}</NButton>
+          <NButton type="error" :loading="isProcessing(rejectingId)" :disabled="isProcessing(rejectingId)" @click="confirmReject">{{ $t('inbox.actions.reject') }}</NButton>
         </NSpace>
       </template>
     </NModal>

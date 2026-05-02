@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
 import {
   NButton,
   NCard,
@@ -79,6 +79,9 @@ const renamingTab = ref<any>(null)
 const renameTabLabel = ref('')
 const newTabLabel = ref('')
 const helpModal = ref('')
+const showGateDebugPreview = ref(false)
+const gateDebugPreviewTitle = ref('')
+const gateDebugPreviewContent = ref('')
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? `(${t('common.builtin')})` : ''}`, value: item.template_id })))
 const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
@@ -115,6 +118,62 @@ const dangerActionOptions = computed(() => [
   { label: t('state.resetToEmpty'), key: 'reset' },
   { label: t('state.clearState'), key: 'clear' },
 ])
+const currentConversationId = computed(() => conversationId.value.trim())
+const scopedDecisions = computed(() => decisions.value.filter((item) => item.conversation_id === currentConversationId.value))
+const scopedEvents = computed(() => events.value.filter((item) => item.conversation_id === currentConversationId.value))
+
+function clearConversationScopedData() {
+  stateItems.value = []
+  decisions.value = []
+  events.value = []
+  currentTemplate.value = null
+  selectedTemplateId.value = ''
+  memoryMounts.value = []
+  mountedLibraryIds.value = []
+  writeLibraryId.value = ''
+  stateItemCount.value = 0
+  isNewSession.value = false
+  configLoaded.value = false
+  previewData.value = { preview: '', char_count: 0, max_chars: 0, item_count: 0 }
+}
+
+function parseDebugJson(value: unknown) {
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+function formatGateDebugRow(row: any) {
+  return JSON.stringify({
+    decision_id: row.decision_id,
+    request_id: row.request_id,
+    conversation_id: row.conversation_id,
+    user_id: row.user_id,
+    character_id: row.character_id,
+    world_id: row.world_id,
+    created_at: row.created_at,
+    mode: row.mode,
+    should_retrieve: !!row.should_retrieve,
+    reason: row.reason,
+    reasons: parseDebugJson(row.reasons_json),
+    triggered_routes: parseDebugJson(row.triggered_routes_json),
+    skipped_routes: parseDebugJson(row.skipped_routes_json),
+    latest_user_text: row.latest_user_text,
+    state_item_count: row.state_item_count,
+    state_confidence: row.state_confidence,
+    avg_state_confidence: row.avg_state_confidence,
+    turn_index: row.turn_index,
+  }, null, 2)
+}
+
+function openGateDebugPreview(row: any) {
+  gateDebugPreviewTitle.value = `${t('state.gateDebugPreviewTitle')} · ${row.created_at || row.request_id || ''}`
+  gateDebugPreviewContent.value = formatGateDebugRow(row)
+  showGateDebugPreview.value = true
+}
 
 function ensureConversationId() {
   if (!conversationId.value.trim()) {
@@ -139,9 +198,10 @@ async function fetchConversations() {
   recentConversations.value = (await resp.json()).items || []
 }
 
-async function fetchConfig() {
-  if (!conversationId.value.trim()) return
-  const resp = await apiFetch(`/admin/conversations/${conversationId.value}/config`, { headers: authHeaders() })
+async function fetchConfig(targetConversationId = conversationId.value.trim()) {
+  if (!targetConversationId) return
+  const resp = await apiFetch(`/admin/conversations/${targetConversationId}/config`, { headers: authHeaders() })
+  if (targetConversationId !== conversationId.value.trim()) return
   const data = await resp.json()
   stateItemCount.value = data.state_item_count || 0
   isNewSession.value = !!data.is_new_session
@@ -163,15 +223,17 @@ async function fetchPresets() {
 
 async function fetchAll() {
   if (!ensureConversationId()) return
+  const targetConversationId = conversationId.value.trim()
   loading.value = true
   try {
     await Promise.all([fetchTemplates(), fetchMemoryLibraries(), fetchPresets()])
     const [templateResp, stateResp, decisionResp, eventResp] = await Promise.all([
-      apiFetch(`/admin/conversations/${conversationId.value}/state/template`, { headers: authHeaders() }),
-      apiFetch(`/admin/conversations/${conversationId.value}/state?limit=500`, { headers: authHeaders() }),
-      apiFetch(`/admin/conversations/${conversationId.value}/retrieval-decisions?limit=100`, { headers: authHeaders() }),
-      apiFetch(`/admin/conversations/${conversationId.value}/state/events?limit=100`, { headers: authHeaders() }),
+      apiFetch(`/admin/conversations/${targetConversationId}/state/template`, { headers: authHeaders() }),
+      apiFetch(`/admin/conversations/${targetConversationId}/state?limit=500`, { headers: authHeaders() }),
+      apiFetch(`/admin/conversations/${targetConversationId}/retrieval-decisions?limit=100`, { headers: authHeaders() }),
+      apiFetch(`/admin/conversations/${targetConversationId}/state/events?limit=100`, { headers: authHeaders() }),
     ])
+    if (targetConversationId !== conversationId.value.trim()) return
     if (templateResp.ok) {
       currentTemplate.value = await templateResp.json()
       selectedTemplateId.value = currentTemplate.value?.template_id || ''
@@ -180,15 +242,20 @@ async function fetchAll() {
       stateItems.value = (await stateResp.json()).items || []
       stateItemCount.value = stateItems.value.filter((item) => item.status === 'active').length
     }
-    if (decisionResp.ok) decisions.value = (await decisionResp.json()).items || []
-    if (eventResp.ok) events.value = (await eventResp.json()).items || []
-    await fetchConfig()
+    if (decisionResp.ok) decisions.value = ((await decisionResp.json()).items || []).filter((item: any) => item.conversation_id === targetConversationId)
+    if (eventResp.ok) events.value = ((await eventResp.json()).items || []).filter((item: any) => item.conversation_id === targetConversationId)
+    await fetchConfig(targetConversationId)
     saveLocalInputs()
   } catch (e: any) {
     message.error(t('state.messages.loadFailed', { error: e.message || e }))
+  } finally {
+    if (targetConversationId === conversationId.value.trim()) loading.value = false
   }
-  loading.value = false
 }
+
+watch(conversationId, () => {
+  clearConversationScopedData()
+})
 
 async function deleteConversation() {
   if (!conversationId.value.trim()) return
@@ -1003,6 +1070,7 @@ const decisionColumns = [
   { title: t('state.column.triggeredRoutes'), key: 'triggered_routes_json', width: 140, ellipsis: { tooltip: true } },
   { title: t('state.column.skippedRoutes'), key: 'skipped_routes_json', width: 140, ellipsis: { tooltip: true } },
   { title: t('state.column.stateConfidence'), key: 'state_confidence', width: 110, render: (row: any) => row.state_confidence != null ? Number(row.state_confidence).toFixed(2) : '—' },
+  { title: t('state.column.actions'), key: 'actions', width: 90, render: (row: any) => h(NButton, { size: 'tiny', secondary: true, onClick: () => openGateDebugPreview(row) }, { default: () => t('state.actions.preview') }) },
 ]
 
 const eventColumns = [
@@ -1176,8 +1244,8 @@ onMounted(async () => {
             </NCollapseItem>
           </NCollapse>
         </NTabPane>
-        <NTabPane name="gate" :tab="$t('state.tabs.gate')"><NDataTable :columns="decisionColumns" :data="decisions" :pagination="{ pageSize: 12 }" /></NTabPane>
-        <NTabPane name="events" :tab="$t('state.tabs.events')"><NDataTable :columns="eventColumns" :data="events" :pagination="{ pageSize: 12 }" /></NTabPane>
+        <NTabPane name="gate" :tab="$t('state.tabs.gate')"><NDataTable :columns="decisionColumns" :data="scopedDecisions" :pagination="{ pageSize: 12 }" /></NTabPane>
+        <NTabPane name="events" :tab="$t('state.tabs.events')"><NDataTable :columns="eventColumns" :data="scopedEvents" :pagination="{ pageSize: 12 }" /></NTabPane>
         <NTabPane name="preview" :tab="$t('state.tabs.preview')">
           <NCard style="background: #18181b; border: 1px solid #27272a;">
             <template #header>
@@ -1230,6 +1298,12 @@ onMounted(async () => {
         <NFormItem :label="$t('state.assistantMessage')"><NInput v-model:value="fillForm.assistant_message" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" /></NFormItem>
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showFillModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="runStateFiller">{{ $t('state.run') }}</NButton></NSpace></template>
+    </NModal>
+
+    <!-- Gate 调试预览 Modal -->
+    <NModal v-model:show="showGateDebugPreview" preset="card" :title="gateDebugPreviewTitle" style="width: min(920px, 92vw); background: #18181b;">
+      <pre class="gate-debug-preview">{{ gateDebugPreviewContent }}</pre>
+      <template #footer><NSpace justify="end"><NButton @click="showGateDebugPreview = false">{{ $t('common.close') }}</NButton></NSpace></template>
     </NModal>
 
     <!-- 保存挂载预设 Modal -->
@@ -1343,6 +1417,19 @@ onMounted(async () => {
 .help-content p strong {
   color: #ffffff;
   font-weight: 600;
+}
+.gate-debug-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #e4e4e7;
+  background: #09090b;
+  padding: 16px;
+  border-radius: 6px;
+  max-height: 70vh;
+  overflow-y: auto;
+  margin: 0;
 }
 .preset-delete {
   color: #71717a;

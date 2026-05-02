@@ -72,6 +72,7 @@ export default {
       },
     },
     previewTitle: '实际注入文本',
+    gateDebugPreviewTitle: '完整 Gate 调试内容',
     previewEmpty: '点击"加载"按钮获取注入预览，或当前状态板为空。',
     isNewSession: '这是一个新会话',
     newSessionHint: '当前会话尚未配置。点击"初始化向导"可快速选择记忆库、写入目标和状态板模板。',
@@ -167,6 +168,7 @@ export default {
       fill: '填写',
       addNew: '添加字段',
       linkCards: '关联卡片',
+      preview: '预览',
     },
     messages: {
       inputId: '请输入会话 ID',

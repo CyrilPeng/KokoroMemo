@@ -72,6 +72,7 @@ export default {
       },
     },
     previewTitle: 'Injected Text',
+    gateDebugPreviewTitle: 'Full Gate Debug Content',
     previewEmpty: 'Click "Load" to fetch the inject preview, or the state board is empty.',
     isNewSession: 'This is a new session',
     newSessionHint: 'This session is not configured yet. Click "Init Wizard" to quickly select libraries, write target, and template.',
@@ -167,6 +168,7 @@ export default {
       fill: 'Fill',
       addNew: 'Add Field',
       linkCards: 'Link Cards',
+      preview: 'Preview',
     },
     messages: {
       inputId: 'Please enter conversation_id',

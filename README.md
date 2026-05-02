@@ -1,6 +1,31 @@
-# KokoroMemo
+<p align="center">
+  <img src="gui/src/assets/logo.svg" width="180" alt="KokoroMemo Logo" />
+</p>
 
-KokoroMemo 是一个本地运行的 AI 长期记忆代理。它放在 AIRP、SillyTavern、AI 游戏、桌宠或其他 OpenAI-compatible 客户端与真实大模型 API 之间，负责保存记忆、维护当前会话状态，并在需要时把相关信息注入给模型。
+<h1 align="center">KokoroMemo / 心忆</h1>
+
+<p align="center">
+  <em>让 AI 角色不只回应你，也记得你。</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/CyrilPeng/KokoroMemo">GitHub</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#接入客户端">接入客户端</a> ·
+  <a href="#gui-功能概览">GUI 功能</a> ·
+  <a href="#常见问题">常见问题</a> ·
+  <a href="DESIGN.md">设计文档</a>
+</p>
+
+---
+
+## KokoroMemo 是什么？
+
+**KokoroMemo（心忆）** 是一个面向 **AI 角色扮演（AIRP）**、AI 游戏、AI 桌宠、SillyTavern 类前端与其他 OpenAI-compatible 客户端的 **本地长期记忆核心**。
+
+它作为一个运行在本机的 OpenAI-compatible 代理，位于你的 AI 客户端与真实大模型 API 之间。客户端仍然像往常一样请求聊天模型，KokoroMemo 会在中间负责保存对话、维护会话状态、检索长期记忆，并把必要的上下文注入给模型。
+
+KokoroMemo 的目标不是简单地把聊天记录塞进向量库，而是用可审阅的记忆卡片、会话状态板、按需召回和本地语义索引，让 AI 角色跨会话记住你的称呼、偏好、边界、关系进展、重要约定、剧情状态与共同经历。
 
 ```text
 你的客户端 → KokoroMemo 本地代理 → 大模型 API
@@ -8,7 +33,9 @@ KokoroMemo 是一个本地运行的 AI 长期记忆代理。它放在 AIRP、Sil
         本地记忆、状态板与审核
 ```
 
-适合希望角色能长期记住关系、偏好、约定、剧情进展，又不想把全部聊天记录直接塞进上下文的用户。
+适合希望角色能长期保持连续性，又不想让自动记忆污染角色设定或把全部聊天记录直接塞进上下文的用户。
+
+---
 
 ## 主要功能
 
@@ -21,6 +48,7 @@ KokoroMemo 是一个本地运行的 AI 长期记忆代理。它放在 AIRP、Sil
 - **桌面 GUI / Web UI**：提供仪表盘、设置、记忆管理、收件箱、会话状态板和导入导出功能。
 - **降级可用**：LanceDB 不可用时可回退到 SQLite + numpy 向量检索，适合轻量环境。
 
+---
 ## 快速开始
 
 ### 方式一：下载发行版
@@ -77,6 +105,8 @@ cd gui
 npm run tauri dev
 ```
 
+---
+
 ## 接入客户端
 
 在 AIRP、SillyTavern 或其他 OpenAI-compatible 客户端中填写：
@@ -103,6 +133,8 @@ X-Conversation-Id: conversation_id
 
 没有这些 Header 时，KokoroMemo 会使用默认值或从请求内容中推断，但多角色/多会话场景建议显式填写。
 
+---
+
 ## 第一次使用建议
 
 1. 打开 GUI 的“设置”页。
@@ -113,6 +145,8 @@ X-Conversation-Id: conversation_id
 6. 打开“会话状态板”，确认当前会话状态是否被正确维护。
 
 Embedding 默认使用模力方舟 `Qwen3-Embedding-8B`，需要自行配置 API Key。Rerank 默认关闭，不影响基本使用。
+
+---
 
 ## GUI 功能概览
 
@@ -155,6 +189,8 @@ Embedding 默认使用模力方舟 `Qwen3-Embedding-8B`，需要自行配置 API
 
 支持导出记忆库、会话配置、状态板数据和挂载预设。桌面端会弹出保存位置选择框，Web 端使用浏览器下载能力。
 
+---
+
 ## 数据与隐私
 
 默认数据目录：
@@ -175,6 +211,8 @@ KokoroMemo 默认本地运行，不会主动上传你的数据库。真正发送
 - `config.yaml`
 
 向量索引目录通常可以从 SQLite 重新构建。
+
+---
 
 ## 常见问题
 
@@ -215,11 +253,14 @@ Get-NetTCPConnection -LocalPort 14514
 
 KokoroMemo 使用 `user_id`、`character_id`、`conversation_id` 和作用域隔离记忆。建议客户端显式传入对应 Header，尤其是多角色同时使用时。
 
+---
+
 ## 更多文档
 
 - [DESIGN.md](DESIGN.md)：架构、数据结构、状态板 v2、请求流程、检索门控和发布设计。
 - [CHANGELOG.md](CHANGELOG.md)：版本更新记录。
-- [LICENSE](LICENSE)：许可证。
+
+---
 
 ## License
 

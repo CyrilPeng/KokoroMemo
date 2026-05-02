@@ -1,18 +1,38 @@
 # Changelog
 
-## v0.5.6 (2026-05-02)
-
-### 修复
-
-- **Release 版本号显示** — 为打包后端增加构建期版本兜底，并在 GitHub Release 工作流按 tag 写入版本，修复 GUI 左下角显示 `v0.0.0` 的问题。
-- **开发模式配置路径** — 配置读取与保存改为解析实际 `config.yaml` 路径，避免 Tauri/后端工作目录不一致时误读 `config.example.yaml` 或覆盖错误文件。
-- **实际监听端口统一** — 后端记录并通过 `/health`、`/admin/config` 返回实际监听端口，Dashboard、设置页和 GUI 后端地址统一展示动态端口。
-- **状态板称呼误注入** — 明确称呼字段语义，禁止把字段默认值当作当前状态传入提示词，避免首轮对话错误注入测试值。
+## 未发布
 
 ### 改进
 
-- **Web/Tauri 地址解析** — Web UI 模式优先使用当前页面 origin，Tauri 模式兼容配置目录和工作目录中的 `.port` 文件。
-- **版本同步** — 同步 Python、Tauri、前端包和锁文件版本到 `0.5.6`。
+- **OpenAI Base URL 展示** - 设置页移除可编辑的 GUI 后端地址，改为直接展示 `OpenAI Base URL` 并提供一键复制，避免用户误改运行时地址。
+
+### 修复
+
+- **关闭窗口后端残留** - `关闭后最小化到托盘` 默认改为关闭；默认关闭窗口会退出 KokoroMemo 并停止后端，仍可在设置中手动启用托盘常驻。
+
+## v0.5.6 (2026-05-02)
+
+### 新增
+
+- **SQLite + numpy 向量存储回退** - 新增 `SqliteVectorStore`，当 LanceDB/pyarrow 不可用时自动降级到 SQLite 向量检索，提升 Android Termux 等轻量环境可用性。
+- **SQLite 向量库测试覆盖** - 新增向量 upsert/search/delete、where 过滤、staging promote、cosine 距离等测试，覆盖回退实现的核心行为。
+- **Ubuntu 部署脚本** - 新增 `scripts/ubuntu-setup.sh`，用于 Ubuntu/proot-distro 环境的一键安装和运行。
+
+### 改进
+
+- **Termux 部署稳健性** - 安装脚本补充 `apt full-upgrade`、预编译 numpy、proot-distro Ubuntu 路径、原生 Termux 回退、克隆/下载/Gitee 多重回退，减少 ARM 设备依赖编译与网络失败。
+- **向量服务自动降级** - `get_lancedb_store` 在 LanceDB 不可用时回退到 SQLite 向量存储，向量同步、重建和检索链路兼容回退存储。
+- **Web/Tauri 地址解析** - Web UI 模式优先使用当前页面 origin，Tauri 模式兼容配置目录和工作目录中的 `.port` 文件。
+- **版本同步** - 同步 Python、Tauri、前端包和锁文件版本到 `0.5.6`，并补充打包后端的构建期版本兜底。
+- **文档补充** - 更新 README/DESIGN，补充 Termux、Ubuntu、SQLite 向量回退和运行环境说明。
+
+### 修复
+
+- **Release 版本号显示** - 为打包后端增加构建期版本兜底，并在 GitHub Release 工作流按 tag 写入版本，修复 GUI 左下角显示 `v0.0.0` 的问题。
+- **开发模式配置路径** - 配置读取与保存改为解析实际 `config.yaml` 路径，避免 Tauri/后端工作目录不一致时误读 `config.example.yaml` 或覆盖错误文件。
+- **实际监听端口统一** - 后端记录并通过 `/health`、`/admin/config` 返回实际监听端口，Dashboard、设置页和 GUI 后端地址统一展示动态端口。
+- **状态板称呼误注入** - 明确称呼字段语义，禁止把字段默认值当作当前状态传入提示词，避免首轮对话错误注入测试值。
+- **ARM/Termux 依赖安装失败** - 去掉 `uvicorn[standard]` extra，避免 uvloop/httptools 等依赖在 ARM/Termux 环境编译失败。
 
 ## v0.5.5 (2026-05-02)
 

@@ -69,6 +69,9 @@ const showPresetModal = ref(false)
 const presetForm = ref({ name: '', description: '' })
 const showCopyModal = ref(false)
 const copyForm = ref({ target_conversation_id: '', copy_mounts: true })
+const showConversationImportModal = ref(false)
+const importForm = ref({ target_conversation_id: '', overwrite_state: false, import_template_snapshot: true })
+const importJson = ref('')
 const showInitWizard = ref(false)
 const previewData = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0 })
 const previewLoading = ref(false)
@@ -84,6 +87,7 @@ const gateDebugPreviewTitle = ref('')
 const gateDebugPreviewContent = ref('')
 
 const templateOptions = computed(() => templates.value.map((item) => ({ label: `${item.name}${item.is_builtin ? `(${t('common.builtin')})` : ''}`, value: item.template_id })))
+const selectedTemplate = computed(() => templates.value.find((item) => item.template_id === selectedTemplateId.value) || null)
 const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
 const conversationOptions = computed(() => recentConversations.value.map((item) => {
   const parts = [item.conversation_id]
@@ -108,6 +112,7 @@ const templateMenuOptions = computed(() => [
   { label: t('state.create'), key: 'create' },
   { label: t('common.export'), key: 'export' },
   { label: t('common.import'), key: 'import' },
+  { label: t('common.delete'), key: 'delete', disabled: !selectedTemplate.value || selectedTemplate.value.is_builtin },
 ])
 const presetManageOptions = computed(() => [
   { label: t('state.importPreset'), key: 'import' },
@@ -782,6 +787,7 @@ function handleTemplateMenuAction(key: string) {
   if (key === 'create') openTemplateModal()
   else if (key === 'export') exportTemplate()
   else if (key === 'import') triggerImportTemplate()
+  else if (key === 'delete') confirmDeleteTemplate()
 }
 
 function handlePresetManageAction(key: string) {
@@ -871,6 +877,97 @@ async function exportTemplate() {
     message.success(t('state.messages.templateExported'))
   } catch (e: any) {
     message.error(e.message || t('common.exportFailed'))
+  }
+}
+
+function confirmDeleteTemplate() {
+  const template = selectedTemplate.value
+  if (!template || template.is_builtin) return
+  dialog.warning({
+    title: t('state.deleteTemplate'),
+    content: t('state.messages.confirmDeleteTemplate', { name: template.name }),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: () => deleteTemplate(template.template_id),
+  })
+}
+
+async function deleteTemplate(templateId: string) {
+  try {
+    const resp = await apiFetch(`/admin/state/templates/${templateId}`, { method: 'DELETE', headers: authHeaders() })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || t('state.messages.templateDeleteFailed'))
+    if (selectedTemplateId.value === templateId) selectedTemplateId.value = ''
+    message.success(t('state.messages.templateDeleted'))
+    await fetchTemplates()
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  }
+}
+
+async function exportConversationConfig() {
+  if (!ensureConversationId()) return
+  try {
+    const resp = await apiFetch(`/admin/conversations/${conversationId.value}/export`, { headers: authHeaders() })
+    const data = await resp.json()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `conversation_state_${conversationId.value}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success(t('state.messages.conversationExported'))
+  } catch (e: any) {
+    message.error(e.message || t('common.exportFailed'))
+  }
+}
+
+function triggerConversationImport() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+    try {
+      importJson.value = await file.text()
+      const data = JSON.parse(importJson.value)
+      importForm.value = {
+        target_conversation_id: data.conversation_id || conversationId.value || '',
+        overwrite_state: false,
+        import_template_snapshot: true,
+      }
+      showConversationImportModal.value = true
+    } catch (e: any) {
+      message.error(`${t('common.importFailed')}: ${e.message || e}`)
+    }
+  }
+  input.click()
+}
+
+async function confirmConversationImport() {
+  try {
+    const payload = JSON.parse(importJson.value)
+    const resp = await apiFetch('/admin/conversations/import', {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({
+        ...payload,
+        target_conversation_id: importForm.value.target_conversation_id,
+        overwrite_state: importForm.value.overwrite_state,
+        import_template_snapshot: importForm.value.import_template_snapshot,
+      }),
+    })
+    const data = await resp.json()
+    if (data.status !== 'ok') throw new Error(data.message || t('common.importFailed'))
+    showConversationImportModal.value = false
+    conversationId.value = data.conversation_id
+    message.success(t('state.messages.conversationImported', { count: data.imported_items || 0 }))
+    await fetchConversations()
+    await fetchAll()
+  } catch (e: any) {
+    message.error(e.message || String(e))
   }
 }
 
@@ -1111,6 +1208,8 @@ onMounted(async () => {
           <span style="color: #a1a1aa; font-size: 13px;">{{ $t('state.conversationId') }}</span>
           <NSelect v-model:value="conversationId" :options="conversationOptions" filterable tag :placeholder="$t('state.selectConversation')" style="width: 280px;" size="small" @blur="saveLocalInputs" />
           <NButton type="primary" size="small" @click="fetchAll">{{ $t('common.load') }}</NButton>
+          <NButton size="small" @click="exportConversationConfig" :disabled="!conversationId.trim()">{{ $t('state.exportConversation') }}</NButton>
+          <NButton size="small" @click="triggerConversationImport">{{ $t('state.importConversation') }}</NButton>
           <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="deleteConversation">
             <template #trigger><NButton type="error" quaternary size="small" :disabled="!conversationId.trim()">{{ $t('common.delete') }}</NButton></template>
             {{ $t('state.deleteConversationConfirm') }}
@@ -1141,15 +1240,22 @@ onMounted(async () => {
         <NCard style="background: #18181b; border: 1px solid #27272a;">
       <NForm label-placement="left" label-width="120" :show-feedback="false" style="gap: 14px; display: flex; flex-direction: column;">
         <NFormItem :label="$t('state.stateTemplate')">
+          <NSpace vertical :size="6" style="width: 100%;">
           <NSpace :wrap="false">
             <NSelect v-model:value="selectedTemplateId" :options="templateOptions" :placeholder="$t('state.selectTemplate')" style="width: 260px;" />
-            <NButton @click="changeTemplate" :disabled="!configLoaded">{{ $t('state.switch') }}</NButton>
+            <NPopconfirm :positive-text="$t('common.confirm')" :negative-text="$t('common.cancel')" @positive-click="changeTemplate">
+              <template #trigger><NButton :disabled="!configLoaded || !selectedTemplateId">{{ $t('state.applyTemplate') }}</NButton></template>
+              {{ $t('state.applyTemplateConfirm') }}
+            </NPopconfirm>
             <NDropdown :options="templateMenuOptions" @select="handleTemplateMenuAction">
               <NButton>{{ $t('state.templateMore') }}</NButton>
             </NDropdown>
           </NSpace>
+          <div class="km-muted">{{ $t('state.stateTemplateHelp') }}</div>
+          </NSpace>
         </NFormItem>
         <NFormItem :label="$t('state.mountLibraries')">
+          <NSpace vertical :size="6" style="width: 100%;">
           <NSelect
             :value="mountedLibraryIds"
             multiple
@@ -1158,11 +1264,17 @@ onMounted(async () => {
             :placeholder="$t('state.mountLibrariesPlaceholder')"
             @update:value="handleMountedLibrariesChange"
           />
+          <div class="km-muted">{{ $t('state.mountLibrariesHelp') }}</div>
+          </NSpace>
         </NFormItem>
         <NFormItem :label="$t('state.writeTarget')">
+          <NSpace vertical :size="6">
           <NSelect v-model:value="writeLibraryId" :options="memoryLibraryOptions.filter((item) => mountedLibraryIds.includes(item.value))" :placeholder="$t('state.writeTargetPlaceholder')" style="width: 260px;" />
+          <div class="km-muted">{{ $t('state.writeTargetHelp') }}</div>
+          </NSpace>
         </NFormItem>
         <NFormItem :label="$t('state.mountPresets')">
+          <NSpace vertical :size="6" style="width: 100%;">
           <NSpace :wrap="false" style="width: 100%;">
             <NSelect v-model:value="selectedPresetId" :options="presetOptions" :placeholder="$t('state.presetPlaceholder')" style="flex: 1; min-width: 200px;" @update:value="applyPresetById" />
             <NButton size="small" @click="saveAsPreset" :disabled="!mountedLibraryIds.length">{{ $t('state.saveAsPreset') }}</NButton>
@@ -1171,6 +1283,8 @@ onMounted(async () => {
             <NDropdown :options="presetManageOptions" @select="handlePresetManageAction">
               <NButton size="small">{{ $t('state.managePresets') }}</NButton>
             </NDropdown>
+          </NSpace>
+          <div class="km-muted">{{ $t('state.mountPresetsHelp') }}</div>
           </NSpace>
         </NFormItem>
       </NForm>
@@ -1362,6 +1476,17 @@ onMounted(async () => {
     </NModal>
 
     <!-- 添加标签页 Modal -->
+    <!-- ?????? Modal -->
+    <NModal v-model:show="showConversationImportModal" preset="card" :title="$t('state.importConversationTitle')" style="width: 560px; background: #18181b;">
+      <NForm label-placement="top">
+        <NFormItem :label="$t('state.targetConversationId')"><NSelect v-model:value="importForm.target_conversation_id" :options="conversationOptions" filterable tag :placeholder="$t('state.inputNewId')" /></NFormItem>
+        <NFormItem :label="$t('state.importTemplateSnapshot')"><NSwitch v-model:value="importForm.import_template_snapshot" /></NFormItem>
+        <NFormItem :label="$t('state.overwriteState')"><NSwitch v-model:value="importForm.overwrite_state" /></NFormItem>
+        <div class="km-muted">{{ $t('state.importConversationHelp') }}</div>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showConversationImportModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="confirmConversationImport">{{ $t('common.import') }}</NButton></NSpace></template>
+    </NModal>
+
     <NModal v-model:show="showAddTabModal" preset="card" :title="$t('state.addTab')" style="width: 400px; background: #18181b;">
       <NForm label-placement="top">
         <NFormItem :label="$t('state.tabLabel')"><NInput v-model:value="newTabLabel" :placeholder="$t('state.tabLabelPlaceholder')" @keyup.enter="addTab" /></NFormItem>
@@ -1391,6 +1516,8 @@ onMounted(async () => {
         <p><strong>{{ $t('state.mountLibraries') }}</strong>: {{ $t('state.help.config.mount') }}</p>
         <p><strong>{{ $t('state.writeTarget') }}</strong>: {{ $t('state.help.config.write') }}</p>
         <p><strong>{{ $t('state.mountPresets') }}</strong>: {{ $t('state.help.config.preset') }}</p>
+        <p><strong>{{ $t('state.exportConversation') }} / {{ $t('state.importConversation') }}</strong>: {{ $t('state.help.config.importExport') }}</p>
+        <p><strong>{{ $t('state.deleteTemplate') }}</strong>: {{ $t('state.help.config.templateDelete') }}</p>
         <p><strong>{{ $t('state.manualFill') }}</strong>: {{ $t('state.help.config.fill') }}</p>
         <p><strong>{{ $t('state.projectFromMemory') }}</strong>: {{ $t('state.help.config.project') }}</p>
         <p><strong>{{ $t('state.moreActions') }}</strong>: {{ $t('state.help.config.danger') }}</p>

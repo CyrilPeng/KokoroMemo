@@ -299,6 +299,17 @@ StateBoardTemplate
   └─ 绑定: conversation_state_boards(conversation_id → template_id)
 ```
 
+### 会话状态板管理面
+
+GUI 将状态板管理拆成会话选择、会话配置、状态板内容、导入导出和调试能力：
+
+- `GET /admin/conversations/{conversation_id}/export` 导出会话状态包，包含模板快照、挂载配置、写入目标和状态项。
+- `POST /admin/conversations/import` 导入会话状态包，可改写目标会话 ID、选择是否导入模板快照、是否覆盖目标状态项。
+- `DELETE /admin/state/templates/{template_id}` 仅软删除自定义模板；内置模板不能删除，编辑前通过 clone 生成自定义副本。
+- “应用模板”只更新 `conversation_state_boards(conversation_id → template_id)` 绑定，状态项清空由 reset/clear 显式完成，避免切换模板时误删数据。
+- “挂载组合预设”只管理 `conversation_memory_mounts` 的库集合和写入目标，不包含状态板字段值。
+
+
 ### 填表流程
 
 1. 每轮对话完成后，State Filler LLM 收到用户+AI 的对话文本

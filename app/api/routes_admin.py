@@ -1088,6 +1088,20 @@ def _template_from_payload(data: dict):
     return template
 
 
+def _template_import_payload(data: dict) -> dict:
+    """Return a custom-template payload with all persistent IDs stripped."""
+    import copy
+
+    payload = copy.deepcopy(data)
+    payload.pop("template_id", None)
+    payload["is_builtin"] = False
+    for tab in payload.get("tabs", []):
+        tab.pop("tab_id", None)
+        for field in tab.get("fields", []):
+            field.pop("field_id", None)
+    return payload
+
+
 @router.get("/admin/state/templates")
 async def list_state_templates(request: Request):
     """List available state board templates."""
@@ -1567,6 +1581,127 @@ async def reset_conversation_state(conversation_id: str, request: Request):
     return {"status": "ok", "cleared": cleared}
 
 
+@router.get("/admin/conversations/{conversation_id}/export")
+async def export_conversation_state_bundle(conversation_id: str, request: Request):
+    """Export a conversation state-board bundle: config, template snapshot, mounts, and state items."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import get_conversation_mounts
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    store = SQLiteStateStore(db_path)
+    mounts = await get_conversation_mounts(db_path, conversation_id)
+    mounted_library_ids = [mount["library_id"] for mount in mounts]
+    write_library_id = next(
+        (mount["library_id"] for mount in mounts if mount.get("is_write_target")),
+        mounted_library_ids[0] if mounted_library_ids else "lib_default",
+    )
+    template = await store.get_conversation_template(conversation_id)
+    state_items, total = await store.list_items(conversation_id, limit=5000)
+    return {
+        "format": "kokoromemo_conversation_state_v1",
+        "conversation_id": conversation_id,
+        "config": {
+            "template_id": template.template_id if template else None,
+            "mounted_library_ids": mounted_library_ids,
+            "write_library_id": write_library_id,
+        },
+        "template": _template_to_dict(template) if template else None,
+        "mounts": mounts,
+        "state_items": [_state_item_to_dict(item) for item in state_items],
+        "state_item_count": total,
+    }
+
+
+@router.post("/admin/conversations/import")
+async def import_conversation_state_bundle(request: Request, data: dict = Body(...)):
+    """Import a conversation state-board bundle into an existing or new conversation ID."""
+    _require_admin(request)
+    from app.core.ids import sanitize_id
+    from app.core.state import get_config
+    from app.memory.state_schema import ConversationStateItem
+    from app.storage.sqlite_cards import set_conversation_mounts
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    source_conversation_id = data.get("conversation_id") or "imported"
+    target_conversation_id = sanitize_id(
+        data.get("target_conversation_id")
+        or data.get("new_conversation_id")
+        or source_conversation_id
+    )
+    overwrite_state = bool(data.get("overwrite_state", False))
+    import_template_snapshot = bool(data.get("import_template_snapshot", True))
+    config = data.get("config") or {}
+    state_items = data.get("state_items") or []
+    template_data = data.get("template")
+
+    store = SQLiteStateStore(db_path)
+    template_id = config.get("template_id")
+    if import_template_snapshot and isinstance(template_data, dict):
+        template_id = await store.save_template(_template_from_payload(_template_import_payload(template_data)))
+    elif template_id and not await store.get_template(template_id):
+        template_id = None
+
+    if template_id:
+        await store.set_conversation_template(target_conversation_id, template_id)
+
+    library_ids = config.get("mounted_library_ids") or [mount.get("library_id") for mount in data.get("mounts", []) if mount.get("library_id")]
+    if library_ids:
+        await set_conversation_mounts(
+            db_path,
+            conversation_id=target_conversation_id,
+            library_ids=library_ids,
+            write_library_id=config.get("write_library_id"),
+        )
+
+    if overwrite_state:
+        await store.clear_conversation_state_items(target_conversation_id)
+
+    imported = 0
+    for raw_item in state_items:
+        if not isinstance(raw_item, dict):
+            continue
+        item = ConversationStateItem(
+            item_id=None,
+            conversation_id=target_conversation_id,
+            category=raw_item.get("category", "scene"),
+            content=raw_item.get("item_value") or raw_item.get("content", ""),
+            template_id=template_id or raw_item.get("template_id"),
+            tab_id=raw_item.get("tab_id"),
+            field_id=raw_item.get("field_id"),
+            field_key=raw_item.get("field_key"),
+            user_id=raw_item.get("user_id"),
+            character_id=raw_item.get("character_id"),
+            world_id=raw_item.get("world_id"),
+            item_key=raw_item.get("item_key"),
+            title=raw_item.get("title"),
+            confidence=float(raw_item.get("confidence", 0.7)),
+            source="import",
+            status=raw_item.get("status", "active"),
+            priority=int(raw_item.get("priority", 0)),
+            user_locked=bool(raw_item.get("user_locked", False)),
+            source_turn_ids=raw_item.get("source_turn_ids") or [],
+            source_message_ids=raw_item.get("source_message_ids") or [],
+            linked_card_ids=raw_item.get("linked_card_ids") or [],
+            linked_summary_ids=raw_item.get("linked_summary_ids") or [],
+            metadata={**(raw_item.get("metadata") or {}), "imported_from": source_conversation_id},
+            expires_at=raw_item.get("expires_at"),
+        )
+        await store.upsert_item(item)
+        imported += 1
+
+    return {
+        "status": "ok",
+        "conversation_id": target_conversation_id,
+        "template_id": template_id,
+        "imported_items": imported,
+    }
+
+
 # --- Memory Mount Presets API ---
 
 @router.get("/admin/memory-mount-presets")
@@ -1735,12 +1870,9 @@ async def import_state_template(data: dict = Body(...)):
     from app.storage.sqlite_state import SQLiteStateStore
 
     template_data = data.get("template", data)
-    # Clear template_id so a new one is generated
-    template_data.pop("template_id", None)
-    template_data["is_builtin"] = False
 
     store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
-    template_id = await store.save_template(_template_from_payload(template_data))
+    template_id = await store.save_template(_template_from_payload(_template_import_payload(template_data)))
     return {"status": "ok", "template_id": template_id}
 
 

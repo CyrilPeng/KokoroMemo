@@ -14,6 +14,64 @@ router = APIRouter()
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
+@router.get("/admin/conversation-profiles")
+async def list_conversation_profiles_api(request: Request):
+    """List built-in conversation policy profiles."""
+    _require_admin(request)
+    from app.memory.conversation_policy import list_profiles
+
+    return {"items": [profile.to_dict() for profile in list_profiles()]}
+
+
+@router.get("/admin/conversation-defaults")
+async def get_conversation_defaults_api(request: Request):
+    """Get default policy for newly seen conversations."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    return await store.get_default_conversation_config()
+
+
+@router.put("/admin/conversation-defaults")
+async def update_conversation_defaults_api(request: Request, data: dict = Body(...)):
+    """Update default policy for newly seen conversations."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    config = await store.set_default_conversation_config(data)
+    return {"status": "ok", "config": config.to_dict()}
+
+
+@router.get("/admin/conversations/{conversation_id}/config")
+async def get_conversation_config_api(conversation_id: str, request: Request):
+    """Get or create policy config for a conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    config = await store.ensure_conversation_config(conversation_id)
+    return config.to_dict()
+
+
+@router.put("/admin/conversations/{conversation_id}/config")
+async def update_conversation_config_api(conversation_id: str, request: Request, data: dict = Body(...)):
+    """Update policy config for a conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    payload = dict(data)
+    payload["conversation_id"] = conversation_id
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    config = await store.set_conversation_config(payload)
+    return {"status": "ok", "config": config.to_dict()}
+
+
 def _is_loopback(client_host: str | None) -> bool:
     if not client_host:
         return False

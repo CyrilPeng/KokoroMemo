@@ -9,6 +9,11 @@ from typing import Any
 import aiosqlite
 
 from app.core.ids import generate_id
+from app.memory.conversation_policy import (
+    ConversationConfig,
+    DEFAULT_CONVERSATION_PROFILE_ID,
+    get_profile,
+)
 from app.memory.state_schema import (
     ConversationStateItem,
     StateBoardField,
@@ -130,6 +135,32 @@ CREATE TABLE IF NOT EXISTS conversation_state_boards (
   created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   FOREIGN KEY(template_id) REFERENCES state_board_templates(template_id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_configs (
+  conversation_id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL,
+  template_id TEXT,
+  table_template_id TEXT,
+  mount_preset_id TEXT,
+  memory_write_policy TEXT NOT NULL DEFAULT 'candidate',
+  state_update_policy TEXT NOT NULL DEFAULT 'auto',
+  injection_policy TEXT NOT NULL DEFAULT 'mixed',
+  created_from_default INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS conversation_default_config (
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL,
+  template_id TEXT,
+  table_template_id TEXT,
+  mount_preset_id TEXT,
+  memory_write_policy TEXT NOT NULL DEFAULT 'candidate',
+  state_update_policy TEXT NOT NULL DEFAULT 'auto',
+  injection_policy TEXT NOT NULL DEFAULT 'mixed',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS conversation_state_events (
@@ -344,6 +375,7 @@ async def init_state_db(db_path: str) -> None:
         await _ensure_columns(db, "conversation_state_events", _STATE_EVENT_COLUMNS)
         await _ensure_columns(db, "retrieval_decisions", _RETRIEVAL_DECISION_COLUMNS)
         await _ensure_state_indexes(db)
+        await _ensure_default_conversation_config(db)
         await db.execute(
             "UPDATE conversation_state_items SET item_value = content WHERE item_value IS NULL"
         )
@@ -818,6 +850,26 @@ def _row_to_template(row: aiosqlite.Row) -> StateBoardTemplate:
     )
 
 
+async def _ensure_default_conversation_config(db: aiosqlite.Connection) -> None:
+    profile = get_profile(DEFAULT_CONVERSATION_PROFILE_ID)
+    await db.execute(
+        """INSERT INTO conversation_default_config
+           (id, profile_id, template_id, table_template_id, mount_preset_id,
+            memory_write_policy, state_update_policy, injection_policy)
+           VALUES ('global', ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO NOTHING""",
+        (
+            profile.profile_id,
+            profile.template_id,
+            profile.table_template_id,
+            profile.mount_preset_id,
+            profile.memory_write_policy,
+            profile.state_update_policy,
+            profile.injection_policy,
+        ),
+    )
+
+
 def _row_to_table_column(row: aiosqlite.Row) -> StateTableColumn:
     return StateTableColumn(
         column_id=row["column_id"],
@@ -869,6 +921,22 @@ def _row_to_table_template(row: aiosqlite.Row) -> StateTableTemplate:
     )
 
 
+def _row_to_conversation_config(row: aiosqlite.Row) -> ConversationConfig:
+    return ConversationConfig(
+        conversation_id=row["conversation_id"],
+        profile_id=row["profile_id"],
+        template_id=row["template_id"],
+        table_template_id=row["table_template_id"],
+        mount_preset_id=row["mount_preset_id"],
+        memory_write_policy=row["memory_write_policy"],
+        state_update_policy=row["state_update_policy"],
+        injection_policy=row["injection_policy"],
+        created_from_default=bool(row["created_from_default"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
 def _row_to_table_cell(row: aiosqlite.Row) -> StateTableCell:
     return StateTableCell(
         cell_id=row["cell_id"],
@@ -909,6 +977,156 @@ class SQLiteStateStore:
     async def init_schema(self) -> None:
         await init_state_db(self.db_path)
 
+    async def get_default_conversation_config(self) -> ConversationConfig:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM conversation_default_config WHERE id = 'global'")
+            row = await cursor.fetchone()
+        if row:
+            return ConversationConfig(
+                conversation_id="__default__",
+                profile_id=row["profile_id"],
+                template_id=row["template_id"],
+                table_template_id=row["table_template_id"],
+                mount_preset_id=row["mount_preset_id"],
+                memory_write_policy=row["memory_write_policy"],
+                state_update_policy=row["state_update_policy"],
+                injection_policy=row["injection_policy"],
+                created_from_default=True,
+                updated_at=row["updated_at"],
+            )
+        profile = get_profile(DEFAULT_CONVERSATION_PROFILE_ID)
+        return ConversationConfig(
+            conversation_id="__default__",
+            profile_id=profile.profile_id,
+            template_id=profile.template_id,
+            table_template_id=profile.table_template_id,
+            mount_preset_id=profile.mount_preset_id,
+            memory_write_policy=profile.memory_write_policy,
+            state_update_policy=profile.state_update_policy,
+            injection_policy=profile.injection_policy,
+            created_from_default=True,
+        )
+
+    async def set_default_conversation_config(self, data: ConversationConfig | dict[str, Any]) -> ConversationConfig:
+        await self.init_schema()
+        if isinstance(data, ConversationConfig):
+            payload = data.to_dict()
+        else:
+            payload = dict(data)
+        profile = get_profile(payload.get("profile_id"))
+        profile_id = payload.get("profile_id") or profile.profile_id
+        template_id = payload.get("template_id", profile.template_id)
+        table_template_id = payload.get("table_template_id", profile.table_template_id)
+        mount_preset_id = payload.get("mount_preset_id", profile.mount_preset_id)
+        memory_write_policy = payload.get("memory_write_policy") or profile.memory_write_policy
+        state_update_policy = payload.get("state_update_policy") or profile.state_update_policy
+        injection_policy = payload.get("injection_policy") or profile.injection_policy
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO conversation_default_config
+                   (id, profile_id, template_id, table_template_id, mount_preset_id,
+                    memory_write_policy, state_update_policy, injection_policy)
+                   VALUES ('global', ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                    profile_id = excluded.profile_id,
+                    template_id = excluded.template_id,
+                    table_template_id = excluded.table_template_id,
+                    mount_preset_id = excluded.mount_preset_id,
+                    memory_write_policy = excluded.memory_write_policy,
+                    state_update_policy = excluded.state_update_policy,
+                    injection_policy = excluded.injection_policy,
+                    updated_at = datetime('now', 'localtime')""",
+                (profile_id, template_id, table_template_id, mount_preset_id, memory_write_policy, state_update_policy, injection_policy),
+            )
+            await db.commit()
+        return await self.get_default_conversation_config()
+
+    async def get_conversation_config(self, conversation_id: str) -> ConversationConfig | None:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM conversation_configs WHERE conversation_id = ?", (conversation_id,))
+            row = await cursor.fetchone()
+        return _row_to_conversation_config(row) if row else None
+
+    async def set_conversation_config(self, config: ConversationConfig | dict[str, Any]) -> ConversationConfig:
+        await self.init_schema()
+        payload = config.to_dict() if isinstance(config, ConversationConfig) else dict(config)
+        conversation_id = payload.get("conversation_id")
+        if not conversation_id:
+            raise ValueError("conversation_id is required")
+        profile = get_profile(payload.get("profile_id"))
+        profile_id = payload.get("profile_id") or profile.profile_id
+        template_id = payload.get("template_id", profile.template_id)
+        table_template_id = payload.get("table_template_id", profile.table_template_id)
+        mount_preset_id = payload.get("mount_preset_id", profile.mount_preset_id)
+        memory_write_policy = payload.get("memory_write_policy") or profile.memory_write_policy
+        state_update_policy = payload.get("state_update_policy") or profile.state_update_policy
+        injection_policy = payload.get("injection_policy") or profile.injection_policy
+        created_from_default = 1 if payload.get("created_from_default") else 0
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO conversation_configs
+                   (conversation_id, profile_id, template_id, table_template_id, mount_preset_id,
+                    memory_write_policy, state_update_policy, injection_policy, created_from_default)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(conversation_id) DO UPDATE SET
+                    profile_id = excluded.profile_id,
+                    template_id = excluded.template_id,
+                    table_template_id = excluded.table_template_id,
+                    mount_preset_id = excluded.mount_preset_id,
+                    memory_write_policy = excluded.memory_write_policy,
+                    state_update_policy = excluded.state_update_policy,
+                    injection_policy = excluded.injection_policy,
+                    updated_at = datetime('now', 'localtime')""",
+                (
+                    conversation_id,
+                    profile_id,
+                    template_id,
+                    table_template_id,
+                    mount_preset_id,
+                    memory_write_policy,
+                    state_update_policy,
+                    injection_policy,
+                    created_from_default,
+                ),
+            )
+            if template_id:
+                await db.execute(
+                    """INSERT INTO conversation_state_boards (conversation_id, template_id)
+                       VALUES (?, ?)
+                       ON CONFLICT(conversation_id) DO UPDATE SET
+                        template_id = excluded.template_id,
+                        updated_at = datetime('now', 'localtime')""",
+                    (conversation_id, template_id),
+                )
+            await db.commit()
+        saved = await self.get_conversation_config(conversation_id)
+        if not saved:
+            raise RuntimeError("failed to save conversation config")
+        return saved
+
+    async def ensure_conversation_config(self, conversation_id: str) -> ConversationConfig:
+        existing = await self.get_conversation_config(conversation_id)
+        if existing:
+            return existing
+        default = await self.get_default_conversation_config()
+        return await self.set_conversation_config(
+            ConversationConfig(
+                conversation_id=conversation_id,
+                profile_id=default.profile_id,
+                template_id=default.template_id,
+                table_template_id=default.table_template_id,
+                mount_preset_id=default.mount_preset_id,
+                memory_write_policy=default.memory_write_policy,
+                state_update_policy=default.state_update_policy,
+                injection_policy=default.injection_policy,
+                created_from_default=True,
+            )
+        )
+
     async def list_table_templates(self, include_inactive: bool = False) -> list[StateTableTemplate]:
         await self.init_schema()
         where = "" if include_inactive else "WHERE status = 'active'"
@@ -946,6 +1164,14 @@ class SQLiteStateStore:
 
     async def get_default_table_template(self) -> StateTableTemplate | None:
         return await self.get_table_template("tpl_rimtalk_roleplay_tables")
+
+    async def get_conversation_table_template(self, conversation_id: str) -> StateTableTemplate | None:
+        config = await self.ensure_conversation_config(conversation_id)
+        if config.table_template_id:
+            template = await self.get_table_template(config.table_template_id)
+            if template:
+                return template
+        return await self.get_default_table_template()
 
     async def list_table_rows(
         self,
@@ -1170,6 +1396,10 @@ class SQLiteStateStore:
                 (conversation_id, template_id),
             )
             await db.commit()
+        config = await self.get_conversation_config(conversation_id)
+        if config:
+            config.template_id = template_id
+            await self.set_conversation_config(config)
 
     async def save_template(self, template: StateBoardTemplate) -> str:
         await self.init_schema()

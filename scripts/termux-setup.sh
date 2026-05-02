@@ -8,7 +8,7 @@ echo ""
 
 # 1. 系统依赖
 echo "[1/6] 安装系统依赖..."
-pkg update -y
+apt update -y && apt full-upgrade -y
 pkg install -y python git
 
 # 2. 克隆项目

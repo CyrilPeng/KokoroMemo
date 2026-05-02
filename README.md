@@ -347,7 +347,8 @@ sys.exit(subprocess.call(['bash',p]))
 **手动安装：**
 
 ```bash
-pkg update && pkg install python git
+apt update -y && apt full-upgrade -y
+pkg install python git
 git clone https://github.com/CyrilPeng/KokoroMemo.git ~/kokoromemo
 cd ~/kokoromemo
 pip install -e .

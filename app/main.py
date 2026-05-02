@@ -154,31 +154,52 @@ def create_app() -> FastAPI:
 create_app()
 
 
-def _find_available_port(host: str, preferred: int) -> int:
+def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
     """Return preferred port if free, otherwise pick a random port above 20000."""
+    import errno
     import socket
 
-    def _try_bind(port: int) -> bool:
+    def _try_bind(port: int) -> tuple[bool, OSError | None]:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.bind((host, port))
-                return True
-        except OSError:
-            return False
+                return True, None
+        except OSError as exc:
+            return False, exc
 
-    if _try_bind(preferred):
-        return preferred
+    ok, preferred_error = _try_bind(preferred)
+    if ok:
+        return preferred, None
+    if preferred_error and preferred_error.errno not in {errno.EADDRINUSE, errno.EACCES}:
+        raise RuntimeError(
+            f"Failed to bind configured server address {host}:{preferred}: {preferred_error}"
+        ) from preferred_error
+    reason = _describe_port_unavailable(preferred_error)
 
     import random
     for _ in range(50):
         port = random.randint(20000, 40000)
-        if _try_bind(port):
-            return port
+        ok, _ = _try_bind(port)
+        if ok:
+            return port, reason
 
     # Fallback: let the OS decide
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, 0))
-        return s.getsockname()[1]
+        return s.getsockname()[1], reason
+
+
+def _describe_port_unavailable(error: OSError | None) -> str:
+    """Describe why the configured port could not be used."""
+    import errno
+
+    if error is None:
+        return "不可用"
+    if error.errno == errno.EADDRINUSE:
+        return "已被其他进程监听"
+    if error.errno == errno.EACCES:
+        return "被系统保留或当前用户无权限监听"
+    return f"不可用：{error}"
 
 
 def _write_port_file(port: int) -> None:
@@ -197,7 +218,7 @@ if __name__ == "__main__":
     load_dotenv()
     cfg = load_config()
     host = cfg.server.host
-    port = _find_available_port(host, cfg.server.port)
+    port, port_unavailable_reason = _find_available_port(host, cfg.server.port)
     os.environ["KOKOROMEMO_ACTUAL_PORT"] = str(port)
     app.state.actual_port = port
     _write_port_file(port)
@@ -205,7 +226,10 @@ if __name__ == "__main__":
     if port != cfg.server.port:
         import logging
         logging.getLogger("kokoromemo").info(
-            "端口 %d 被占用，已切换到 %d", cfg.server.port, port
+            "配置端口 %d %s，已切换到实际监听端口 %d",
+            cfg.server.port,
+            port_unavailable_reason or "不可用",
+            port,
         )
 
     uvicorn.run(

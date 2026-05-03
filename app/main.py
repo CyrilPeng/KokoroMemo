@@ -43,6 +43,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.config import load_config, resolve_config_path
 from app.core.logging import setup_logging
@@ -97,6 +98,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(openai_router)
     app.include_router(ws_router)
+
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     # Serve Vue SPA frontend if a prebuilt dist exists (web UI mode / Termux).
     _web_dist_env = os.getenv("KOKOROMEMO_WEB_DIST", "").strip()

@@ -4,6 +4,9 @@
 
 ### 修复
 
+- **移动端 Web UI 适配** - 手机宽度下改为顶部导航栏与抽屉菜单，避免桌面左侧栏占据主要内容区域。
+- **Android Web UI 加载优化** - Web 模式不再静态加载 Tauri API，并启用响应压缩，降低移动浏览器打开 Web UI 失败或加载过慢的概率。
+- **Android Doctor 诊断修正** - Termux 诊断不再检查已移除的 `pydantic_settings` 模块，避免误报环境失败。
 - **Termux 一键安装稳定性** - 一键安装脚本内置 Termux 镜像切换、短超时下载和 Python 下载兜底；首次安装默认使用内置稳定版本地址，不再请求 `latest.json`，降低国内网络环境下安装卡住或中断的概率。
 - **Termux 依赖安装优化** - 首次安装不再执行 `pkg upgrade` 全量升级，只安装必要依赖；安装过程使用非交互 apt 参数，并补齐 `python-pip`、`python-ensurepip-wheels` 等组件，提升 venv 创建成功率。
 - **Termux 原生依赖兼容** - Termux 端固定使用不依赖 `pydantic-core` 的 `pydantic v1` 兼容组合，并以 `pip --no-deps` 安装应用依赖和项目本体，避免在手机上源码编译 `pydantic-core` / Rust 扩展。

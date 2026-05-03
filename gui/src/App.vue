@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import EventBridge from './components/EventBridge.vue'
@@ -13,11 +13,12 @@ import {
   NIcon,
   NMessageProvider,
   NDialogProvider,
+  NButton,
+  NDrawer,
+  NDrawerContent,
   darkTheme,
 } from 'naive-ui'
 import type { MenuOption, GlobalThemeOverrides } from 'naive-ui'
-import { invoke } from '@tauri-apps/api/core'
-import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import {
   HomeOutline,
   BulbOutline,
@@ -27,6 +28,7 @@ import {
   GitNetworkOutline,
   SettingsOutline,
   LogoGithub,
+  MenuOutline,
 } from '@vicons/ionicons5'
 
 const router = useRouter()
@@ -34,6 +36,24 @@ const route = useRoute()
 const { t } = useI18n()
 
 const serverVersion = ref('')
+const isMobile = ref(false)
+const mobileMenuOpen = ref(false)
+let mediaQuery: MediaQueryList | null = null
+
+function updateMobileFlag() {
+  isMobile.value = Boolean(mediaQuery?.matches ?? window.innerWidth <= 768)
+}
+
+onMounted(() => {
+  mediaQuery = window.matchMedia('(max-width: 768px)')
+  updateMobileFlag()
+  mediaQuery.addEventListener?.('change', updateMobileFlag)
+})
+
+onBeforeUnmount(() => {
+  mediaQuery?.removeEventListener?.('change', updateMobileFlag)
+})
+
 onMounted(async () => {
   try {
     const resp = await apiFetch('/health')
@@ -65,7 +85,9 @@ function handleMenuUpdate(key: string) {
 
 async function syncCloseToTraySetting() {
   const enabled = localStorage.getItem('kokoromemo.closeToTray') === 'true'
+  if (!(window as any).__TAURI_INTERNALS__) return
   try {
+    const { invoke } = await import('@tauri-apps/api/core')
     await invoke('set_close_to_tray', { enabled })
   } catch (e) {
     // Browser dev mode or older desktop builds without this command.
@@ -75,11 +97,20 @@ async function syncCloseToTraySetting() {
 onMounted(syncCloseToTraySetting)
 
 async function openGitHub() {
-  try {
-    await shellOpen('https://github.com/CyrilPeng/KokoroMemo')
-  } catch {
-    window.open('https://github.com/CyrilPeng/KokoroMemo', '_blank')
+  const url = 'https://github.com/CyrilPeng/KokoroMemo'
+  if ((window as any).__TAURI_INTERNALS__) {
+    try {
+      const { open } = await import('@tauri-apps/plugin-shell')
+      await open(url)
+      return
+    } catch {}
   }
+  window.open(url, '_blank')
+}
+
+function handleMobileMenuUpdate(key: string) {
+  handleMenuUpdate(key)
+  mobileMenuOpen.value = false
 }
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -114,16 +145,17 @@ const themeOverrides: GlobalThemeOverrides = {
     <NMessageProvider>
       <NDialogProvider>
       <EventBridge />
-      <NLayout has-sider style="height: 100vh; background: #0f0f11;">
+      <NLayout class="app-shell" :has-sider="!isMobile">
         <NLayoutSider
+          v-if="!isMobile"
           bordered
           :width="220"
           :native-scrollbar="false"
-          style="background: #18181b;"
+          class="app-sidebar"
         >
-          <div style="padding: 20px 24px; display: flex; align-items: center; gap: 10px;">
-            <img src="./assets/logo.png" style="width: 32px; height: 32px; border-radius: 8px;" />
-            <span style="font-size: 18px; font-weight: 600; color: #e4e4e7;">KokoroMemo</span>
+          <div class="brand-block">
+            <img src="./assets/logo.png" class="brand-logo" />
+            <span class="brand-title">KokoroMemo</span>
           </div>
           <NMenu
             :options="menuOptions"
@@ -131,18 +163,138 @@ const themeOverrides: GlobalThemeOverrides = {
             @update:value="handleMenuUpdate"
             :indent="24"
           />
-          <div style="position: absolute; bottom: 16px; left: 24px; right: 24px; display: flex; align-items: center; gap: 8px;">
+          <div class="sidebar-footer">
             <NIcon :size="18" style="cursor: pointer; color: #71717a;" @click="openGitHub">
               <LogoGithub />
             </NIcon>
-            <span style="font-size: 12px; color: #52525b;">{{ serverVersion ? `v${serverVersion} · ${$t('common.tagline')}` : $t('common.tagline') }}</span>
+            <span class="footer-text">{{ serverVersion ? `v${serverVersion} - ${$t('common.tagline')}` : $t('common.tagline') }}</span>
           </div>
         </NLayoutSider>
-        <NLayoutContent :native-scrollbar="false" content-style="padding: 32px;">
+
+        <NLayoutContent :native-scrollbar="false" :content-style="isMobile ? 'padding: 72px 14px 20px;' : 'padding: 32px;'">
+          <div v-if="isMobile" class="mobile-topbar">
+            <NButton quaternary circle @click="mobileMenuOpen = true" aria-label="Open navigation">
+              <template #icon><NIcon><MenuOutline /></NIcon></template>
+            </NButton>
+            <div class="mobile-brand">
+              <img src="./assets/logo.png" class="mobile-logo" />
+              <span>KokoroMemo</span>
+            </div>
+            <span class="mobile-version">{{ serverVersion ? `v${serverVersion}` : '' }}</span>
+          </div>
           <RouterView />
         </NLayoutContent>
       </NLayout>
+
+      <NDrawer v-model:show="mobileMenuOpen" placement="left" :width="280">
+        <NDrawerContent body-content-style="padding: 0; background: #18181b;" closable>
+          <div class="brand-block mobile-drawer-brand">
+            <img src="./assets/logo.png" class="brand-logo" />
+            <span class="brand-title">KokoroMemo</span>
+          </div>
+          <NMenu
+            :options="menuOptions"
+            :value="route.path"
+            @update:value="handleMobileMenuUpdate"
+            :indent="24"
+          />
+          <div class="mobile-drawer-footer">
+            <NIcon :size="18" style="cursor: pointer; color: #71717a;" @click="openGitHub">
+              <LogoGithub />
+            </NIcon>
+            <span class="footer-text">{{ serverVersion ? `v${serverVersion} - ${$t('common.tagline')}` : $t('common.tagline') }}</span>
+          </div>
+        </NDrawerContent>
+      </NDrawer>
       </NDialogProvider>
     </NMessageProvider>
   </NConfigProvider>
 </template>
+
+
+<style scoped>
+.app-shell {
+  height: 100vh;
+  background: #0f0f11;
+}
+.app-sidebar {
+  background: #18181b;
+  position: relative;
+}
+.brand-block {
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+.brand-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #e4e4e7;
+}
+.sidebar-footer {
+  position: absolute;
+  bottom: 16px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.footer-text {
+  font-size: 12px;
+  color: #52525b;
+}
+.mobile-topbar {
+  position: fixed;
+  z-index: 100;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(24, 24, 27, 0.96);
+  border-bottom: 1px solid #27272a;
+  backdrop-filter: blur(12px);
+}
+.mobile-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e4e4e7;
+  font-weight: 600;
+}
+.mobile-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+.mobile-version {
+  min-width: 44px;
+  text-align: right;
+  color: #71717a;
+  font-size: 12px;
+}
+.mobile-drawer-brand {
+  padding-top: 10px;
+}
+.mobile-drawer-footer {
+  margin: 20px 24px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 768px) {
+  :deep(.n-layout-scroll-container) {
+    min-width: 0;
+  }
+}
+</style>

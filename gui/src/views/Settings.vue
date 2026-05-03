@@ -11,12 +11,21 @@ import {
 import { apiFetch, getServerUrl, setServerUrl, resolveBackendUrl } from '../api'
 import { useI18n } from 'vue-i18n'
 import { setLanguage, getLanguage } from '../i18n'
-import { invoke } from '@tauri-apps/api/core'
-import { getVersion } from '@tauri-apps/api/app'
-import { open as shellOpen } from '@tauri-apps/plugin-shell'
 
 const message = useMessage()
 const { t } = useI18n()
+
+async function tauriInvoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (!(window as any).__TAURI_INTERNALS__) throw new Error('not tauri')
+  const { invoke } = await import('@tauri-apps/api/core')
+  return await invoke<T>(command, args)
+}
+
+async function getTauriAppVersion(): Promise<string> {
+  if (!(window as any).__TAURI_INTERNALS__) throw new Error('not tauri')
+  const { getVersion } = await import('@tauri-apps/api/app')
+  return await getVersion()
+}
 const backendUrl = ref(getServerUrl())
 const actualServerPort = ref<number | null>(null)
 const loading = ref(true)
@@ -91,7 +100,7 @@ function compareVersions(a: string, b: string) {
 
 async function getCurrentAppVersion() {
   try {
-    return await getVersion()
+    return await getTauriAppVersion()
   } catch (e) {
     try {
       const resp = await apiFetch('/health')
@@ -220,7 +229,10 @@ function openReleasePage() {
 
 async function openExternal(url: string) {
   try {
-    await shellOpen(url)
+
+    if (!(window as any).__TAURI_INTERNALS__) throw new Error('not tauri')
+    const { open } = await import('@tauri-apps/plugin-shell')
+    await open(url)
   } catch {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
@@ -268,7 +280,7 @@ async function handleCloseToTrayChange(enabled: boolean) {
   closeToTray.value = enabled
   localStorage.setItem('kokoromemo.closeToTray', enabled ? 'true' : 'false')
   try {
-    await invoke('set_close_to_tray', { enabled })
+    await tauriInvoke('set_close_to_tray', { enabled })
   } catch (e) {
     // Browser dev mode or older desktop builds without this command.
   }
@@ -276,7 +288,7 @@ async function handleCloseToTrayChange(enabled: boolean) {
 
 async function syncCloseToTraySetting() {
   try {
-    await invoke('set_close_to_tray', { enabled: closeToTray.value })
+    await tauriInvoke('set_close_to_tray', { enabled: closeToTray.value })
   } catch (e) {
     // Browser dev mode or older desktop builds without this command.
   }
@@ -760,7 +772,7 @@ async function saveConfig(): Promise<boolean> {
     } else if (data.status === 'restart_required') {
       message.success(data.message || t('settings.restartingService'))
       try {
-        await invoke('restart_backend')
+        await tauriInvoke('restart_backend')
         // Re-resolve port — it may have changed after restart
         const newUrl = await resolveBackendUrl()
         backendUrl.value = newUrl

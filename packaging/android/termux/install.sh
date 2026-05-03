@@ -19,10 +19,23 @@ fi
 
 echo "=== KokoroMemo Android Termux aarch64 安装 ==="
 
-pkg update -y
-pkg install -y python python-numpy openssl libffi
+apt_install() {
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    -o Dpkg::Options::="--force-confold" \
+    -o Dpkg::Options::="--force-confdef" \
+    "$@"
+}
 
-python -m venv --system-site-packages "$VENV_DIR"
+pkg update -y
+apt_install python python-pip python-ensurepip-wheels python-numpy python-pydantic
+
+rm -rf "$VENV_DIR"
+if ! python -m venv --system-site-packages "$VENV_DIR"; then
+  echo "虚拟环境创建失败，尝试补齐 Termux ensurepip 组件后重试..."
+  apt_install python-pip python-ensurepip-wheels
+  rm -rf "$VENV_DIR"
+  python -m venv --system-site-packages "$VENV_DIR"
+fi
 "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
 
 PIP_ARGS=()
@@ -30,8 +43,8 @@ if [[ -d "$WHEEL_DIR" ]] && compgen -G "$WHEEL_DIR/*.whl" >/dev/null; then
   PIP_ARGS=(--find-links "$WHEEL_DIR")
 fi
 
-"$VENV_DIR/bin/python" -m pip install "${PIP_ARGS[@]}" -r "$APP_DIR/requirements/android-termux.txt"
-"$VENV_DIR/bin/python" -m pip install "${PIP_ARGS[@]}" "$APP_DIR"
+"$VENV_DIR/bin/python" -m pip install --prefer-binary "${PIP_ARGS[@]}" -r "$APP_DIR/requirements/android-termux.txt"
+"$VENV_DIR/bin/python" -m pip install --no-deps "$APP_DIR"
 
 mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/logs"
 if [[ ! -f "$ROOT_DIR/config.yaml" ]]; then
@@ -44,4 +57,3 @@ bash "$ROOT_DIR/doctor.sh"
 echo ""
 echo "安装完成。启动命令："
 echo "  bash $ROOT_DIR/start.sh"
-

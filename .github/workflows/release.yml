@@ -281,7 +281,7 @@ jobs:
           asset_dir = Path("release-assets")
           github_base = f"https://github.com/{repo}/releases/download/{tag}"
           github_latest_base = f"https://github.com/{repo}/releases/latest/download"
-          gitee_repo = os.environ.get("KOKOROMEMO_GITEE_REPOSITORY", repo)
+          gitee_repo = os.environ.get("KOKOROMEMO_GITEE_REPOSITORY", "Cyril_P/KokoroMemo")
           gitee_base = f"https://gitee.com/{gitee_repo}/releases/download/{tag}"
           gitee_latest_manifest = f"https://gitee.com/{gitee_repo}/raw/main/latest.json"
 

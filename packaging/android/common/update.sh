@@ -7,11 +7,11 @@ TMP_DIR="$ROOT_DIR/.update-tmp"
 BACKUP_DIR="$ROOT_DIR/backups"
 
 REPO="${KOKOROMEMO_UPDATE_REPO:-CyrilPeng/KokoroMemo}"
-GITEE_REPO="${KOKOROMEMO_UPDATE_GITEE_REPO:-$REPO}"
+GITEE_REPO="${KOKOROMEMO_UPDATE_GITEE_REPO:-Cyril_P/KokoroMemo}"
 MANIFEST_URLS=(
+  "https://gitee.com/$GITEE_REPO/raw/main/latest.json"
   "https://github.com/$REPO/releases/latest/download/latest.json"
   "https://gh-proxy.org/https://github.com/$REPO/releases/latest/download/latest.json"
-  "https://gitee.com/$GITEE_REPO/raw/main/latest.json"
 )
 
 CURRENT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "0.0.0")"
@@ -22,6 +22,10 @@ require_cmd() {
     echo "缺少命令: $1"
     exit 1
   fi
+}
+
+has_cmd() {
+  command -v "$1" >/dev/null 2>&1
 }
 
 version_gt() {
@@ -56,12 +60,32 @@ download_first() {
   local url
   for url in "$@"; do
     echo "尝试下载: $url"
-    if curl -fL --connect-timeout 12 --retry 2 -o "$output" "$url"; then
+    if has_cmd curl && curl -fL --connect-timeout 4 --max-time 8 --retry 0 -o "$output" "$url"; then
+      echo "下载成功: $url"
+      return 0
+    fi
+    if has_cmd python && python_download "$url" "$output"; then
       echo "下载成功: $url"
       return 0
     fi
   done
   return 1
+}
+
+python_download() {
+  local url="$1"
+  local output="$2"
+  python - "$url" "$output" <<'PY'
+import sys
+import urllib.request
+
+url, output = sys.argv[1], sys.argv[2]
+request = urllib.request.Request(url, headers={"User-Agent": "KokoroMemo-Android-Updater"})
+with urllib.request.urlopen(request, timeout=10) as response:
+    data = response.read()
+with open(output, "wb") as file:
+    file.write(data)
+PY
 }
 
 json_get() {
@@ -119,7 +143,6 @@ PY
   fi
 }
 
-require_cmd curl
 require_cmd python
 mkdir -p "$TMP_DIR" "$BACKUP_DIR"
 

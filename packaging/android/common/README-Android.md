@@ -6,19 +6,34 @@
 
 ### 推荐：Termux 一键安装
 
-在 Termux 中执行：
+在 Termux 中推荐使用 Gitee 地址执行：
 
 ```bash
-pkg update -y && pkg install -y curl python && curl -fsSL https://github.com/CyrilPeng/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
+curl -fsSL https://gitee.com/Cyril_P/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
 ```
 
-如果 GitHub 访问不稳定，可以使用 Gitee 地址：
+如果你可以稳定访问 GitHub，也可以使用 GitHub 地址：
 
 ```bash
-pkg update -y && pkg install -y curl python && curl -fsSL https://gitee.com/Cyril_P/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
+curl -fsSL https://github.com/CyrilPeng/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
 ```
 
-脚本会自动安装基础依赖、读取 `latest.json`、下载最新 `Android-Termux-aarch64` 单包、校验 SHA256、安装并启动服务。
+脚本会自动安装必要依赖、下载当前稳定版 `Android-Termux-aarch64` 单包、安装并启动服务。脚本不会执行 `pkg upgrade` 全量系统升级，避免第一次安装额外下载大量 Termux 系统包。
+
+安装过程中如果 Termux 提示 `openssl.cnf` 等配置文件是否覆盖，脚本会默认保留当前配置并继续安装；如果虚拟环境创建失败，脚本会自动补齐 pip/ensurepip 组件后重试。
+
+Termux 端会优先使用系统预编译的 `python-pydantic`，避免在手机上编译 `pydantic-core` / Rust 扩展。如果你看到旧脚本正在下载 `pydantic_core-*.tar.gz`，请按 `Ctrl+C` 取消后重新运行上面的一键安装命令。
+
+为了避免首次安装卡在 GitHub 或镜像清单请求上，安装脚本默认不请求 `latest.json`，而是直接使用内置的当前稳定版本下载地址。安装完成后可用 `kokoromemo update` 检查后续更新。
+
+脚本内部会优先切换到清华 Termux 源，并在依赖安装失败时尝试其他镜像。如果仍然提示某个软件源连接失败，例如 `Unable to connect to linux.domainesia.com`，可以单独执行换源命令后再重试：
+
+```bash
+sed -i 's|^deb .*termux-main.*|deb https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main stable main|' $PREFIX/etc/apt/sources.list
+pkg update -y
+```
+
+如果看到 Termux 正在下载大量系统包且速度很慢，可以先按 `Ctrl+C` 取消，执行上面的换源命令后重新运行一键安装。
 
 ### 手动安装单包
 

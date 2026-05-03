@@ -1,19 +1,26 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # KokoroMemo Termux 一键安装脚本。
-# 用法：curl -fsSL <脚本地址> | bash
+# 用法：python -c "import urllib.request; print(urllib.request.urlopen('<脚本地址>').read().decode())" | bash
 set -euo pipefail
 
 REPO="${KOKOROMEMO_UPDATE_REPO:-CyrilPeng/KokoroMemo}"
-GITEE_REPO="${KOKOROMEMO_UPDATE_GITEE_REPO:-$REPO}"
+GITEE_REPO="${KOKOROMEMO_UPDATE_GITEE_REPO:-Cyril_P/KokoroMemo}"
 INSTALL_DIR="${KOKOROMEMO_INSTALL_DIR:-$HOME/kokoromemo}"
 TMP_BASE="${TMPDIR:-${PREFIX:-/tmp}/tmp}"
 TMP_DIR="$TMP_BASE/kokoromemo-install"
 MANIFEST_FILE="$TMP_DIR/latest.json"
+FALLBACK_VERSION="${KOKOROMEMO_FALLBACK_VERSION:-0.8.1}"
 
 MANIFEST_URLS=(
+  "https://gitee.com/$GITEE_REPO/raw/main/latest.json"
   "https://github.com/$REPO/releases/latest/download/latest.json"
   "https://gh-proxy.org/https://github.com/$REPO/releases/latest/download/latest.json"
-  "https://gitee.com/$GITEE_REPO/raw/main/latest.json"
+)
+
+TERMUX_MAIN_MIRRORS=(
+  "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
+  "https://mirrors.ustc.edu.cn/termux/apt/termux-main"
+  "https://packages.termux.dev/apt/termux-main"
 )
 
 echo "=== KokoroMemo Termux 一键安装 ==="
@@ -36,10 +43,80 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+set_termux_main_mirror() {
+  local mirror="$1"
+  local list_file="$PREFIX/etc/apt/sources.list"
+  mkdir -p "$(dirname "$list_file")"
+  if [[ -f "$list_file" ]]; then
+    cp "$list_file" "$list_file.kokoromemo.bak" 2>/dev/null || true
+  fi
+  printf 'deb %s stable main\n' "$mirror" > "$list_file"
+  echo "已切换 Termux main 源: $mirror"
+}
+
+pkg_update_with_mirrors() {
+  if pkg update -y; then
+    return 0
+  fi
+  echo "当前 Termux 软件源不可用，尝试切换镜像源..."
+  local mirror
+  for mirror in "${TERMUX_MAIN_MIRRORS[@]}"; do
+    set_termux_main_mirror "$mirror"
+    if pkg update -y; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+pkg_install_with_mirrors() {
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      -o Dpkg::Options::="--force-confold" \
+      -o Dpkg::Options::="--force-confdef" \
+      "$@"; then
+      return 0
+    fi
+  echo "依赖下载失败，尝试切换 Termux 镜像源后重试..."
+  local mirror
+  for mirror in "${TERMUX_MAIN_MIRRORS[@]}"; do
+    set_termux_main_mirror "$mirror"
+    apt-get update || continue
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --fix-missing \
+      -o Dpkg::Options::="--force-confold" \
+      -o Dpkg::Options::="--force-confdef" \
+      "$@"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 install_base_deps() {
   echo "[1/6] 安装基础依赖..."
-  pkg update -y
-  pkg install -y curl tar python openssl libffi coreutils
+  set_termux_main_mirror "${TERMUX_MAIN_MIRRORS[0]}"
+  pkg_update_with_mirrors
+  pkg_install_with_mirrors python python-pip python-ensurepip-wheels tar
+}
+
+python_download() {
+  local url="$1"
+  local output="$2"
+  python - "$url" "$output" <<'PY'
+import sys
+import urllib.request
+import urllib.error
+
+url, output = sys.argv[1], sys.argv[2]
+try:
+    request = urllib.request.Request(url, headers={"User-Agent": "KokoroMemo-Termux-Setup"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        data = response.read()
+    with open(output, "wb") as file:
+        file.write(data)
+except Exception as exc:
+    print(f"Python download failed: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+PY
 }
 
 download_first() {
@@ -48,7 +125,11 @@ download_first() {
   local url
   for url in "$@"; do
     echo "尝试下载: $url"
-    if curl -fL --connect-timeout 12 --retry 2 -o "$output" "$url"; then
+    if need_cmd curl && curl -fL --connect-timeout 4 --max-time 8 --retry 0 -o "$output" "$url"; then
+      echo "下载成功。"
+      return 0
+    fi
+    if need_cmd python && python_download "$url" "$output"; then
       echo "下载成功。"
       return 0
     fi
@@ -95,6 +176,38 @@ for mirror in asset.get("mirrors", []):
     if url and url not in urls:
         urls.append(url)
 print("\n".join(urls))
+PY
+}
+
+write_fallback_manifest() {
+  local version="${FALLBACK_VERSION#v}"
+  local asset_name="KokoroMemo-$version-Android-Termux-aarch64.tar.gz"
+  echo "无法获取 latest.json，使用脚本内置版本 v$version 兜底。"
+  python - "$MANIFEST_FILE" "$version" "$asset_name" "$REPO" "$GITEE_REPO" <<'PY'
+import json
+import sys
+
+path, version, asset_name, repo, gitee_repo = sys.argv[1:]
+github_url = f"https://github.com/{repo}/releases/download/v{version}/{asset_name}"
+gitee_url = f"https://gitee.com/{gitee_repo}/releases/download/v{version}/{asset_name}"
+manifest = {
+    "version": f"v{version}",
+    "assets": {
+        "android-termux-aarch64": {
+            "name": asset_name,
+            "sha256": "",
+            "url": gitee_url,
+            "mirrors": [
+                {"name": "Gitee", "url": gitee_url},
+                {"name": "GitHub", "url": github_url},
+                {"name": "GitHub Proxy", "url": f"https://gh-proxy.org/{github_url}"},
+            ],
+        }
+    },
+}
+with open(path, "w", encoding="utf-8") as file:
+    json.dump(manifest, file, ensure_ascii=False, indent=2)
+    file.write("\n")
 PY
 }
 
@@ -252,10 +365,13 @@ EOF
 
 install_base_deps
 
-echo "[2/6] 获取最新版本信息..."
-if ! download_first "$MANIFEST_FILE" "${MANIFEST_URLS[@]}"; then
-  echo "无法获取 latest.json，请检查网络后重试。"
-  exit 1
+echo "[2/6] 准备安装包信息..."
+if [[ "${KOKOROMEMO_USE_LATEST:-0}" == "1" ]]; then
+  if ! download_first "$MANIFEST_FILE" "${MANIFEST_URLS[@]}"; then
+    write_fallback_manifest
+  fi
+else
+  write_fallback_manifest
 fi
 
 VERSION="$(json_get version)"

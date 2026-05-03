@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### 修复
+
+- **Termux 一键安装稳定性** - 一键安装脚本内置 Termux 镜像切换、短超时下载和 Python 下载兜底；首次安装默认使用内置稳定版本地址，不再请求 `latest.json`，降低国内网络环境下安装卡住或中断的概率。
+- **Termux 依赖安装优化** - 首次安装不再执行 `pkg upgrade` 全量升级，只安装必要依赖；安装过程使用非交互 apt 参数，并补齐 `python-pip`、`python-ensurepip-wheels` 等组件，提升 venv 创建成功率。
+- **Termux 原生依赖兼容** - Termux 端优先使用系统预编译 `python-pydantic`，并以 `--no-deps` 安装项目本体，避免在手机上源码编译 `pydantic-core` / Rust 扩展。
+
 ## v0.8.1 (2026-05-03)
 
 ### 新增

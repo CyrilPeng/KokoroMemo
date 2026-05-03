@@ -147,7 +147,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
           </div>
         </NCard>
 
-        <!-- Stats Section -->
+        <!-- 统计区域 -->
         <div v-if="stats" style="margin-top: 24px;">
           <h2 style="font-size: 16px; font-weight: 600; color: #e4e4e7; margin-bottom: 12px;">{{ $t('dashboard.statsTitle') }}</h2>
           <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>

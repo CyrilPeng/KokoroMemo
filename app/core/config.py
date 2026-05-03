@@ -382,8 +382,8 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
         write_path = resolve_config_path(config_path, for_write=True)
         cfg.config_path = str(write_path) if write_path else ""
 
-    # When root_dir changed but child paths still point to old default,
-    # re-derive them relative to the new root_dir.
+    # root_dir 变更但子路径仍指向旧默认值时，
+    # 基于新 root_dir 重新推导这些路径。
     if cfg.storage.root_dir != default_root:
         prefix = default_root.rstrip("/") + "/"
         if cfg.storage.sqlite.app_db.startswith(prefix):

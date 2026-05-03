@@ -275,8 +275,8 @@ ensure_safe_install_dir() {
 patch_termux_install_scripts() {
   mkdir -p "$INSTALL_DIR/kokoromemo/requirements"
   cat > "$INSTALL_DIR/kokoromemo/requirements/android-termux.txt" <<'REQ'
-# Termux uses pydantic v1 to avoid pydantic-core/Rust builds on Android.
-# Install this file with pip --no-deps.
+# Termux 使用 pydantic v1，避免在 Android 上构建 pydantic-core/Rust 扩展。
+# 安装此文件时需使用 pip --no-deps。
 annotated-doc>=0.0.2
 anyio>=4.0
 certifi>=2024.0

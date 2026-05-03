@@ -94,7 +94,7 @@ let rafId: number | null = null
 function initSimulation() {
   const cx = SVG_W / 2
   const cy = SVG_H / 2
-  // Random initial scatter — pure circle layout traps the simulation in local minima.
+  // 随机初始散布：纯圆形布局容易让模拟陷入局部最小值。
   simNodes.value = nodes.value.map((n) => ({
     id: n.id,
     x: cx + (Math.random() - 0.5) * SVG_W * 0.6,
@@ -125,7 +125,7 @@ function tick() {
   const repel = 1500
   const linkDist = 90
   const center = 0.008
-  // Coulomb-like repulsion between every pair
+  // 每对节点之间的类库仑斥力
   for (const a of simNodes.value) {
     let fx = (cx - a.x) * center
     let fy = (cy - a.y) * center
@@ -142,7 +142,7 @@ function tick() {
     a.vx = (a.vx + fx) * 0.82
     a.vy = (a.vy + fy) * 0.82
   }
-  // Spring force per edge — weight makes high-weight edges shorter (stronger pull)
+  // 每条边的弹簧力：权重越高目标距离越短（拉力越强）
   for (const e of simEdges.value) {
     const dx = e.target.x - e.source.x
     const dy = e.target.y - e.source.y

@@ -18,11 +18,11 @@ class DummyEmbeddingProvider(EmbeddingProvider):
 
     async def embed_text(self, text: str) -> list[float]:
         h = hashlib.sha256(text.encode()).digest()
-        # Extend hash to fill dimension
+        # 扩展哈希以填满维度
         repeats = (self.dimension * 4 // len(h)) + 1
         raw = (h * repeats)[: self.dimension * 4]
         vec = list(struct.unpack(f"{self.dimension}f", raw[:self.dimension * 4]))
-        # Normalize
+        # 归一化
         norm = sum(x * x for x in vec) ** 0.5
         if norm > 0:
             vec = [x / norm for x in vec]

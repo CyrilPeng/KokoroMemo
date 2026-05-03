@@ -431,20 +431,20 @@ async def save_config(data: dict = Body(...)):
 
     cfg = get_config()
 
-    # Find config file path
+    # 查找配置文件路径
     config_path = resolve_config_path()
 
-    # Read existing YAML
+    # 读取现有 YAML
     existing = {}
     if config_path and config_path.exists():
         with open(config_path, "r", encoding="utf-8") as f:
             existing = yaml.safe_load(f) or {}
 
-    # Detect if restart-requiring fields changed
+    # 检测需要重启的字段是否变更
     old_root_dir = cfg.storage.root_dir
     old_port = cfg.server.port
 
-    # Merge incoming data into existing config (deep merge for nested dicts)
+    # 将传入数据合并到现有配置（对嵌套字典做深度合并）
     def _deep_merge(target: dict, src: dict) -> None:
         for k, v in src.items():
             if isinstance(v, dict) and isinstance(target.get(k), dict):
@@ -468,7 +468,7 @@ async def save_config(data: dict = Body(...)):
         new_root = data["storage"].get("root_dir")
         existing.setdefault("storage", {}).update(data["storage"])
 
-        # When root_dir changes, update child paths in YAML to stay consistent
+        # root_dir 变更时，同步更新 YAML 中的子路径以保持一致
         if new_root and new_root != old_root_dir:
             default_root = "./data"
             default_prefix = default_root + "/"
@@ -485,20 +485,20 @@ async def save_config(data: dict = Body(...)):
                 suffix = ldb_val[len(default_prefix):]
                 lancedb["path"] = str(Path(new_root) / suffix)
 
-    # Write to the active config.yaml location, not an arbitrary process cwd.
+    # 写入当前生效的 config.yaml，而不是任意进程工作目录。
     out_path = resolve_config_path(for_write=True) or Path("config.yaml").resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         yaml.dump(existing, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
-    # Reload config in memory
+    # 重新加载内存中的配置
     new_cfg = load_config(str(out_path))
     set_config(new_cfg)
     from app.core.time_util import set_configured_timezone
     set_configured_timezone(new_cfg.server.timezone or None)
     reset_services()
 
-    # Check if restart is needed
+    # 检查是否需要重启
     needs_restart = (
         new_cfg.storage.root_dir != old_root_dir
         or new_cfg.server.port != old_port
@@ -1145,7 +1145,7 @@ async def start_index_migration_api(request: Request, data: dict = Body(default=
     return {"status": "ok", "message": "Migration started"}
 
 
-# --- Inbox API ---
+# --- 待审核 API ---
 
 @router.get("/admin/inbox")
 async def list_inbox(
@@ -1192,7 +1192,7 @@ async def approve_inbox_item(inbox_id: str):
     try:
         payload = json_mod.loads(item["payload_json"])
 
-        # Create approved card
+        # 创建已批准卡片
         card_id = generate_id("card_")
         library_id = payload.get("library_id") or await get_write_library_id(db_path, payload.get("conversation_id") or "default")
         await insert_card(
@@ -1220,7 +1220,7 @@ async def approve_inbox_item(inbox_id: str):
             confidence=payload.get("confidence", 0.7),
         )
 
-        # Vector sync
+        # 向量同步
         warning = None
         ep = get_embedding_provider(cfg)
         store = get_lancedb_store(cfg)
@@ -1231,7 +1231,7 @@ async def approve_inbox_item(inbox_id: str):
                 warning = f"Vector sync failed: {e}"
                 await enqueue_card_vector_sync(db_path, card_id, str(e))
 
-        # Mark inbox item as approved
+        # 将待审核条目标记为已批准
         await update_inbox_status(db_path, inbox_id, "approved")
         await insert_review_action(db_path, action="approve", inbox_id=inbox_id, card_id=card_id)
         result = {"status": "ok", "card_id": card_id}
@@ -1258,7 +1258,7 @@ async def retry_vector_sync_jobs(limit: int = Query(default=50, le=200)):
     return await retry_card_vector_sync_jobs(cfg.storage.sqlite.memory_db, ep, store, limit=limit)
 
 
-# --- Conversation State API ---
+# --- 会话状态 API ---
 
 def _state_item_to_dict(item) -> dict:
     return {
@@ -1958,7 +1958,7 @@ async def reject_inbox_item(inbox_id: str, data=Body(default="")):
     return {"status": "ok"}
 
 
-# --- State Board Clear API ---
+# --- 状态板清空 API ---
 
 @router.post("/admin/conversations/{conversation_id}/state/clear")
 async def clear_conversation_state(conversation_id: str, request: Request):
@@ -2132,7 +2132,7 @@ async def import_conversation_state_bundle(request: Request, data: dict = Body(.
     }
 
 
-# --- Memory Mount Presets API ---
+# --- 记忆挂载预设 API ---
 
 @router.get("/admin/memory-mount-presets")
 async def list_memory_mount_presets_api():
@@ -2191,7 +2191,7 @@ async def delete_memory_mount_preset_api(preset_id: str):
     return {"status": "ok" if ok else "error", "message": None if ok else "预设不存在"}
 
 
-# --- Import / Export API ---
+# --- 导入 / 导出 API ---
 
 @router.get("/admin/memory-libraries/{library_id}/export")
 async def export_memory_library(library_id: str):
@@ -2349,7 +2349,7 @@ async def import_mount_preset(data: dict = Body(...)):
     return {"status": "ok", "preset_id": preset_id}
 
 
-# --- Conversation Import/Export ---
+# --- 会话导入 / 导出 ---
 
 
 @router.get("/admin/memory-graph")

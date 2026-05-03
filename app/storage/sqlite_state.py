@@ -1644,7 +1644,7 @@ class SQLiteStateStore:
                             field.default_value, json.dumps(field.options or {}, ensure_ascii=False), field.status,
                         ),
                     )
-            # Clean up orphaned tabs (tabs removed from the template payload)
+            # 清理孤立分页（模板载荷中已移除的分页）
             keep_tab_ids = {tab.tab_id for tab in template.tabs if tab.tab_id}
             existing_cursor = await db.execute(
                 "SELECT tab_id FROM state_board_tabs WHERE template_id = ?", (template_id,)
@@ -2077,7 +2077,7 @@ class SQLiteStateStore:
                 )
                 count += 1
 
-            # Copy the template binding
+            # 复制模板绑定
             template_cursor = await db.execute(
                 "SELECT template_id FROM conversation_state_boards WHERE conversation_id = ?",
                 (source_conversation_id,),

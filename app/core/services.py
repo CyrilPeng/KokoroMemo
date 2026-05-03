@@ -63,7 +63,7 @@ async def _run_index_migration(cfg: AppConfig) -> None:
     global _index_migration_status
     try:
         from app.storage.rebuild_v2 import rebuild_vector_index_v2
-        # Resolve services with the new config first so the rebuild writes to the correct path
+        # 先用新配置解析服务，确保重建写入正确路径
         reset_services()
         ep = get_embedding_provider(cfg)
         store = get_lancedb_store(cfg)

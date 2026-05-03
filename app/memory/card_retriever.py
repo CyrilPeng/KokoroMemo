@@ -103,7 +103,7 @@ async def retrieve_cards(
     mounted_library_ids = await get_mounted_library_ids(cards_db_path, conversation_id) if conversation_id else None
     mounted_library_set = set(mounted_library_ids or [])
 
-    # --- Route 1: Pinned / boundary cards ---
+    # --- 路径 1：置顶 / 边界卡片 ---
     try:
         pinned = await get_pinned_cards(cards_db_path, user_id, character_id, mounted_library_ids)
         for card in pinned:
@@ -120,18 +120,18 @@ async def retrieve_cards(
                 card_type=card["card_type"],
                 importance=card["importance"],
                 confidence=card["confidence"],
-                vector_score=1.0,  # pinned always high priority
+                vector_score=1.0,  # 置顶卡片始终保持高优先级
                 final_score=1.0,
                 source="pinned",
             ))
     except Exception as e:
         logger.warning("Pinned cards retrieval failed: %s", e)
 
-    # --- Route 2: Vector recall (LanceDB) ---
+    # --- 路径 2：向量召回（LanceDB）---
     try:
         query_vector = await embedding_provider.embed_text(query.query_text)
 
-        # Build scope filter
+        # 构建作用域过滤条件
         clauses = ["status = 'active'", f"user_id = '{user_id}'"]
         if mounted_library_ids:
             escaped_ids = [library_id.replace("'", "''") for library_id in mounted_library_ids]
@@ -191,7 +191,7 @@ async def retrieve_cards(
     except Exception as e:
         logger.warning("Vector retrieval failed (degraded): %s", e)
 
-    # --- Route 3: Recent important cards ---
+    # --- 路径 3：近期重要卡片 ---
     try:
         recent = await get_recent_important_cards(cards_db_path, user_id, character_id, library_ids=mounted_library_ids)
         for card in recent:
@@ -215,7 +215,7 @@ async def retrieve_cards(
     except Exception as e:
         logger.warning("Recent cards retrieval failed: %s", e)
 
-    # --- Route 4: Graph expansion ---
+    # --- 路径 4：图关系扩展 ---
     try:
         seed_ids = [c.card_id for c in all_candidates]
         edges = await get_active_edges_for_cards(cards_db_path, seed_ids)
@@ -272,6 +272,6 @@ async def retrieve_cards(
     except Exception as e:
         logger.warning("Graph expansion failed: %s", e)
 
-    # Sort: pinned first (score=1.0 guaranteed), then by final_score
+    # 排序：置顶卡片优先（保证 score=1.0），然后按 final_score 排序
     all_candidates.sort(key=lambda c: c.final_score, reverse=True)
     return all_candidates[:final_top_k]

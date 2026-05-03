@@ -1,5 +1,5 @@
-// Domain types for memory cards, libraries, inbox candidates, and characters.
-// These mirror the backend SQLite schemas (cards / inbox / characters tables).
+// 记忆卡片、记忆库、待审核候选项和角色的领域类型。
+// 这些类型与后端 SQLite 表结构（cards / inbox / characters）保持对应。
 
 export type CardType =
   | 'preference'

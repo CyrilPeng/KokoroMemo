@@ -66,12 +66,12 @@ async def extract_and_route(
     library_id = await get_write_library_id(db_path, conversation_id)
 
     for mem in extracted:
-        # Dedup: skip if identical content already exists
+        # 去重：如果已存在相同内容则跳过
         if await card_exists_with_content(db_path, user_id, mem.content):
             logger.debug("Skipping duplicate card: %s", mem.content[:50])
             continue
 
-        # Semantic dedup: skip near-duplicates via vector similarity
+        # 语义去重：通过向量相似度跳过近似内容
         if embedding_provider and lancedb_store:
             if await _is_semantic_duplicate(embedding_provider, lancedb_store, user_id, mem.content):
                 logger.debug("Skipping semantic near-duplicate: %s", mem.content[:50])
@@ -101,7 +101,7 @@ async def extract_and_route(
         }
 
         if decision == "approve":
-            # Direct approve: write to memory_cards + vector sync
+            # 直接批准：写入 memory_cards 并同步向量
             card_id = generate_id("card_")
             await insert_card(
                 db_path,
@@ -127,7 +127,7 @@ async def extract_and_route(
                 confidence=mem.confidence,
             )
 
-            # Vector sync
+            # 向量同步
             if embedding_provider and lancedb_store:
                 try:
                     await sync_card_vector(db_path, card_id, embedding_provider, lancedb_store)
@@ -140,7 +140,7 @@ async def extract_and_route(
                 logger.info("Auto-approved card (no vector): %s", card_id)
 
         elif decision == "pending":
-            # Write to inbox for user review
+            # 写入待审核列表供用户复核
             inbox_id = generate_id("inbox_")
             await insert_inbox_item(
                 db_path,
@@ -160,7 +160,7 @@ async def extract_and_route(
             await _emit_card_event("inbox_new", inbox_id, mem)
 
         else:
-            # Rejected by policy, discard
+            # 被策略拒绝，直接丢弃
             logger.debug("Card rejected by policy: type=%s, importance=%.2f", mem.memory_type, mem.importance)
 
 

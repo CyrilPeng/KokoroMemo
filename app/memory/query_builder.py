@@ -21,14 +21,14 @@ def build_retrieval_query(
     max_recent_turns: int = 6,
 ) -> RetrievalQuery:
     """Construct a retrieval query from recent conversation context."""
-    # Extract latest user message
+    # 提取最新用户消息
     latest_user_text = ""
     for msg in reversed(messages):
         if msg.get("role") == "user":
             latest_user_text = msg.get("content", "")
             break
 
-    # Build recent context (last N messages, skip system)
+    # 构建近期上下文（最近 N 条消息，跳过系统消息）
     non_system = [m for m in messages if m.get("role") != "system"]
     recent = non_system[-(max_recent_turns * 2):]
     recent_lines = []
@@ -38,7 +38,7 @@ def build_retrieval_query(
         recent_lines.append(f"{role}: {content}")
     recent_context_text = "\n".join(recent_lines)
 
-    # Combined query text for embedding
+    # 用于向量化的合并查询文本
     query_text = f"{latest_user_text}\n\n{recent_context_text}"
 
     scope_filter = {

@@ -20,7 +20,7 @@ def auto_review(
     - Pending: boundary/relationship, low confidence, high risk
     - Reject: very low importance (< 0.3)
     """
-    # Direct reject: trivial content
+    # 直接拒绝：琐碎内容
     if importance < 0.3:
         return "reject"
 
@@ -43,19 +43,19 @@ def auto_review(
     if low_risk_roleplay_tags.intersection(tags) and importance >= 0.7 and confidence >= 0.8 and risk_level == "low":
         return "approve"
 
-    # Types that always need review in AIRP scenarios.
+    # AIRP 场景中始终需要复核的类型。
     if card_type in ("boundary", "preference", "relationship", "world_state", "character_state"):
         return "pending"
 
-    # High risk always pending
+    # 高风险内容始终进入待审核
     if risk_level == "high":
         return "pending"
 
-    # Auto-approve high-quality candidates
+    # 自动批准高质量候选项
     if importance >= 0.7 and confidence >= 0.85:
         return "approve"
 
-    # Medium quality → pending
+    # 中等质量进入待审核
     if confidence < 0.6:
         return "pending"
 

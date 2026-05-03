@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 
 from app.core.time_util import datetime_now, naive_local_now
 
-# Chinese weekday names
+# 中文星期名称
 _WEEKDAYS_CN = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
 _VAR_PATTERN = re.compile(r"\{\{(\w+)\}\}")
@@ -51,7 +51,7 @@ def resolve_variables(
 
     def replacer(match: re.Match) -> str:
         key = match.group(1)
-        return variables.get(key, match.group(0))  # keep original if unknown
+        return variables.get(key, match.group(0))  # 未知时保留原值
 
     return _VAR_PATTERN.sub(replacer, text)
 

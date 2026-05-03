@@ -30,11 +30,11 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
     """Extract user/character/conversation identifiers from request."""
     headers = request.headers
 
-    # User ID
+    # 用户 ID
     user_id = headers.get("x-user-id") or body.get("user") or "default"
     user_id = sanitize_id(user_id)
 
-    # Character ID
+    # 角色 ID
     character_id = headers.get("x-character-id") or None
     if not character_id:
         messages = body.get("messages", [])
@@ -46,7 +46,7 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
     if character_id:
         character_id = sanitize_id(character_id)
 
-    # Conversation ID
+    # 会话 ID
     conversation_id = headers.get("x-conversation-id") or None
     if not conversation_id:
         meta = body.get("metadata", {})
@@ -59,16 +59,16 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
         conversation_id = f"conv_{_hash_short(seed)}"
     conversation_id = sanitize_id(conversation_id)
 
-    # Smart session detection: if no explicit ID, check if we should start a new session
+    # 智能会话检测：未显式提供 ID 时，检查是否需要开启新会话
     if not explicit_conv_id and cfg:
         conversation_id = await _maybe_new_session(
             conversation_id, user_id, character_id, body, root_dir, cfg
         )
 
-    # Client name
+    # 客户端名称
     client_name = headers.get("x-client-name") or None
 
-    # Paths
+    # 路径
     conv_dir = str(Path(root_dir, "conversations", conversation_id))
     chat_db_path = str(Path(conv_dir, "chat.sqlite"))
 

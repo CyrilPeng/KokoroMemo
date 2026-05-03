@@ -20,7 +20,7 @@ const router = createRouter({
 })
 
 async function bootstrap() {
-  // Resolve actual backend port before mounting (reads .port file via Tauri)
+  // 挂载前解析实际后端端口（通过 Tauri 读取 .port 文件）
   await resolveBackendUrl()
 
   const app = createApp(App)

@@ -285,7 +285,7 @@ async def card_exists_with_content(db_path: str, user_id: str, content: str) -> 
         return (await cursor.fetchone()) is not None
 
 
-# --- memory_libraries and mounts ---
+# --- 记忆库与挂载 ---
 
 async def list_memory_libraries(db_path: str, include_deleted: bool = False) -> list[dict]:
     await init_cards_db(db_path)
@@ -443,7 +443,7 @@ async def set_conversation_mounts(
         await db.commit()
 
 
-# --- memory_cards CRUD ---
+# --- 记忆卡片 CRUD ---
 
 async def insert_card(
     db_path: str,
@@ -678,7 +678,7 @@ async def get_recent_important_cards(
         return [dict(r) for r in rows]
 
 
-# --- memory_inbox CRUD ---
+# --- 待审核条目 CRUD ---
 
 async def insert_inbox_item(
     db_path: str,
@@ -758,7 +758,7 @@ async def get_inbox_item(db_path: str, inbox_id: str) -> dict | None:
         return dict(row) if row else None
 
 
-# --- copy mounts ---
+# --- 复制挂载 ---
 
 async def copy_conversation_mounts(db_path: str, source_conversation_id: str, target_conversation_id: str) -> int:
     """Copy memory mount configuration from one conversation to another. Returns count copied."""
@@ -774,7 +774,7 @@ async def copy_conversation_mounts(db_path: str, source_conversation_id: str, ta
         rows = await cursor.fetchall()
         if not rows:
             return 0
-        # Clear existing mounts for target
+        # 清理目标的现有挂载
         await db.execute(
             "UPDATE conversation_memory_mounts SET status = 'deleted', updated_at = datetime('now', 'localtime') WHERE conversation_id = ?",
             (target_conversation_id,),
@@ -798,7 +798,7 @@ async def copy_conversation_mounts(db_path: str, source_conversation_id: str, ta
     return len(rows)
 
 
-# --- memory_mount_presets ---
+# --- 记忆挂载预设 ---
 
 async def list_mount_presets(db_path: str, include_deleted: bool = False) -> list[dict]:
     await init_cards_db(db_path)

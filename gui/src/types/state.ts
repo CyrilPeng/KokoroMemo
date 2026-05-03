@@ -1,4 +1,4 @@
-// Domain types for the conversation state board.
+// 会话状态板的领域类型。
 
 export interface StateBoardField {
   field_id?: string | null

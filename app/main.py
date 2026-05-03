@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
     set_configured_timezone(cfg.server.timezone or None)
     setup_logging(cfg.server.log_level)
 
-    # Ensure data directories exist
+    # 确保数据目录存在
     Path(cfg.storage.root_dir).mkdir(parents=True, exist_ok=True)
     Path(cfg.storage.root_dir, "conversations").mkdir(parents=True, exist_ok=True)
     Path(cfg.storage.root_dir, "memory").mkdir(parents=True, exist_ok=True)
@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger("kokoromemo")
     logger.info("KokoroMemo started on %s:%d", cfg.server.host, cfg.server.port)
 
-    # Security warning: binding to non-loopback without admin token is risky.
+    # 安全提醒：未配置管理令牌时绑定非回环地址存在风险。
     if cfg.server.host not in {"127.0.0.1", "localhost", "::1"}:
         if not cfg.server.get_admin_token():
             logger.warning(
@@ -101,7 +101,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
-    # Serve Vue SPA frontend if a prebuilt dist exists (web UI mode / Termux).
+    # 如果存在预构建前端，则提供 Vue SPA 静态资源（Web UI / Termux 模式）。
     _web_dist_env = os.getenv("KOKOROMEMO_WEB_DIST", "").strip()
     _gui_dist = Path(_web_dist_env).expanduser() if _web_dist_env else Path(__file__).resolve().parent.parent / "gui" / "dist"
     if _gui_dist.is_dir():
@@ -114,7 +114,7 @@ def create_app() -> FastAPI:
 
         @app.get("/{path:path}")
         async def serve_spa(path: str):
-            # Let API routes handle their own paths
+            # 让 API 路由自行处理所属路径
             if any(path.startswith(p.lstrip("/")) for p in _API_PREFIXES):
                 return JSONResponse(status_code=404, content={"detail": "Not found"})
             file = _gui_dist / path
@@ -154,7 +154,7 @@ def create_app() -> FastAPI:
     return app
 
 
-# Auto-configure on import for uvicorn
+# 导入时自动完成 uvicorn 配置
 create_app()
 
 
@@ -187,7 +187,7 @@ def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
         if ok:
             return port, reason
 
-    # Fallback: let the OS decide
+    # 兜底：交给操作系统决定
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, 0))
         return s.getsockname()[1], reason

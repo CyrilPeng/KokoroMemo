@@ -5,7 +5,7 @@ let _resolvedUrl: string | null = null
 export function getServerUrl() {
   const stored = localStorage.getItem('kokoromemo.serverUrl')
   if (_resolvedUrl) return _resolvedUrl
-  // Web mode (not Tauri): backend serves the frontend, use same origin
+  // Web 模式（非 Tauri）下由后端提供前端，使用同源地址
   if (!(window as any).__TAURI_INTERNALS__) return window.location.origin
   if (stored) return stored
   return DEFAULT_SERVER_URL
@@ -19,11 +19,11 @@ export function setServerUrl(url: string) {
 }
 
 /**
- * Call Tauri get_backend_port to discover the actual backend port.
- * Falls back to DEFAULT_SERVER_URL if not in Tauri or on error.
+ * 调用 Tauri get_backend_port 发现实际后端端口。
+ * 非 Tauri 环境或出错时回退到 DEFAULT_SERVER_URL。
  */
 export async function resolveBackendUrl(): Promise<string> {
-  // Only attempt Tauri port detection if running inside Tauri
+  // 仅在 Tauri 内运行时尝试检测端口
   if ((window as any).__TAURI_INTERNALS__) {
     try {
       const { invoke } = await import('@tauri-apps/api/core')

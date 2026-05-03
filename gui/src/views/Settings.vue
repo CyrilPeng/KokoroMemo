@@ -282,7 +282,7 @@ async function handleCloseToTrayChange(enabled: boolean) {
   try {
     await tauriInvoke('set_close_to_tray', { enabled })
   } catch (e) {
-    // Browser dev mode or older desktop builds without this command.
+    // 浏览器开发模式或旧版桌面端可能没有该命令。
   }
 }
 
@@ -290,7 +290,7 @@ async function syncCloseToTraySetting() {
   try {
     await tauriInvoke('set_close_to_tray', { enabled: closeToTray.value })
   } catch (e) {
-    // Browser dev mode or older desktop builds without this command.
+    // 浏览器开发模式或旧版桌面端可能没有该命令。
   }
 }
 const timezone = ref('')
@@ -374,31 +374,31 @@ const config = ref({
   state_filler_temperature: 0,
   state_filler_min_confidence: 0.55,
   state_filler_prompt: '',
-  // Advanced — conversation auto-detection
+  // 高级：会话自动检测
   conv_auto_gap: 0,
   conv_detect_prompt_change: false,
   conv_detect_count_reset: false,
-  // Advanced — memory top-level
+  // 高级：记忆顶层配置
   inject_enabled: true,
   extraction_enabled: true,
   max_recent_turns_for_query: 6,
   vector_top_k: 30,
-  // Advanced — scopes
+  // 高级：作用域
   scope_global: true,
   scope_character: true,
   scope_conversation: true,
-  // Advanced — extraction
+  // 高级：提取
   ext_min_importance: 0.45,
   ext_min_confidence: 0.55,
   ext_after_each_turn: true,
   ext_fallback_rule_based: true,
-  // Advanced — scoring weights
+  // 高级：评分权重
   score_vector: 0.55,
   score_importance: 0.20,
   score_recency: 0.10,
   score_scope: 0.10,
   score_confidence: 0.05,
-  // Advanced — retrieval gate
+  // 高级：检索门控
   rg_enabled: true,
   rg_mode: 'auto',
   rg_on_new_session: true,
@@ -407,7 +407,7 @@ const config = ref({
   rg_trigger_keywords: [] as string[],
   rg_skip_chars_below: 4,
   rg_skip_when_state_sufficient: true,
-  // Advanced — hot context
+  // 高级：热上下文
   hc_enabled: true,
   hc_inject_always: true,
   hc_max_chars: 1200,
@@ -551,7 +551,7 @@ function applyConfigToForm(data: any) {
       ;(config.value as any)[key] = transform ? transform(raw) : raw
     }
   }
-  // Special cases not in mapping table
+  // 映射表中不存在的特殊情况
   const rg = data.memory?.retrieval_gate || {}
   config.value.rg_trigger_keywords = Array.isArray(rg.trigger_keywords) ? [...rg.trigger_keywords] : []
   const hc = data.memory?.hot_context || {}
@@ -651,7 +651,7 @@ async function loadConfig() {
       applyConfigToForm(await resp.json())
     }
   } catch (e) {
-    // use defaults
+    // 使用默认值
   }
   loading.value = false
 }
@@ -773,7 +773,7 @@ async function saveConfig(): Promise<boolean> {
       message.success(data.message || t('settings.restartingService'))
       try {
         await tauriInvoke('restart_backend')
-        // Re-resolve port — it may have changed after restart
+        // 重新解析端口：重启后端口可能已变更
         const newUrl = await resolveBackendUrl()
         backendUrl.value = newUrl
         const port = Number(newUrl.split(':').pop())
@@ -913,10 +913,10 @@ onMounted(() => {
     </div>
 
     <NTabs type="line" animated>
-      <!-- Tab 1: 模型配置 -->
+      <!-- 标签页 1： 模型配置 -->
       <NTabPane name="model" :tab="$t('settings.tabModel')">
         <NSpace vertical :size="16">
-          <!-- LLM Config -->
+          <!-- LLM 配置 -->
           <NCard style="background: #18181b; border: 1px solid #27272a;">
             <template #header>
               <NSpace align="center">
@@ -947,7 +947,7 @@ onMounted(() => {
             </NForm>
           </NCard>
 
-          <!-- Embedding Config -->
+          <!-- Embedding 配置 -->
           <NCard style="background: #18181b; border: 1px solid #27272a;">
             <template #header>
               <NSpace align="center">
@@ -980,7 +980,7 @@ onMounted(() => {
             </NForm>
           </NCard>
 
-          <!-- Rerank Config -->
+          <!-- Rerank 配置 -->
           <NCard style="background: #18181b; border: 1px solid #27272a;">
             <template #header>
               <NSpace align="center">
@@ -1015,7 +1015,7 @@ onMounted(() => {
         </NSpace>
       </NTabPane>
 
-      <!-- Tab 2: 记忆配置 -->
+      <!-- 标签页 2： 记忆配置 -->
       <NTabPane name="memory" :tab="$t('settings.tabMemory')">
         <NSpace vertical :size="16">
           <NCard style="background: #18181b; border: 1px solid #27272a;">
@@ -1129,7 +1129,7 @@ onMounted(() => {
         </NSpace>
       </NTabPane>
 
-      <!-- Tab 3: 状态板填表 -->
+      <!-- 标签页 3： 状态板填表 -->
       <NTabPane name="stateFiller" :tab="$t('settings.tabStateFiller')">
         <NSpace vertical :size="16">
           <NCard style="background: #18181b; border: 1px solid #27272a;">
@@ -1178,7 +1178,7 @@ onMounted(() => {
         </NSpace>
       </NTabPane>
 
-      <!-- Tab 4: 服务配置 -->
+      <!-- 标签页 4： 服务配置 -->
       <NTabPane name="server" :tab="$t('settings.tabServer')">
         <NSpace vertical :size="16">
           <NCard style="background: #18181b; border: 1px solid #27272a;">
@@ -1380,7 +1380,7 @@ onMounted(() => {
       </NTabPane>
     </NTabs>
 
-    <!-- Save -->
+    <!-- 保存 -->
     <div style="margin-top: 16px;">
       <NAlert type="info" style="background: rgba(167, 139, 250, 0.05); border-color: #27272a; margin-bottom: 12px;">
         {{ $t('settings.saveHint') }}
@@ -1409,7 +1409,7 @@ onMounted(() => {
       </template>
     </NModal>
 
-    <!-- Help Modals -->
+    <!-- 帮助弹窗 -->
     <NModal :show="!!helpModal" preset="card" :title="$t('settings.helpTitle')" style="width: 600px; background: #18181b;" :mask-closable="true" @update:show="(v: boolean) => { if (!v) helpModal = '' }">
       <div v-if="helpModal === 'llm'" class="help-content">
         <p><strong>{{ $t('settings.forwardMode') }}</strong>: {{ $t('settings.forwardModeHelp') }}</p>

@@ -71,7 +71,7 @@ def _make_stream_chunk(content: str, model: str, finish_reason: str | None = Non
 
 
 # =============================================================================
-# OpenAI-Compatible Provider (Chat Completions)
+# OpenAI 兼容提供商（Chat Completions）
 # =============================================================================
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -104,7 +104,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
 
 # =============================================================================
-# OpenAI Responses API Provider
+# OpenAI Responses API 提供商
 # =============================================================================
 
 class OpenAIResponsesProvider(LLMProvider):
@@ -120,7 +120,7 @@ class OpenAIResponsesProvider(LLMProvider):
     def _convert_to_responses_format(self, body: dict) -> dict:
         """Convert OpenAI chat format to Responses API format."""
         messages = body.get("messages", [])
-        # Responses API uses "input" field
+        # Responses API 使用 "input" 字段
         input_items = []
         for msg in messages:
             role = msg.get("role", "user")
@@ -152,7 +152,7 @@ class OpenAIResponsesProvider(LLMProvider):
             resp.raise_for_status()
             data = resp.json()
 
-        # Extract text from Responses API format
+        # 从 Responses API 格式中提取文本
         content = ""
         for item in data.get("output", []):
             if item.get("type") == "message":
@@ -192,7 +192,7 @@ class OpenAIResponsesProvider(LLMProvider):
 
 
 # =============================================================================
-# Anthropic Provider (Messages API)
+# Anthropic 提供商（Messages API）
 # =============================================================================
 
 class AnthropicProvider(LLMProvider):
@@ -221,7 +221,7 @@ class AnthropicProvider(LLMProvider):
             elif role == "assistant":
                 anthropic_messages.append({"role": "assistant", "content": content})
 
-        # Anthropic requires alternating user/assistant; merge consecutive same-role
+        # Anthropic 要求 user/assistant 交替；合并连续的同角色消息
         merged = []
         for msg in anthropic_messages:
             if merged and merged[-1]["role"] == msg["role"]:
@@ -229,7 +229,7 @@ class AnthropicProvider(LLMProvider):
             else:
                 merged.append(msg)
 
-        # Must start with user
+        # 必须以 user 开头
         if merged and merged[0]["role"] != "user":
             merged.insert(0, {"role": "user", "content": "..."})
 
@@ -302,7 +302,7 @@ class AnthropicProvider(LLMProvider):
 
 
 # =============================================================================
-# Gemini Provider (Google AI)
+# Gemini 提供商（Google AI）
 # =============================================================================
 
 class GeminiProvider(LLMProvider):
@@ -395,7 +395,7 @@ class GeminiProvider(LLMProvider):
 
 
 # =============================================================================
-# Factory
+# 工厂方法
 # =============================================================================
 
 def create_llm_provider(provider: str, base_url: str, api_key: str, model: str) -> LLMProvider:

@@ -14,7 +14,7 @@ def setup_logging(level: str = "INFO") -> None:
         format=fmt,
         stream=sys.stdout,
     )
-    # Silence noisy libraries
+    # 降低噪声较多的依赖日志
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)

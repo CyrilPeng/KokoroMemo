@@ -87,7 +87,7 @@ async def rebuild_vector_index_v2(
             except Exception as e:
                 logger.error("LanceDB upsert failed at offset %d: %s", i, e)
     except Exception as e:
-        # Roll back staging on unexpected error
+        # 发生未预期错误时回滚临时表
         if use_atomic and staging_name:
             try:
                 lancedb_store.drop_staging(staging_name)
@@ -97,7 +97,7 @@ async def rebuild_vector_index_v2(
 
     if use_atomic and staging_name:
         if success_count == 0:
-            # Don't promote an empty staging table over the live one
+            # 不要用空的临时表覆盖正式表
             lancedb_store.drop_staging(staging_name)
             logger.warning("Staging table empty after rebuild — keeping live index unchanged")
         else:

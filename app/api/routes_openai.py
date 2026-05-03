@@ -83,11 +83,11 @@ async def chat_completions(request: Request):
 
     await _persist_request(cfg, ctx, raw_body_for_persist)
 
-    # Memory retrieval and injection
+    # 记忆检索与注入
     messages = deepcopy(raw_body.get("messages", []))
     injected_messages = messages
 
-    # Resolve template variables in user's system prompt before forwarding
+    # 转发前解析用户系统提示词中的模板变量
     from app.core.variables import resolve_variables
     var_kwargs = dict(
         username=ctx.user_id,
@@ -223,39 +223,39 @@ async def chat_completions(request: Request):
         except Exception as e:
             logger.warning("Memory retrieval failed (degraded): %s", e)
 
-    # Build forwarding body with injected messages
+    # 构建已注入消息的转发请求体
     forward_body = deepcopy(raw_body)
     forward_body["messages"] = injected_messages
 
     is_stream = raw_body.get("stream", False)
 
-    # Determine LLM target based on forward_mode setting
+    # 根据 forward_mode 配置决定 LLM 目标
     from app.proxy.llm_providers import create_llm_provider
 
-    # Extract client's auth and model from the incoming request
+    # 从传入请求中提取客户端认证和模型
     client_auth = request.headers.get("authorization", "")
     client_api_key = client_auth.replace("Bearer ", "").strip() if client_auth.startswith("Bearer ") else ""
     client_model = raw_body.get("model", "")
 
     if cfg.llm.forward_mode == "passthrough":
-        # Passthrough: use client's Key and Model, only base_url from config
+        # 透传：使用客户端 Key 和模型，仅使用配置中的 base_url
         final_api_key = client_api_key or cfg.llm.get_api_key()
         final_model = client_model or cfg.llm.model
     else:
-        # Override (default): use local config, ignore client values
+        # 覆盖（默认）：使用本地配置，忽略客户端值
         final_api_key = cfg.llm.get_api_key()
         final_model = cfg.llm.model or client_model
 
     final_base_url = cfg.llm.base_url
 
-    # If no base_url configured locally, cannot forward
+    # 本地未配置 base_url 时无法转发
     if not final_base_url:
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=500, content={
             "error": {"message": "未配置 LLM Base URL，请在设置中配置对话大模型", "type": "config_error", "param": None, "code": "no_base_url"}
         })
 
-    # Set the model in forward body to the resolved value
+    # 将转发请求体中的模型设为解析后的值
     if final_model:
         forward_body["model"] = final_model
 
@@ -368,7 +368,7 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
             ctx.chat_db_path, resp_id, ctx.request_id, ctx.conversation_id,
             body_json=response_json, stream_text=stream_text,
         )
-        # Save all messages as a turn
+        # 将所有消息保存为一轮对话
         all_msgs = list(original_messages)
         if assistant_text:
             all_msgs.append({"role": "assistant", "content": assistant_text})
@@ -465,7 +465,7 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
                 except Exception as e:
                     logger.warning("State updater failed: %s", e)
 
-    # Memory extraction via card system
+    # 通过卡片系统提取记忆
     if not cfg.memory.enabled or not cfg.memory.extraction_enabled:
         return
     if memory_write_policy == "disabled":
@@ -474,7 +474,7 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
     if not assistant_text:
         return
 
-    # Ensure cards DB is initialized (may race with _persist_request)
+    # 确保卡片数据库已初始化（可能与 _persist_request 并发）
     await init_cards_db(cfg.storage.sqlite.memory_db)
 
     user_msg = _latest_user_message(original_messages)

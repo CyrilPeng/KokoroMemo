@@ -12,7 +12,7 @@ _INJECTION_TEMPLATE = """【KokoroMemo 长期记忆】
 当记忆与当前对话冲突时，以当前对话为准。
 {sections}"""
 
-# card_type → display category mapping
+# card_type 到展示分类的映射
 _TYPE_TO_SECTION = {
     "boundary": "稳定边界",
     "preference": "用户偏好",
@@ -25,7 +25,7 @@ _TYPE_TO_SECTION = {
     "summary": "当前相关记忆",
 }
 
-# Section display order (higher priority first)
+# 分段展示顺序（优先级高的在前）
 _SECTION_ORDER = [
     "稳定边界",
     "用户偏好",
@@ -57,7 +57,7 @@ def inject_cards(
     if not candidates:
         return messages
 
-    # Group candidates by section
+    # 按分段对候选卡片分组
     sections: dict[str, list[MemoryCandidate]] = {s: [] for s in _SECTION_ORDER}
 
     for c in candidates[:max_count]:
@@ -67,7 +67,7 @@ def inject_cards(
         else:
             sections["当前相关记忆"].append(c)
 
-    # Build section text with relative time labels
+    # 构建带相对时间标签的分段文本
     section_texts: list[str] = []
     char_count = 0
 
@@ -78,7 +78,7 @@ def inject_cards(
 
         lines = [f"\n[{section_name}]"]
         for c in items:
-            # Add relative time prefix if card has created_at
+            # 如果卡片有 created_at，则添加相对时间前缀
             time_label = ""
             if hasattr(c, "created_at") and c.created_at:
                 rel = relative_time_label(c.created_at)
@@ -101,7 +101,7 @@ def inject_cards(
 
     raw_text = _INJECTION_TEMPLATE.format(sections="\n".join(section_texts))
 
-    # Resolve template variables
+    # 解析模板变量
     full_text = resolve_variables(
         raw_text,
         username=username,
@@ -116,7 +116,7 @@ def inject_cards(
 
     memory_msg = {"role": "system", "content": full_text}
 
-    # Insert after first system message
+    # 插入到第一条系统消息之后
     result = list(messages)
     insert_idx = 0
     for i, m in enumerate(result):

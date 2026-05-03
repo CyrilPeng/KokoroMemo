@@ -90,7 +90,7 @@ async function syncCloseToTraySetting() {
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('set_close_to_tray', { enabled })
   } catch (e) {
-    // Browser dev mode or older desktop builds without this command.
+    // 浏览器开发模式或旧版桌面端可能没有该命令。
   }
 }
 

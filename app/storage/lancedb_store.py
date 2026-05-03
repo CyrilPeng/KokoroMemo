@@ -71,7 +71,7 @@ class LanceDBStore:
         """Insert or update memory vectors."""
         if not self._table:
             self.connect()
-        # LanceDB merge_insert by memory_id
+        # LanceDB 按 memory_id 执行 merge_insert
         self._table.merge_insert("memory_id").when_matched_update_all().when_not_matched_insert_all().execute(rows)
 
     def search(

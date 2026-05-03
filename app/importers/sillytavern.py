@@ -43,9 +43,9 @@ def parse_sillytavern_jsonl(text: str) -> ImportedConversation:
         if not isinstance(entry, dict):
             continue
 
-        # Detect format variant
+        # 检测格式变体
         if "mes" in entry:
-            # SillyTavern standard format
+            # SillyTavern 标准格式
             name = entry.get("name", "")
             is_user = entry.get("is_user", False)
             content = entry.get("mes", "").strip()
@@ -70,7 +70,7 @@ def parse_sillytavern_jsonl(text: str) -> ImportedConversation:
             ))
 
         elif "role" in entry and "content" in entry:
-            # OpenAI-style format
+            # OpenAI 风格格式
             role = entry["role"]
             content = entry["content"].strip()
             if not content:

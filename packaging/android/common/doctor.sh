@@ -25,7 +25,7 @@ check_path "$VENV_DIR/bin/python" "虚拟环境"
 
 if [[ -x "$VENV_DIR/bin/python" ]]; then
   "$VENV_DIR/bin/python" - <<'PY'
-mods = ["fastapi", "uvicorn", "httpx", "yaml", "aiosqlite", "pydantic"]
+mods = ["fastapi", "uvicorn", "wsproto", "httpx", "yaml", "aiosqlite", "pydantic"]
 for mod in mods:
     try:
         __import__(mod)

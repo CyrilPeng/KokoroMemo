@@ -14,7 +14,7 @@ else:
 
 
 def _read_version() -> str:
-    """Read version from pyproject.toml (single source of truth)."""
+    """从 pyproject.toml 读取版本号，作为版本单一来源。"""
     env_version = os.getenv("KOKOROMEMO_VERSION")
     if env_version:
         return env_version.lstrip("v")
@@ -90,7 +90,7 @@ app.state.actual_port = None
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI app."""
+    """创建并配置 FastAPI 应用。"""
     from app.api.routes_admin import router as admin_router
     from app.api.routes_openai import router as openai_router
     from app.api.routes_ws import router as ws_router
@@ -154,12 +154,12 @@ def create_app() -> FastAPI:
     return app
 
 
-# 导入时自动完成 uvicorn 配置
+# 导入时自动完成 FastAPI 应用配置。
 create_app()
 
 
 def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
-    """Return preferred port if free, otherwise pick a random port above 20000."""
+    """优先使用配置端口；不可用时选择 20000 以上的随机端口。"""
     import errno
     import socket
 
@@ -194,7 +194,7 @@ def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
 
 
 def _describe_port_unavailable(error: OSError | None) -> str:
-    """Describe why the configured port could not be used."""
+    """描述配置端口不可用的原因。"""
     import errno
 
     if error is None:
@@ -207,7 +207,7 @@ def _describe_port_unavailable(error: OSError | None) -> str:
 
 
 def _write_port_file(port: int) -> None:
-    """Write actual port to .port file for Tauri sidecar discovery."""
+    """将实际端口写入 .port，供 Tauri 侧发现后端。"""
     try:
         config_path = resolve_config_path(for_write=True)
         base_dir = config_path.parent if config_path else Path.cwd()
@@ -240,5 +240,5 @@ if __name__ == "__main__":
         "app.main:app",
         host=host,
         port=port,
-        reload=True,
+        reload=os.getenv("KOKOROMEMO_RELOAD", "0").lower() in {"1", "true", "yes"},
     )

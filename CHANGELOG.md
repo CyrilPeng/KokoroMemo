@@ -4,10 +4,12 @@
 
 ### 修复
 
-- **代码注释中文化** - 将源码、前端和安卓脚本中的英文说明性注释统一改为中文，保留必要的 API 名称、命令和类型检查指令。
-- **移动端 Web UI 适配** - 手机宽度下改为顶部导航栏与抽屉菜单，避免桌面左侧栏占据主要内容区域。
-- **Android Web UI 加载优化** - Web 模式不再静态加载 Tauri API，并启用响应压缩，降低移动浏览器打开 Web UI 失败或加载过慢的概率。
-- **Android Doctor 诊断修正** - Termux 诊断不再检查已移除的 `pydantic_settings` 模块，避免误报环境失败。
+- **Android WebSocket 兼容** - Termux/Proot Android 依赖显式补充纯 Python 的 `wsproto`，避免轻量 `uvicorn` 环境访问 `/ws` 时出现 Unsupported upgrade request。
+- **Android 后端启动模式** - Android 启动脚本默认关闭 uvicorn 热重载，减少手机端文件监听开销和重复进程日志。
+- **浏览器模式实时连接降级** - Web UI 在普通浏览器模式下不再主动建立 WebSocket，避免移动浏览器首屏被非必要实时通知链路拖住；桌面 Tauri 保留实时通知。
+- **Android 移动浏览器首屏卡加载** - Web UI 请求统一增加超时，仪表盘健康检查改为非阻塞加载，并在移动浏览器跳过启动阶段 WebSocket 连接，避免 Android UA 下首屏长期停留在加载状态。
+- **移动端导航兼容性** - 移动端菜单改为轻量遮罩侧栏，减少手机浏览器对桌面抽屉组件的兼容依赖。
+- **代码注释中文化** - 将新增和关键入口代码中的说明性注释统一改为中文，保留必要的 API 名称、命令和类型术语。
 - **Termux 一键安装稳定性** - 一键安装脚本内置 Termux 镜像切换、短超时下载和 Python 下载兜底；首次安装默认使用内置稳定版本地址，不再请求 `latest.json`，降低国内网络环境下安装卡住或中断的概率。
 - **Termux 依赖安装优化** - 首次安装不再执行 `pkg upgrade` 全量升级，只安装必要依赖；安装过程使用非交互 apt 参数，并补齐 `python-pip`、`python-ensurepip-wheels` 等组件，提升 venv 创建成功率。
 - **Termux 原生依赖兼容** - Termux 端固定使用不依赖 `pydantic-core` 的 `pydantic v1` 兼容组合，并以 `pip --no-deps` 安装应用依赖和项目本体，避免在手机上源码编译 `pydantic-core` / Rust 扩展。

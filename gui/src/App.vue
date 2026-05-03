@@ -14,8 +14,6 @@ import {
   NMessageProvider,
   NDialogProvider,
   NButton,
-  NDrawer,
-  NDrawerContent,
   darkTheme,
 } from 'naive-ui'
 import type { MenuOption, GlobalThemeOverrides } from 'naive-ui'
@@ -186,8 +184,9 @@ const themeOverrides: GlobalThemeOverrides = {
         </NLayoutContent>
       </NLayout>
 
-      <NDrawer v-model:show="mobileMenuOpen" placement="left" :width="280">
-        <NDrawerContent body-content-style="padding: 0; background: #18181b;" closable>
+      <div v-if="isMobile && mobileMenuOpen" class="mobile-menu-mask" @click="mobileMenuOpen = false">
+        <aside class="mobile-menu-panel" @click.stop>
+          <NButton class="mobile-menu-close" quaternary circle @click="mobileMenuOpen = false" aria-label="Close navigation">×</NButton>
           <div class="brand-block mobile-drawer-brand">
             <img src="./assets/logo.png" class="brand-logo" />
             <span class="brand-title">KokoroMemo</span>
@@ -204,8 +203,8 @@ const themeOverrides: GlobalThemeOverrides = {
             </NIcon>
             <span class="footer-text">{{ serverVersion ? `v${serverVersion} - ${$t('common.tagline')}` : $t('common.tagline') }}</span>
           </div>
-        </NDrawerContent>
-      </NDrawer>
+        </aside>
+      </div>
       </NDialogProvider>
     </NMessageProvider>
   </NConfigProvider>
@@ -285,6 +284,26 @@ const themeOverrides: GlobalThemeOverrides = {
 }
 .mobile-drawer-brand {
   padding-top: 10px;
+}
+.mobile-menu-mask {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+.mobile-menu-panel {
+  position: relative;
+  width: min(280px, 82vw);
+  height: 100%;
+  background: #18181b;
+  border-right: 1px solid #27272a;
+  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.35);
+}
+.mobile-menu-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: #a1a1aa;
 }
 .mobile-drawer-footer {
   margin: 20px 24px 16px;

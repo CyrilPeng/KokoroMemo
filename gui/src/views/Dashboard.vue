@@ -14,7 +14,7 @@ function typeLabel(type: string): string {
 }
 const health = ref<any>(null)
 const stats = ref<any>(null)
-const loading = ref(true)
+const loading = ref(false)
 const serverUrl = ref(getServerUrl())
 const helpModal = ref(false)
 
@@ -38,7 +38,7 @@ async function fetchHealth() {
   loading.value = true
   try {
     serverUrl.value = getServerUrl()
-    const resp = await apiFetch('/health')
+    const resp = await apiFetch('/health', { timeoutMs: 4000 })
     health.value = await resp.json()
     if (health.value?.actual_port) {
       const actualUrl = `http://127.0.0.1:${health.value.actual_port}`
@@ -53,7 +53,7 @@ async function fetchHealth() {
 
 async function fetchStats() {
   try {
-    const resp = await apiFetch('/admin/stats')
+    const resp = await apiFetch('/admin/stats', { timeoutMs: 5000 })
     stats.value = await resp.json()
   } catch (e) {
     stats.value = null
@@ -61,8 +61,10 @@ async function fetchStats() {
 }
 
 onMounted(() => {
-  fetchHealth()
-  fetchStats()
+  window.setTimeout(() => {
+    fetchHealth()
+    fetchStats()
+  }, 0)
 })
 
 function onWsEvent(e: any) {

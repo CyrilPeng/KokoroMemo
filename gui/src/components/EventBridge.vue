@@ -11,6 +11,17 @@ let ws: WebSocket | null = null
 let reconnectTimer: number | null = null
 let stopped = false
 
+function isMobileBrowser() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
+}
+
+function shouldConnectWebSocket() {
+  // Web UI 由后端同源提供时，实时通知不是首屏必需能力。
+  // Android/Termux 轻量依赖可能没有 WebSocket 支持，浏览器模式下直接跳过，避免 /ws 升级失败导致页面卡住。
+  if (!(window as any).__TAURI_INTERNALS__) return false
+  return !isMobileBrowser()
+}
+
 function dispatchToWindow(data: any) {
   try {
     window.dispatchEvent(new CustomEvent('kokoromemo:event', { detail: data }))
@@ -54,6 +65,7 @@ function connect() {
 }
 
 onMounted(() => {
+  if (!shouldConnectWebSocket()) return
   setTimeout(connect, 1000)
 })
 

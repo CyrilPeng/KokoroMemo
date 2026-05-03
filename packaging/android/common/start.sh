@@ -21,6 +21,7 @@ fi
 
 export KOKOROMEMO_WEB_DIST="$ROOT_DIR/webui/dist"
 export KOKOROMEMO_CONFIG="$ROOT_DIR/config.yaml"
+export KOKOROMEMO_RELOAD=0
 export PYTHONPATH="$APP_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
 cd "$APP_DIR"

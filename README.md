@@ -57,11 +57,27 @@ KokoroMemo 的目标不是简单地把聊天记录塞进向量库，而是用可
 
 如果配置端口 `14514` 不可用，后端会自动切换到可用端口。请以 GUI 中显示的 `OpenAI Base URL` 为准。
 
-后续更新可以在“设置 → 检查更新”中完成。KokoroMemo 会先读取 GitHub 更新清单，连接失败时自动尝试 `https://gh-proxy.org/` 和 Gitee 镜像；PC 端会匹配当前系统的安装包，点击“下载更新包”即可获取。
+后续更新可以在“设置 → 检查更新”中完成。KokoroMemo 会先读取 GitHub 更新清单，连接失败时可使用 Gitee 镜像；PC 端会匹配当前系统的安装包，点击“下载更新包”即可获取。
 
 ### 方式二：Android / Termux 单包部署
 
 Android 用户建议下载 Release 中的单包压缩包，包内已包含后端源码、预构建 Web UI 和安装脚本，手机上不需要编译前端：
+
+**Termux 用户推荐直接一键安装：**
+
+```bash
+pkg update -y && pkg install -y curl python && curl -fsSL https://github.com/CyrilPeng/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
+```
+
+如果 GitHub 访问不稳定，可以改用 Gitee 地址：
+
+```bash
+pkg update -y && pkg install -y curl python && curl -fsSL https://gitee.com/Cyril_P/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
+```
+
+一键脚本会自动安装 Termux 基础依赖、读取更新清单、下载最新 `Android-Termux-aarch64` 包、校验 SHA256、安装并启动 KokoroMemo。
+
+也可以手动下载 Release 中的单包：
 
 ```text
 KokoroMemo-vX.Y.Z-Android-Termux-aarch64.tar.gz
@@ -77,6 +93,15 @@ bash install.sh
 bash start.sh
 ```
 
+一键安装完成后可以使用 `kokoromemo` 命令管理服务：
+
+```bash
+kokoromemo start
+kokoromemo stop
+kokoromemo update
+kokoromemo doctor
+```
+
 启动后浏览器打开 `http://127.0.0.1:14514`，AIRP 客户端填写 `http://127.0.0.1:14514/v1`。如果启动脚本输出了其他实际端口，请以实际输出为准。
 
 Android 包内置一键更新脚本：
@@ -85,7 +110,7 @@ Android 包内置一键更新脚本：
 bash update.sh
 ```
 
-脚本会自动选择 Termux / ProotUbuntu 对应的 aarch64 包，按 GitHub、GitHub 代理、Gitee 顺序回退下载，并在更新前备份 `config.yaml` 和 `data/`。
+脚本会自动选择 Termux / ProotUbuntu 对应的 aarch64 包，并在更新前备份 `config.yaml` 和 `data/`。
 
 ### 方式三：从源码运行
 
@@ -192,7 +217,7 @@ Embedding 默认使用模力方舟 `Qwen3-Embedding-8B`，需要自行配置 API
 
 - **OpenAI Base URL**：客户端应该填写的真实地址。
 - **本地监听端口**：后端当前实际监听端口，默认与 OpenAI Base URL 保持一致；点击“修改”可设置新端口，确认后会立即重启后端。
-- **检查更新**：读取发布清单并自动回退 GitHub 代理 / Gitee；桌面端可下载匹配安装包，Android 端可使用 `bash update.sh` 一键更新。
+- **检查更新**：读取发布清单；桌面端可下载匹配安装包，Android 端可使用 `bash update.sh` 一键更新。
 
 ### 记忆管理
 

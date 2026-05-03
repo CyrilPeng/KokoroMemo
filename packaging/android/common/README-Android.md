@@ -4,6 +4,24 @@
 
 ## 安装
 
+### 推荐：Termux 一键安装
+
+在 Termux 中执行：
+
+```bash
+pkg update -y && pkg install -y curl python && curl -fsSL https://github.com/CyrilPeng/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
+```
+
+如果 GitHub 访问不稳定，可以使用 Gitee 地址：
+
+```bash
+pkg update -y && pkg install -y curl python && curl -fsSL https://gitee.com/Cyril_P/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
+```
+
+脚本会自动安装基础依赖、读取 `latest.json`、下载最新 `Android-Termux-aarch64` 单包、校验 SHA256、安装并启动服务。
+
+### 手动安装单包
+
 ```bash
 tar -xzf KokoroMemo-vX.Y.Z-Android-Termux-aarch64.tar.gz
 cd KokoroMemo-Android-Termux-aarch64
@@ -31,13 +49,22 @@ bash doctor.sh     # 诊断环境
 bash backup.sh     # 备份 config.yaml 和 data/
 ```
 
+如果使用一键安装脚本，还会创建 `kokoromemo` 命令：
+
+```bash
+kokoromemo start      # 启动
+kokoromemo stop       # 停止
+kokoromemo update     # 更新
+kokoromemo doctor     # 诊断
+```
+
 ## 更新
 
 ```bash
 bash update.sh
 ```
 
-更新脚本会按顺序尝试 GitHub 直连、`https://gh-proxy.org/` 和 Gitee 镜像，自动选择当前运行环境对应的 Android aarch64 包，校验 SHA256 后替换程序文件。
+更新脚本会自动选择当前运行环境对应的 Android aarch64 包，校验 SHA256 后替换程序文件。
 
 更新会保留 `config.yaml` 和 `data/`，并在 `backups/` 下生成更新前的数据备份和程序备份。
 

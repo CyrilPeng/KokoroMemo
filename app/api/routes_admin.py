@@ -563,6 +563,59 @@ async def list_characters_api(request: Request):
     return {"items": items}
 
 
+@router.get("/admin/characters/{character_id}")
+async def get_character_api(character_id: str, request: Request):
+    """Get one character profile and default strategy."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import list_characters
+
+    cfg = get_config()
+    for item in await list_characters(cfg.storage.sqlite.app_db):
+        if item.get("character_id") == character_id:
+            return item
+    raise HTTPException(status_code=404, detail="Character not found")
+
+
+@router.put("/admin/characters/{character_id}")
+async def update_character_api(character_id: str, request: Request, data: dict = Body(...)):
+    """Update character profile fields."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import update_character_profile
+
+    cfg = get_config()
+    await update_character_profile(
+        cfg.storage.sqlite.app_db,
+        character_id,
+        display_name=data.get("display_name"),
+        aliases=data.get("aliases") or [],
+        notes=data.get("notes"),
+        source=data.get("source"),
+        user_id=data.get("user_id") or "default",
+    )
+    return {"status": "ok", "character_id": character_id}
+
+
+@router.get("/admin/characters/{character_id}/conversations")
+async def list_character_conversations_api(character_id: str, request: Request):
+    """List conversations associated with one character, including state config when present."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import list_character_conversations
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    cfg = get_config()
+    store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+    items = []
+    for conv in await list_character_conversations(cfg.storage.sqlite.app_db, character_id):
+        config = await store.get_conversation_config(conv["conversation_id"])
+        row = dict(conv)
+        row["config"] = config.to_dict() if config else None
+        items.append(row)
+    return {"items": items}
+
+
 @router.get("/admin/discovered-characters")
 async def discover_characters_api(request: Request):
     """Discover characters from conversations and merge default configs."""
@@ -600,12 +653,75 @@ async def set_character_defaults_api(character_id: str, request: Request, data: 
     await set_character_defaults(
         cfg.storage.sqlite.app_db,
         character_id,
+        profile_id=data.get("profile_id"),
         template_id=data.get("template_id"),
+        table_template_id=data.get("table_template_id"),
+        mount_preset_id=data.get("mount_preset_id"),
+        memory_write_policy=data.get("memory_write_policy"),
+        state_update_policy=data.get("state_update_policy"),
+        injection_policy=data.get("injection_policy"),
         library_ids=data.get("library_ids"),
         write_library_id=data.get("write_library_id"),
         auto_apply=data.get("auto_apply", True),
     )
     return {"status": "ok", "character_id": character_id}
+
+
+@router.put("/admin/characters/{character_id}/defaults")
+async def put_character_defaults_api(character_id: str, request: Request, data: dict = Body(...)):
+    return await set_character_defaults_api(character_id, request, data)
+
+
+@router.post("/admin/characters/{character_id}/apply-defaults")
+async def apply_character_defaults_api(character_id: str, request: Request, data: dict = Body(default_factory=dict)):
+    """Apply character default mounts and conversation config to existing conversations."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import get_character_defaults, list_character_conversations
+    from app.storage.sqlite_cards import set_conversation_mounts
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    cfg = get_config()
+    defaults = await get_character_defaults(cfg.storage.sqlite.app_db, character_id)
+    if not defaults:
+        raise HTTPException(status_code=404, detail="Character defaults not found")
+
+    selected = set(data.get("conversation_ids") or [])
+    conversations = await list_character_conversations(cfg.storage.sqlite.app_db, character_id)
+    if selected:
+        conversations = [item for item in conversations if item["conversation_id"] in selected]
+
+    apply_policy = data.get("apply_policy", True)
+    apply_mounts = data.get("apply_mounts", True)
+    overwrite_existing = data.get("overwrite_existing", True)
+    store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+    updated = 0
+    for conv in conversations:
+        conversation_id = conv["conversation_id"]
+        if apply_mounts:
+            library_ids = defaults.get("library_ids") or ["lib_default"]
+            await set_conversation_mounts(
+                cfg.storage.sqlite.memory_db,
+                conversation_id,
+                library_ids,
+                defaults.get("write_library_id") or library_ids[0],
+            )
+        if apply_policy:
+            existing = await store.get_conversation_config(conversation_id)
+            if overwrite_existing or not existing:
+                await store.set_conversation_config({
+                    "conversation_id": conversation_id,
+                    "profile_id": defaults.get("profile_id"),
+                    "template_id": defaults.get("template_id"),
+                    "table_template_id": defaults.get("table_template_id"),
+                    "mount_preset_id": defaults.get("mount_preset_id"),
+                    "memory_write_policy": defaults.get("memory_write_policy"),
+                    "state_update_policy": defaults.get("state_update_policy"),
+                    "injection_policy": defaults.get("injection_policy"),
+                    "created_from_default": True,
+                })
+        updated += 1
+    return {"status": "ok", "updated": updated}
 
 
 @router.get("/admin/memory-libraries")

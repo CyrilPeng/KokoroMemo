@@ -262,6 +262,84 @@ jobs:
           tag_commit="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
           git log -1 --pretty=%B "$tag_commit" > release-notes.md
 
+      - name: Generate update manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          tag="${GITHUB_REF_NAME}"
+          repo="${GITHUB_REPOSITORY}"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          tag = os.environ["GITHUB_REF_NAME"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          asset_dir = Path("release-assets")
+          github_base = f"https://github.com/{repo}/releases/download/{tag}"
+          github_latest_base = f"https://github.com/{repo}/releases/latest/download"
+          gitee_repo = os.environ.get("KOKOROMEMO_GITEE_REPOSITORY", repo)
+          gitee_base = f"https://gitee.com/{gitee_repo}/releases/download/{tag}"
+          gitee_latest_manifest = f"https://gitee.com/{gitee_repo}/raw/main/latest.json"
+
+          platform_rules = [
+              ("Windows-Portable.zip", "windows-portable-x64"),
+              ("Windows-x64.msi", "windows-msi-x64"),
+              ("Linux-x64.AppImage", "linux-appimage-x64"),
+              ("macOS-arm64.zip", "macos-app-arm64"),
+              ("Android-Termux-aarch64.tar.gz", "android-termux-aarch64"),
+              ("Android-ProotUbuntu-aarch64.tar.gz", "android-prootubuntu-aarch64"),
+              ("WebUI-dist.zip", "webui-dist"),
+          ]
+
+          assets = {}
+          checksums = []
+          for path in sorted(asset_dir.iterdir()):
+              if not path.is_file() or path.name in {"latest.json", "SHA256SUMS.txt"}:
+                  continue
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              checksums.append(f"{digest}  {path.name}")
+              key = path.stem
+              for suffix, platform_key in platform_rules:
+                  if path.name.endswith(suffix):
+                      key = platform_key
+                      break
+              github_url = f"{github_base}/{path.name}"
+              assets[key] = {
+                  "name": path.name,
+                  "size": path.stat().st_size,
+                  "sha256": digest,
+                  "url": github_url,
+                  "mirrors": [
+                      {"name": "GitHub", "url": github_url},
+                      {"name": "GitHub Proxy", "url": f"https://gh-proxy.org/{github_url}"},
+                      {"name": "Gitee", "url": f"{gitee_base}/{path.name}"},
+                  ],
+              }
+
+          manifest_url = f"{github_latest_base}/latest.json"
+          manifest = {
+              "schema_version": 1,
+              "app": "KokoroMemo",
+              "version": f"v{version}",
+              "tag": tag,
+              "mandatory": False,
+              "release_url": f"https://github.com/{repo}/releases/tag/{tag}",
+              "changelog_url": f"https://github.com/{repo}/releases/tag/{tag}",
+              "manifest_mirrors": [
+                  {"name": "GitHub", "url": manifest_url},
+                  {"name": "GitHub Proxy", "url": f"https://gh-proxy.org/{manifest_url}"},
+                  {"name": "Gitee", "url": gitee_latest_manifest},
+              ],
+              "assets": assets,
+          }
+          asset_dir.joinpath("SHA256SUMS.txt").write_text("\n".join(checksums) + "\n", encoding="utf-8")
+          asset_dir.joinpath("latest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
       - name: Publish GitHub release
         shell: bash
         env:

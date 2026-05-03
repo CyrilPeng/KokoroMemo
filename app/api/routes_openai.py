@@ -344,10 +344,18 @@ async def _apply_character_defaults_if_new(cfg, ctx: RequestContext) -> None:
         write_library_id = defaults.get("write_library_id") or library_ids[0]
         await set_conversation_mounts(cfg.storage.sqlite.memory_db, ctx.conversation_id, library_ids, write_library_id)
 
-        template_id = defaults.get("template_id")
-        if template_id:
-            store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
-            await store.set_conversation_template(ctx.conversation_id, template_id)
+        store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+        await store.set_conversation_config({
+            "conversation_id": ctx.conversation_id,
+            "profile_id": defaults.get("profile_id"),
+            "template_id": defaults.get("template_id"),
+            "table_template_id": defaults.get("table_template_id"),
+            "mount_preset_id": defaults.get("mount_preset_id"),
+            "memory_write_policy": defaults.get("memory_write_policy"),
+            "state_update_policy": defaults.get("state_update_policy"),
+            "injection_policy": defaults.get("injection_policy"),
+            "created_from_default": True,
+        })
     except Exception as e:
         logger.debug("Character defaults auto-apply skipped: %s", e)
 

@@ -57,7 +57,27 @@ KokoroMemo 的目标不是简单地把聊天记录塞进向量库，而是用可
 
 如果配置端口 `14514` 不可用，后端会自动切换到可用端口。请以 GUI 中显示的 `OpenAI Base URL` 为准。
 
-### 方式二：从源码运行
+### 方式二：Android / Termux 单包部署
+
+Android 用户建议下载 Release 中的单包压缩包，包内已包含后端源码、预构建 Web UI 和安装脚本，手机上不需要编译前端：
+
+```text
+KokoroMemo-vX.Y.Z-Android-Termux-aarch64.tar.gz
+KokoroMemo-vX.Y.Z-Android-ProotUbuntu-aarch64.tar.gz
+```
+
+大多数现代手机请选择 `Android-Termux-aarch64`；如果 Termux 原生依赖安装失败，再尝试 `Android-ProotUbuntu-aarch64`。
+
+```bash
+tar -xzf KokoroMemo-vX.Y.Z-Android-Termux-aarch64.tar.gz
+cd KokoroMemo-X.Y.Z-Android-Termux-aarch64
+bash install.sh
+bash start.sh
+```
+
+启动后浏览器打开 `http://127.0.0.1:14514`，AIRP 客户端填写 `http://127.0.0.1:14514/v1`。如果启动脚本输出了其他实际端口，请以实际输出为准。
+
+### 方式三：从源码运行
 
 环境要求：
 

@@ -413,6 +413,7 @@ jobs:
             cp "packaging/android/$script_dir/install.sh" "$root/install.sh"
             cp config.example.yaml "$root/config.example.yaml"
             printf '%s\n' "$version" > "$root/VERSION"
+            printf '%s\n' "$runtime" > "$root/ANDROID_RUNTIME"
             chmod +x "$root"/*.sh
 
             tar -czf "$asset_dir/$package_name.tar.gz" -C "android-package" "$package_name"

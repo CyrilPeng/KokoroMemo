@@ -26,9 +26,20 @@ OpenAI Base URL: http://127.0.0.1:14514/v1
 bash start.sh      # 启动
 bash stop.sh       # 停止
 bash restart.sh    # 重启
+bash update.sh     # 检查并更新到最新版本
 bash doctor.sh     # 诊断环境
 bash backup.sh     # 备份 config.yaml 和 data/
 ```
+
+## 更新
+
+```bash
+bash update.sh
+```
+
+更新脚本会按顺序尝试 GitHub 直连、`https://gh-proxy.org/` 和 Gitee 镜像，自动选择当前运行环境对应的 Android aarch64 包，校验 SHA256 后替换程序文件。
+
+更新会保留 `config.yaml` 和 `data/`，并在 `backups/` 下生成更新前的数据备份和程序备份。
 
 ## 包选择
 
@@ -36,4 +47,3 @@ bash backup.sh     # 备份 config.yaml 和 data/
 - `Android-ProotUbuntu-aarch64`：Termux 原生安装失败时使用，需要先进入 proot Ubuntu 环境。
 
 请不要混用不同运行环境的包；Termux 原生 wheel 与 proot Ubuntu wheel 不保证兼容。
-

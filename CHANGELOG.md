@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.7.1 (2026-05-03)
+
+### 新增
+
+- **Android 单包部署** - Release 流程新增 `Android-Termux-aarch64` 与 `Android-ProotUbuntu-aarch64` 单包产物，用户按运行环境和 CPU 架构下载一个压缩包即可安装。
+- **预构建 Web UI 支持** - 后端支持通过 `KOKOROMEMO_WEB_DIST` 指向包内 `webui/dist`，Android 端无需在手机上运行 `npm install` 或 `npm run build`。
+- **Android 管理脚本** - 新增 `install.sh`、`start.sh`、`stop.sh`、`restart.sh`、`backup.sh` 和 `doctor.sh`，覆盖安装、启动、停止、诊断和数据备份。
+
+### 改进
+
+- **Android 轻量依赖** - 新增 Termux 与 Proot Ubuntu 专用 requirements，Android 默认避开桌面端重依赖，降低 numpy、PyArrow、LanceDB 等现场编译失败风险。
+- **Release 资产整理** - Android Web UI、源码、脚本和预留 wheels 目录在 CI 内部组装为单包，避免普通用户在 Release 页面手动下载零散依赖。
+- **Android 文档补充** - README 与 DESIGN 增加 Android 单包选择、安装命令、包结构、运行策略和 CI 打包流程说明。
+
 ## v0.7.0 (2026-05-03)
 
 ### 新增

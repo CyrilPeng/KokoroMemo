@@ -60,8 +60,8 @@ const updateInfo = ref<{
 const UPDATE_MANIFEST_URLS = [
   { name: 'GitHub', url: 'https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json' },
   { name: 'GitHub Proxy', url: 'https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json' },
-  { name: 'Gitee', url: 'https://gitee.com/CyrilPeng/KokoroMemo/raw/main/latest.json' },
 ]
+const GITEE_LATEST_RELEASE_API = 'https://gitee.com/api/v5/repos/Cyril_P/KokoroMemo/releases/latest'
 const CURRENT_VERSION_FALLBACK = '0.8.0'
 
 const currentBackendUrl = computed(() => backendUrl.value || getServerUrl())
@@ -114,16 +114,49 @@ function detectUpdateAssetKey() {
   return 'windows-msi-x64'
 }
 
+async function fetchJsonWithTimeout(url: string, timeoutMs = 8000) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const resp = await fetch(url, { cache: 'no-store', signal: controller.signal })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    return await resp.json()
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+async function fetchGiteeUpdateManifest() {
+  const release = await fetchJsonWithTimeout(GITEE_LATEST_RELEASE_API)
+  const tag = release?.tag_name || release?.name
+  const attachments = Array.isArray(release?.attach_files)
+    ? release.attach_files
+    : Array.isArray(release?.assets)
+      ? release.assets
+      : []
+  const manifestAsset = attachments.find((item: any) => (item?.name || item?.filename) === 'latest.json')
+  const manifestUrl = manifestAsset?.browser_download_url
+    || manifestAsset?.download_url
+    || manifestAsset?.url
+    || manifestAsset?.html_url
+    || (tag ? `https://gitee.com/Cyril_P/KokoroMemo/releases/download/${tag}/latest.json` : '')
+  if (!manifestUrl) throw new Error('missing latest manifest')
+  return await fetchJsonWithTimeout(manifestUrl)
+}
+
 async function fetchUpdateManifest() {
   let lastError = ''
   for (const source of UPDATE_MANIFEST_URLS) {
     try {
-      const resp = await fetch(source.url, { cache: 'no-store' })
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      return { sourceName: source.name, data: await resp.json() }
+      return { sourceName: source.name, data: await fetchJsonWithTimeout(source.url) }
     } catch (e) {
       lastError = `${source.name}: ${e instanceof Error ? e.message : String(e)}`
     }
+  }
+  try {
+    return { sourceName: 'Gitee', data: await fetchGiteeUpdateManifest() }
+  } catch (e) {
+    lastError = `Gitee: ${e instanceof Error ? e.message : String(e)}`
   }
   throw new Error(lastError || 'manifest unavailable')
 }

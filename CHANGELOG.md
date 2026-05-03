@@ -14,11 +14,11 @@
 
 - **统一更新清单** - Release 工作流新增 `latest.json` 与 `SHA256SUMS.txt`，记录最新版本、各平台资产、下载镜像和校验值，供 PC 与 Android 共用。
 - **Android 一键更新** - Android 单包新增 `update.sh`，支持检查最新版本、选择匹配运行环境的 aarch64 包、校验 SHA256、备份数据并替换程序文件。
-- **Termux 一键安装** - `scripts/termux-setup.sh` 改为面向普通 Termux 用户的一键安装入口，自动安装依赖、下载最新 Android 单包、校验、安装、启动并创建 `kokoromemo start/stop/update` 管理命令。
+- **Termux 一键安装** - `scripts/termux-setup.sh` 改为面向普通 Termux 用户的一键安装入口，自动安装依赖、下载当前稳定版 Android 单包、安装、启动并创建 `kokoromemo start/stop/update` 管理命令。
 
 ### 改进
 
-- **多源更新回退** - 更新检测和 Android 更新脚本按 GitHub 直连、`https://gh-proxy.org/`、Gitee 镜像顺序回退，降低国内网络环境下无法检查或下载更新的问题。
+- **多源更新回退** - 更新检测和 Android 更新脚本按 GitHub 直连、`https://gh-proxy.org/`、Gitee Release API 顺序回退，并移除无效的 Gitee `raw/main/latest.json` 地址，降低国内网络环境下无法检查或下载更新的问题。
 - **GUI 更新入口** - 设置页改为读取统一更新清单，展示匹配安装包、更新来源，并提供下载更新包入口和 Android 一键更新命令提示。
 
 ### 修复

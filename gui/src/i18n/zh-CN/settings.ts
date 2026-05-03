@@ -160,7 +160,7 @@ export default {
     languageHelp: '界面显示语言。切换后立即生效。',
     closeToTray: '关闭后最小化到托盘',
     updateCheck: '检查更新',
-    updateCheckHelp: '打开设置页时会自动读取更新清单，并按 GitHub 直连、GitHub 代理、Gitee 的顺序回退。',
+    updateCheckHelp: '打开设置页时会自动读取更新清单，并按 GitHub 直连、GitHub 代理、Gitee Release API 的顺序回退。',
     checkNow: '立即检查',
     openReleasePage: '打开发行页',
     downloadUpdate: '下载更新包',

@@ -12,7 +12,6 @@ MANIFEST_FILE="$TMP_DIR/latest.json"
 FALLBACK_VERSION="${KOKOROMEMO_FALLBACK_VERSION:-0.8.1}"
 
 MANIFEST_URLS=(
-  "https://gitee.com/$GITEE_REPO/raw/main/latest.json"
   "https://github.com/$REPO/releases/latest/download/latest.json"
   "https://gh-proxy.org/https://github.com/$REPO/releases/latest/download/latest.json"
 )

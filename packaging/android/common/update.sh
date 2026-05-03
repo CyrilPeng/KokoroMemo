@@ -9,10 +9,10 @@ BACKUP_DIR="$ROOT_DIR/backups"
 REPO="${KOKOROMEMO_UPDATE_REPO:-CyrilPeng/KokoroMemo}"
 GITEE_REPO="${KOKOROMEMO_UPDATE_GITEE_REPO:-Cyril_P/KokoroMemo}"
 MANIFEST_URLS=(
-  "https://gitee.com/$GITEE_REPO/raw/main/latest.json"
   "https://github.com/$REPO/releases/latest/download/latest.json"
   "https://gh-proxy.org/https://github.com/$REPO/releases/latest/download/latest.json"
 )
+GITEE_LATEST_API="https://gitee.com/api/v5/repos/$GITEE_REPO/releases/latest"
 
 CURRENT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo "0.0.0")"
 CURRENT_VERSION="${CURRENT_VERSION#v}"
@@ -72,6 +72,41 @@ download_first() {
   return 1
 }
 
+download_gitee_latest_manifest() {
+  local output="$1"
+  local tag_file="$TMP_DIR/gitee-release.json"
+  local urls=()
+
+  echo "尝试通过 Gitee API 获取最新版本..."
+  if ! download_first "$tag_file" "$GITEE_LATEST_API"; then
+    return 1
+  fi
+
+  mapfile -t urls < <(python - "$tag_file" "$GITEE_REPO" <<'PY'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+gitee_repo = sys.argv[2]
+tag = data.get("tag_name") or data.get("name") or ""
+for item in data.get("attach_files") or data.get("assets") or []:
+    name = item.get("name") or item.get("filename") or ""
+    if name == "latest.json":
+        for key in ("browser_download_url", "download_url", "url", "html_url"):
+            url = item.get(key)
+            if url:
+                print(url)
+if tag:
+    print(f"https://gitee.com/{gitee_repo}/releases/download/{tag}/latest.json")
+PY
+)
+  if [[ "${#urls[@]}" -eq 0 ]]; then
+    return 1
+  fi
+
+  download_first "$output" "${urls[@]}"
+}
+
 python_download() {
   local url="$1"
   local output="$2"
@@ -80,11 +115,15 @@ import sys
 import urllib.request
 
 url, output = sys.argv[1], sys.argv[2]
-request = urllib.request.Request(url, headers={"User-Agent": "KokoroMemo-Android-Updater"})
-with urllib.request.urlopen(request, timeout=10) as response:
-    data = response.read()
-with open(output, "wb") as file:
-    file.write(data)
+try:
+    request = urllib.request.Request(url, headers={"User-Agent": "KokoroMemo-Android-Updater"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        data = response.read()
+    with open(output, "wb") as file:
+        file.write(data)
+except Exception as exc:
+    print(f"Python download failed: {exc}", file=sys.stderr)
+    raise SystemExit(1)
 PY
 }
 
@@ -148,8 +187,10 @@ mkdir -p "$TMP_DIR" "$BACKUP_DIR"
 
 echo "当前版本: v$CURRENT_VERSION"
 if ! download_first "$TMP_DIR/latest.json" "${MANIFEST_URLS[@]}"; then
-  echo "无法获取更新清单，请稍后重试。"
-  exit 1
+  if ! download_gitee_latest_manifest "$TMP_DIR/latest.json"; then
+    echo "无法获取更新清单，请稍后重试。"
+    exit 1
+  fi
 fi
 
 LATEST_VERSION="$(json_get version)"

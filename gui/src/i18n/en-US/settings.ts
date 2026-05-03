@@ -160,7 +160,7 @@ export default {
     languageHelp: 'Interface display language. Takes effect immediately.',
     closeToTray: 'Minimize to Tray on Close',
     updateCheck: 'Check for Updates',
-    updateCheckHelp: 'When opening Settings, KokoroMemo reads the update manifest and falls back from GitHub to GitHub Proxy and then Gitee.',
+    updateCheckHelp: 'When opening Settings, KokoroMemo reads the update manifest and falls back from GitHub to GitHub Proxy and then Gitee Release API.',
     checkNow: 'Check Now',
     openReleasePage: 'Open Release Page',
     downloadUpdate: 'Download Update',

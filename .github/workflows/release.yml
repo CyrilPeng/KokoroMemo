@@ -283,7 +283,6 @@ jobs:
           github_latest_base = f"https://github.com/{repo}/releases/latest/download"
           gitee_repo = os.environ.get("KOKOROMEMO_GITEE_REPOSITORY", "Cyril_P/KokoroMemo")
           gitee_base = f"https://gitee.com/{gitee_repo}/releases/download/{tag}"
-          gitee_latest_manifest = f"https://gitee.com/{gitee_repo}/raw/main/latest.json"
 
           platform_rules = [
               ("Windows-Portable.zip", "windows-portable-x64"),
@@ -332,7 +331,6 @@ jobs:
               "manifest_mirrors": [
                   {"name": "GitHub", "url": manifest_url},
                   {"name": "GitHub Proxy", "url": f"https://gh-proxy.org/{manifest_url}"},
-                  {"name": "Gitee", "url": gitee_latest_manifest},
               ],
               "assets": assets,
           }

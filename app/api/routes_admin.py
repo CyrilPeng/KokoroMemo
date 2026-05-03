@@ -724,6 +724,67 @@ async def apply_character_defaults_api(character_id: str, request: Request, data
     return {"status": "ok", "updated": updated}
 
 
+@router.get("/admin/characters/{character_id}/export")
+async def export_character_config_api(character_id: str, request: Request):
+    """Export one character profile and default strategy."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import get_character_defaults, list_characters
+
+    cfg = get_config()
+    character = None
+    for item in await list_characters(cfg.storage.sqlite.app_db):
+        if item.get("character_id") == character_id:
+            character = item
+            break
+    if not character:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return {
+        "version": 1,
+        "character": character,
+        "defaults": await get_character_defaults(cfg.storage.sqlite.app_db, character_id),
+    }
+
+
+@router.post("/admin/characters/import")
+async def import_character_config_api(request: Request, data: dict = Body(...)):
+    """Import one character profile and default strategy."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import set_character_defaults, update_character_profile
+
+    cfg = get_config()
+    character = data.get("character") or {}
+    defaults = data.get("defaults") or {}
+    character_id = data.get("target_character_id") or character.get("character_id") or defaults.get("character_id")
+    if not character_id:
+        raise HTTPException(status_code=400, detail="character_id is required")
+    await update_character_profile(
+        cfg.storage.sqlite.app_db,
+        character_id,
+        display_name=character.get("display_name"),
+        aliases=character.get("aliases") or [],
+        notes=character.get("notes"),
+        source=character.get("source"),
+        user_id=character.get("user_id") or "default",
+    )
+    await set_character_defaults(
+        cfg.storage.sqlite.app_db,
+        character_id,
+        profile_id=defaults.get("profile_id"),
+        template_id=defaults.get("template_id"),
+        table_template_id=defaults.get("table_template_id"),
+        mount_preset_id=defaults.get("mount_preset_id"),
+        memory_write_policy=defaults.get("memory_write_policy"),
+        state_update_policy=defaults.get("state_update_policy"),
+        injection_policy=defaults.get("injection_policy"),
+        library_ids=defaults.get("library_ids"),
+        write_library_id=defaults.get("write_library_id"),
+        auto_apply=defaults.get("auto_apply", True),
+    )
+    return {"status": "ok", "character_id": character_id}
+
+
 @router.get("/admin/memory-libraries")
 async def list_memory_libraries_api():
     """List long-term memory libraries."""

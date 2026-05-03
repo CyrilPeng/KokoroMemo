@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { setLanguage, getLanguage } from '../i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
+import { open as shellOpen } from '@tauri-apps/plugin-shell'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -39,6 +40,10 @@ const updateInfo = ref<{
   currentVersion: string
   latestVersion: string
   releaseUrl: string
+  sourceName: string
+  assetName: string
+  downloadUrl: string
+  androidCommand: string
   error: string
 }>({
   checked: false,
@@ -46,10 +51,18 @@ const updateInfo = ref<{
   currentVersion: '',
   latestVersion: '',
   releaseUrl: '',
+  sourceName: '',
+  assetName: '',
+  downloadUrl: '',
+  androidCommand: 'bash update.sh',
   error: '',
 })
-const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/CyrilPeng/KokoroMemo/releases/latest'
-const CURRENT_VERSION_FALLBACK = '0.5.6'
+const UPDATE_MANIFEST_URLS = [
+  { name: 'GitHub', url: 'https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json' },
+  { name: 'GitHub Proxy', url: 'https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json' },
+  { name: 'Gitee', url: 'https://gitee.com/CyrilPeng/KokoroMemo/raw/main/latest.json' },
+]
+const CURRENT_VERSION_FALLBACK = '0.8.0'
 
 const currentBackendUrl = computed(() => backendUrl.value || getServerUrl())
 const openaiBaseUrl = computed(() => `${currentBackendUrl.value.replace(/\/$/, '')}/v1`)
@@ -91,17 +104,51 @@ async function getCurrentAppVersion() {
   }
 }
 
+function detectUpdateAssetKey() {
+  const ua = navigator.userAgent || ''
+  const platform = navigator.platform || ''
+  if (/Android/i.test(ua)) return 'android-termux-aarch64'
+  if (/Win/i.test(platform)) return 'windows-msi-x64'
+  if (/Mac/i.test(platform)) return 'macos-app-arm64'
+  if (/Linux/i.test(platform)) return 'linux-appimage-x64'
+  return 'windows-msi-x64'
+}
+
+async function fetchUpdateManifest() {
+  let lastError = ''
+  for (const source of UPDATE_MANIFEST_URLS) {
+    try {
+      const resp = await fetch(source.url, { cache: 'no-store' })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      return { sourceName: source.name, data: await resp.json() }
+    } catch (e) {
+      lastError = `${source.name}: ${e instanceof Error ? e.message : String(e)}`
+    }
+  }
+  throw new Error(lastError || 'manifest unavailable')
+}
+
+function pickUpdateAsset(manifest: any) {
+  const assets = manifest?.assets || {}
+  const key = detectUpdateAssetKey()
+  const asset = assets[key] || assets['windows-msi-x64'] || Object.values(assets)[0] || null
+  if (!asset || typeof asset !== 'object') return { assetName: '', downloadUrl: '' }
+  const mirrors = Array.isArray((asset as any).mirrors) ? (asset as any).mirrors : []
+  const firstMirror = mirrors.find((item: any) => item?.url)
+  return {
+    assetName: (asset as any).name || '',
+    downloadUrl: (asset as any).url || firstMirror?.url || '',
+  }
+}
+
 async function checkForUpdates(silent = false) {
   updateChecking.value = true
   try {
     const currentVersion = await getCurrentAppVersion()
-    const resp = await fetch(GITHUB_LATEST_RELEASE_API, {
-      headers: { Accept: 'application/vnd.github+json' },
-    })
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-    const data = await resp.json()
-    const latestVersion = data.tag_name || data.name || ''
-    const releaseUrl = data.html_url || 'https://github.com/CyrilPeng/KokoroMemo/releases/latest'
+    const { sourceName, data } = await fetchUpdateManifest()
+    const latestVersion = data.version || data.tag || ''
+    const releaseUrl = data.release_url || data.changelog_url || 'https://github.com/CyrilPeng/KokoroMemo/releases/latest'
+    const { assetName, downloadUrl } = pickUpdateAsset(data)
     const hasUpdate = latestVersion ? compareVersions(latestVersion, currentVersion) > 0 : false
     updateInfo.value = {
       checked: true,
@@ -109,6 +156,10 @@ async function checkForUpdates(silent = false) {
       currentVersion,
       latestVersion,
       releaseUrl,
+      sourceName,
+      assetName,
+      downloadUrl,
+      androidCommand: 'bash update.sh',
       error: '',
     }
     if (!silent) {
@@ -130,8 +181,20 @@ async function checkForUpdates(silent = false) {
 
 function openReleasePage() {
   if (updateInfo.value.releaseUrl) {
-    window.open(updateInfo.value.releaseUrl, '_blank', 'noopener,noreferrer')
+    openExternal(updateInfo.value.releaseUrl)
   }
+}
+
+async function openExternal(url: string) {
+  try {
+    await shellOpen(url)
+  } catch {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+}
+
+function downloadUpdateAsset() {
+  if (updateInfo.value.downloadUrl) openExternal(updateInfo.value.downloadUrl)
 }
 
 async function copyText(text: string) {
@@ -1120,12 +1183,21 @@ onMounted(() => {
                 <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <NButton size="small" :loading="updateChecking" @click="checkForUpdates(false)">{{ $t('settings.checkNow') }}</NButton>
+                    <NButton v-if="updateInfo.downloadUrl && updateInfo.checked" size="small" type="primary" secondary @click="downloadUpdateAsset">{{ $t('settings.downloadUpdate') }}</NButton>
                     <NButton v-if="updateInfo.releaseUrl && updateInfo.checked" size="small" secondary @click="openReleasePage">{{ $t('settings.openReleasePage') }}</NButton>
                   </div>
                   <NAlert v-if="updateInfo.checked" :type="updateInfo.error ? 'error' : updateInfo.hasUpdate ? 'warning' : 'success'" :show-icon="false">
                     <template v-if="updateInfo.error">{{ $t('settings.updateCheckFailed') }}: {{ updateInfo.error }}</template>
-                    <template v-else-if="updateInfo.hasUpdate">{{ $t('settings.updateAvailableDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}</template>
-                    <template v-else>{{ $t('settings.noUpdateDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}</template>
+                    <template v-else-if="updateInfo.hasUpdate">
+                      <div>{{ $t('settings.updateAvailableDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}</div>
+                      <div v-if="updateInfo.assetName" style="margin-top: 4px;">{{ $t('settings.updateAsset') }}: {{ updateInfo.assetName }}</div>
+                      <div v-if="updateInfo.sourceName" style="margin-top: 4px;">{{ $t('settings.updateSource') }}: {{ updateInfo.sourceName }}</div>
+                      <div style="margin-top: 4px;">{{ $t('settings.androidUpdateCommand') }}: <code>{{ updateInfo.androidCommand }}</code></div>
+                    </template>
+                    <template v-else>
+                      <div>{{ $t('settings.noUpdateDetail', { current: updateInfo.currentVersion, latest: updateInfo.latestVersion }) }}</div>
+                      <div v-if="updateInfo.sourceName" style="margin-top: 4px;">{{ $t('settings.updateSource') }}: {{ updateInfo.sourceName }}</div>
+                    </template>
                   </NAlert>
                 </div>
               </NFormItem>

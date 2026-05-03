@@ -1,6 +1,6 @@
 {
   "productName": "KokoroMemo",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "identifier": "com.kokoromemo.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",

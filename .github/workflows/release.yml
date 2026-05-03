@@ -242,7 +242,9 @@ jobs:
           path: release-assets/*
 
   publish-release:
-    needs: build-tauri
+    needs:
+      - build-tauri
+      - build-android-packages
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -276,3 +278,73 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" release-assets/* --title "$title" --notes-file release-notes.md --latest
           fi
+
+  build-android-packages:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build Web UI dist
+        working-directory: gui
+        run: |
+          npm install
+          npm run build
+
+      - name: Prepare Android packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          asset_dir="release-assets"
+          mkdir -p "$asset_dir"
+
+          make_package() {
+            local runtime="$1"
+            local script_dir="$2"
+            local wheel_dir="$3"
+            local package_name="KokoroMemo-$version-Android-$runtime-aarch64"
+            local root="android-package/$package_name"
+
+            rm -rf "$root"
+            mkdir -p "$root/kokoromemo" "$root/webui" "$root/wheels/$wheel_dir"
+
+            rsync -a \
+              --exclude '.git' \
+              --exclude '.github' \
+              --exclude '.pytest_cache' \
+              --exclude '.test_tmp' \
+              --exclude '.test_dbs' \
+              --exclude 'pytest_tmp' \
+              --exclude 'gui/node_modules' \
+              --exclude 'gui/dist' \
+              --exclude 'gui/src-tauri/target' \
+              --exclude 'release-assets' \
+              --exclude 'android-package' \
+              ./ "$root/kokoromemo/"
+
+            cp -a gui/dist "$root/webui/dist"
+            cp -a packaging/android/common/. "$root/"
+            cp "packaging/android/$script_dir/install.sh" "$root/install.sh"
+            cp config.example.yaml "$root/config.example.yaml"
+            printf '%s\n' "$version" > "$root/VERSION"
+            chmod +x "$root"/*.sh
+
+            tar -czf "$asset_dir/$package_name.tar.gz" -C "android-package" "$package_name"
+          }
+
+          make_package "Termux" "termux" "termux-aarch64"
+          make_package "ProotUbuntu" "proot-ubuntu" "proot-ubuntu-aarch64"
+
+      - name: Upload Android release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-Android-aarch64
+          path: release-assets/*

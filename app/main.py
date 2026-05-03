@@ -98,8 +98,9 @@ def create_app() -> FastAPI:
     app.include_router(openai_router)
     app.include_router(ws_router)
 
-    # Serve Vue SPA frontend if gui/dist exists (web UI mode / Termux)
-    _gui_dist = Path(__file__).resolve().parent.parent / "gui" / "dist"
+    # Serve Vue SPA frontend if a prebuilt dist exists (web UI mode / Termux).
+    _web_dist_env = os.getenv("KOKOROMEMO_WEB_DIST", "").strip()
+    _gui_dist = Path(_web_dist_env).expanduser() if _web_dist_env else Path(__file__).resolve().parent.parent / "gui" / "dist"
     if _gui_dist.is_dir():
         from fastapi.staticfiles import StaticFiles
         from fastapi.responses import FileResponse

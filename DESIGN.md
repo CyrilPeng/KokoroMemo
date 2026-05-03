@@ -649,8 +649,30 @@ Tag v* → 触发 release.yml
   │    ├─ Windows: Portable ZIP + MSI
   │    ├─ Linux: AppImage
   │    └─ macOS: DMG
-  └─ Job 3: 发布到 GitHub Release
+  ├─ Job 3: 组装 Android Termux / ProotUbuntu 单包
+  └─ Job 4: 生成 latest.json / SHA256SUMS.txt 并发布到 GitHub Release
 ```
+
+### 更新清单与镜像回退
+
+Release 发布时会额外生成：
+
+- `latest.json`：统一更新清单，包含版本号、Release 地址、各平台资产名称、下载地址、镜像地址和 SHA256。
+- `SHA256SUMS.txt`：所有 Release 资产的校验值。
+
+客户端读取更新清单时按以下顺序回退：
+
+1. GitHub 直连：`https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json`
+2. GitHub 代理：`https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json`
+3. Gitee 镜像：`https://gitee.com/CyrilPeng/KokoroMemo/raw/main/latest.json`
+
+`latest.json` 中每个 asset 也包含同样顺序的下载镜像。这样 PC GUI 和 Android `update.sh` 都不需要解析 GitHub 页面，只依赖稳定的机器可读清单。
+
+### PC 与 Android 更新策略
+
+- **PC GUI**：设置页读取 `latest.json`，比较当前版本与最新版本，按系统匹配 Windows MSI、Linux AppImage 或 macOS zip，并提供“下载更新包”和“打开发行页”。后续可在此基础上接入 Tauri updater 实现自动安装重启。
+- **Android**：包内 `update.sh` 读取同一份 `latest.json`，根据 `ANDROID_RUNTIME` 或运行环境选择 `android-termux-aarch64` / `android-prootubuntu-aarch64`，下载后校验 SHA256，停止服务、备份数据、替换程序文件、重装依赖并启动新版本。
+- **数据保护**：更新只替换 `kokoromemo/`、`webui/`、脚本和版本文件；保留 `config.yaml`、`data/`、日志和备份目录。Android 更新前会额外生成数据备份与程序备份。
 
 ### Windows 特殊处理
 

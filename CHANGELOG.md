@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### 新增
+
+- **统一更新清单** - Release 工作流新增 `latest.json` 与 `SHA256SUMS.txt`，记录最新版本、各平台资产、下载镜像和校验值，供 PC 与 Android 共用。
+- **Android 一键更新** - Android 单包新增 `update.sh`，支持检查最新版本、选择匹配运行环境的 aarch64 包、校验 SHA256、备份数据并替换程序文件。
+
+### 改进
+
+- **多源更新回退** - 更新检测和 Android 更新脚本按 GitHub 直连、`https://gh-proxy.org/`、Gitee 镜像顺序回退，降低国内网络环境下无法检查或下载更新的问题。
+- **GUI 更新入口** - 设置页改为读取统一更新清单，展示匹配安装包、更新来源，并提供下载更新包入口和 Android 一键更新命令提示。
+
 ### 修复
 
 - **会话配置摘要兼容字段** - 修复 `GET /admin/conversations/{conversation_id}/config` 只返回新会话策略字段，导致旧 GUI / 测试读取 `mounted_library_ids`、`write_library_id`、`state_item_count` 等摘要字段失败的问题。

@@ -275,7 +275,7 @@ ensure_safe_install_dir() {
 patch_termux_install_scripts() {
   mkdir -p "$INSTALL_DIR/kokoromemo/requirements"
   cat > "$INSTALL_DIR/kokoromemo/requirements/android-termux.txt" <<'REQ'
-# Termux uses the system python-pydantic package to avoid building pydantic-core on Android.
+# Termux uses pydantic v1 to avoid pydantic-core/Rust builds on Android.
 # Install this file with pip --no-deps.
 annotated-doc>=0.0.2
 anyio>=4.0
@@ -288,13 +288,13 @@ sniffio>=1.3
 typing-extensions>=4.8
 typing-inspection>=0.4
 starlette>=0.40,<0.51
-fastapi>=0.115
+pydantic>=1.10.15,<2
+fastapi>=0.115,<0.116
 uvicorn>=0.30
 httpx>=0.27
 pyyaml>=6.0
 aiosqlite>=0.20
 python-dotenv>=1.0
-pydantic-settings>=2.4
 REQ
   cat > "$INSTALL_DIR/install.sh" <<'INSTALL'
 #!/data/data/com.termux/files/usr/bin/bash
@@ -326,17 +326,7 @@ apt_install() {
 }
 
 pkg update -y
-apt_install python python-pip python-ensurepip-wheels python-numpy python-pydantic
-
-if ! python - <<'PY'
-import pydantic
-import pydantic_core
-print(f"Using Termux system pydantic: {pydantic.__version__}")
-PY
-then
-  echo "Termux system python-pydantic is unavailable. Please check whether python-pydantic was installed successfully."
-  exit 1
-fi
+apt_install python python-pip python-ensurepip-wheels python-numpy
 
 rm -rf "$VENV_DIR"
 if ! python -m venv --system-site-packages "$VENV_DIR"; then
@@ -355,9 +345,10 @@ fi
 "$VENV_DIR/bin/python" -m pip install --prefer-binary --no-deps "${PIP_ARGS[@]}" -r "$APP_DIR/requirements/android-termux.txt"
 "$VENV_DIR/bin/python" - <<'PY'
 import pydantic
-import pydantic_core
-import pydantic_settings
-print(f"Virtualenv reuses system pydantic: {pydantic.__version__}")
+version = tuple(int(part) for part in pydantic.__version__.split('.')[:2])
+if version >= (2, 0):
+    raise SystemExit(f"Termux requires pydantic v1, got {pydantic.__version__}")
+print(f"Using Termux-compatible pydantic: {pydantic.__version__}")
 PY
 "$VENV_DIR/bin/python" -m pip install --no-deps "$APP_DIR"
 
@@ -375,7 +366,6 @@ echo "  bash $ROOT_DIR/start.sh"
 INSTALL
   chmod +x "$INSTALL_DIR/install.sh"
 }
-
 create_shortcuts() {
   local bin_dir="${PREFIX:-$HOME/.local}/bin"
   mkdir -p "$bin_dir"

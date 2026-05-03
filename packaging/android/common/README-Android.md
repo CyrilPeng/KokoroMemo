@@ -22,7 +22,7 @@ curl -fsSL https://github.com/CyrilPeng/KokoroMemo/raw/main/scripts/termux-setup
 
 安装过程中如果 Termux 提示 `openssl.cnf` 等配置文件是否覆盖，脚本会默认保留当前配置并继续安装；如果虚拟环境创建失败，脚本会自动补齐 pip/ensurepip 组件后重试。
 
-Termux 端会使用系统预编译的 `python-pydantic`，并以 `pip --no-deps` 安装应用依赖，避免在手机上编译 `pydantic-core` / Rust 扩展。如果你看到旧脚本正在下载 `pydantic_core-*.tar.gz`，请按 `Ctrl+C` 取消后重新运行上面的一键安装命令。
+Termux 端会固定使用不依赖 `pydantic-core` 的 `pydantic v1` 兼容组合，并以 `pip --no-deps` 安装应用依赖，避免在手机上编译 `pydantic-core` / Rust 扩展。如果你看到旧脚本正在下载 `pydantic_core-*.tar.gz`，请按 `Ctrl+C` 取消后重新运行上面的一键安装命令。
 
 为了避免首次安装卡在 GitHub 或镜像清单请求上，安装脚本默认不请求 `latest.json`，而是直接使用内置的当前稳定版本下载地址。安装完成后可用 `kokoromemo update` 检查后续更新。
 

@@ -29,6 +29,16 @@ apt_install() {
 pkg update -y
 apt_install python python-pip python-ensurepip-wheels python-numpy python-pydantic
 
+if ! python - <<'PY'
+import pydantic
+import pydantic_core
+print(f"Using Termux system pydantic: {pydantic.__version__}")
+PY
+then
+  echo "Termux system python-pydantic is unavailable. Please check whether python-pydantic was installed successfully."
+  exit 1
+fi
+
 rm -rf "$VENV_DIR"
 if ! python -m venv --system-site-packages "$VENV_DIR"; then
   echo "虚拟环境创建失败，尝试补齐 Termux ensurepip 组件后重试..."
@@ -43,7 +53,13 @@ if [[ -d "$WHEEL_DIR" ]] && compgen -G "$WHEEL_DIR/*.whl" >/dev/null; then
   PIP_ARGS=(--find-links "$WHEEL_DIR")
 fi
 
-"$VENV_DIR/bin/python" -m pip install --prefer-binary "${PIP_ARGS[@]}" -r "$APP_DIR/requirements/android-termux.txt"
+"$VENV_DIR/bin/python" -m pip install --prefer-binary --no-deps "${PIP_ARGS[@]}" -r "$APP_DIR/requirements/android-termux.txt"
+"$VENV_DIR/bin/python" - <<'PY'
+import pydantic
+import pydantic_core
+import pydantic_settings
+print(f"Virtualenv reuses system pydantic: {pydantic.__version__}")
+PY
 "$VENV_DIR/bin/python" -m pip install --no-deps "$APP_DIR"
 
 mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/logs"

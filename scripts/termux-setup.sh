@@ -271,6 +271,111 @@ ensure_safe_install_dir() {
   esac
 }
 
+
+patch_termux_install_scripts() {
+  mkdir -p "$INSTALL_DIR/kokoromemo/requirements"
+  cat > "$INSTALL_DIR/kokoromemo/requirements/android-termux.txt" <<'REQ'
+# Termux uses the system python-pydantic package to avoid building pydantic-core on Android.
+# Install this file with pip --no-deps.
+annotated-doc>=0.0.2
+anyio>=4.0
+certifi>=2024.0
+click>=8.0
+h11>=0.16
+httpcore>=1.0
+idna>=3.0
+sniffio>=1.3
+typing-extensions>=4.8
+typing-inspection>=0.4
+starlette>=0.40,<0.51
+fastapi>=0.115
+uvicorn>=0.30
+httpx>=0.27
+pyyaml>=6.0
+aiosqlite>=0.20
+python-dotenv>=1.0
+pydantic-settings>=2.4
+REQ
+  cat > "$INSTALL_DIR/install.sh" <<'INSTALL'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$ROOT_DIR/kokoromemo"
+VENV_DIR="$ROOT_DIR/.venv"
+WHEEL_DIR="$ROOT_DIR/wheels/termux-aarch64"
+ARCH="$(uname -m)"
+
+if [[ "$ARCH" != "aarch64" ]]; then
+  echo "当前设备架构为 $ARCH，此安装包仅支持 Termux aarch64。"
+  exit 1
+fi
+
+if [[ -z "${PREFIX:-}" || "$PREFIX" != *"com.termux"* ]]; then
+  echo "请在 Termux 原生环境中运行此安装脚本。"
+  exit 1
+fi
+
+echo "=== KokoroMemo Android Termux aarch64 安装 ==="
+
+apt_install() {
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    -o Dpkg::Options::="--force-confold" \
+    -o Dpkg::Options::="--force-confdef" \
+    "$@"
+}
+
+pkg update -y
+apt_install python python-pip python-ensurepip-wheels python-numpy python-pydantic
+
+if ! python - <<'PY'
+import pydantic
+import pydantic_core
+print(f"Using Termux system pydantic: {pydantic.__version__}")
+PY
+then
+  echo "Termux system python-pydantic is unavailable. Please check whether python-pydantic was installed successfully."
+  exit 1
+fi
+
+rm -rf "$VENV_DIR"
+if ! python -m venv --system-site-packages "$VENV_DIR"; then
+  echo "虚拟环境创建失败，尝试补齐 Termux ensurepip 组件后重试..."
+  apt_install python-pip python-ensurepip-wheels
+  rm -rf "$VENV_DIR"
+  python -m venv --system-site-packages "$VENV_DIR"
+fi
+"$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
+
+PIP_ARGS=()
+if [[ -d "$WHEEL_DIR" ]] && compgen -G "$WHEEL_DIR/*.whl" >/dev/null; then
+  PIP_ARGS=(--find-links "$WHEEL_DIR")
+fi
+
+"$VENV_DIR/bin/python" -m pip install --prefer-binary --no-deps "${PIP_ARGS[@]}" -r "$APP_DIR/requirements/android-termux.txt"
+"$VENV_DIR/bin/python" - <<'PY'
+import pydantic
+import pydantic_core
+import pydantic_settings
+print(f"Virtualenv reuses system pydantic: {pydantic.__version__}")
+PY
+"$VENV_DIR/bin/python" -m pip install --no-deps "$APP_DIR"
+
+mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/logs"
+if [[ ! -f "$ROOT_DIR/config.yaml" ]]; then
+  cp "$ROOT_DIR/config.example.yaml" "$ROOT_DIR/config.yaml"
+fi
+
+chmod +x "$ROOT_DIR"/*.sh
+bash "$ROOT_DIR/doctor.sh"
+
+echo ""
+echo "安装完成。启动命令："
+echo "  bash $ROOT_DIR/start.sh"
+INSTALL
+  chmod +x "$INSTALL_DIR/install.sh"
+}
+
 create_shortcuts() {
   local bin_dir="${PREFIX:-$HOME/.local}/bin"
   mkdir -p "$bin_dir"
@@ -420,6 +525,7 @@ rm -rf "$INSTALL_DIR"
 mv "$PACKAGE_ROOT" "$INSTALL_DIR"
 restore_existing_data
 cd "$INSTALL_DIR"
+patch_termux_install_scripts
 chmod +x ./*.sh
 bash install.sh
 create_shortcuts

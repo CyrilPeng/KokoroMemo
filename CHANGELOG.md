@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### 修复
+
+- **会话配置摘要兼容字段** - 修复 `GET /admin/conversations/{conversation_id}/config` 只返回新会话策略字段，导致旧 GUI / 测试读取 `mounted_library_ids`、`write_library_id`、`state_item_count` 等摘要字段失败的问题。
+
+### 兼容
+
+- **会话配置 API 合并** - 保留 `POST /admin/conversations/{conversation_id}/config` 作为 `PUT` 的兼容入口，并统一处理 `library_ids`、`mounted_library_ids` 和 `write_library_id`，避免新旧状态板配置接口返回结构不一致。
+
 ## v0.8.0 (2026-05-03)
 
 ### 新增

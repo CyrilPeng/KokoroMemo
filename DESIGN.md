@@ -561,12 +561,26 @@ GUI `/state` 是表格工作台：
 | `GET /admin/state/table-templates/{template_id}` | 查看完整 v2 表格模板 |
 | `GET /admin/conversation-profiles` | 获取内置会话方案 |
 | `GET /admin/conversation-defaults` / `PUT /admin/conversation-defaults` | 读取/保存新会话默认策略 |
-| `GET /admin/conversations/{conversation_id}/config` / `PUT /admin/conversations/{conversation_id}/config` | 读取/保存当前会话策略 |
+| `GET /admin/conversations/{conversation_id}/config` | 读取当前会话策略，并返回旧 GUI 仍需要的挂载库、写入库、状态项数量和新会话标记 |
+| `PUT /admin/conversations/{conversation_id}/config` / `POST /admin/conversations/{conversation_id}/config` | 保存当前会话策略；`POST` 为兼容入口，等价于 `PUT` |
 | `GET /admin/conversations/{conversation_id}/state/tables` | 获取会话 v2 表格状态 |
 | `POST /admin/conversations/{conversation_id}/state/tables/{table_key}/rows` | 新增或更新一行 |
 | `DELETE /admin/state/table-rows/{row_id}` | 删除/完成一行 |
 | `GET /admin/conversations/{conversation_id}/state/preview` | 获取真实注入预览 |
 | `POST /admin/conversations/{conversation_id}/state/fill` | 手动运行 State Filler |
+
+`GET /admin/conversations/{conversation_id}/config` 是新旧会话配置的合并摘要接口。返回值除 `ConversationConfig` 的 `profile_id`、`template_id`、`table_template_id`、`mount_preset_id`、`memory_write_policy`、`state_update_policy`、`injection_policy` 外，还必须包含：
+
+| 字段 | 用途 |
+|---|---|
+| `mounted_library_ids` | 当前会话挂载的记忆库 ID 列表，兼容旧状态板和 GUI 读取逻辑 |
+| `write_library_id` | 当前会话长期记忆写入目标库 |
+| `mounts` | 完整挂载记录，包含是否写入目标等元数据 |
+| `template_name` | 当前旧字段式状态板模板名称，用于兼容展示 |
+| `state_item_count` | 当前会话旧字段式 active 状态项数量 |
+| `is_new_session` | 判断是否仍是默认空会话，便于 GUI 提示用户先选择方案 |
+
+`PUT/POST` 保存时同时接受 `library_ids` 与 `mounted_library_ids`，并根据 `write_library_id` 更新会话挂载，保证 v0.7 之后的新策略字段与旧挂载字段可以在同一个入口内保存。
 
 ### 旧字段式状态板兼容
 

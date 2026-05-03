@@ -48,14 +48,35 @@ async def update_conversation_defaults_api(request: Request, data: dict = Body(.
 
 @router.get("/admin/conversations/{conversation_id}/config")
 async def get_conversation_config_api(conversation_id: str, request: Request):
-    """Get or create policy config for a conversation."""
+    """Get conversation policy config with legacy summary fields."""
     _require_admin(request)
     from app.core.state import get_config
+    from app.storage.sqlite_cards import get_conversation_mounts
     from app.storage.sqlite_state import SQLiteStateStore
 
-    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    store = SQLiteStateStore(db_path)
     config = await store.ensure_conversation_config(conversation_id)
-    return config.to_dict()
+    mounts = await get_conversation_mounts(db_path, conversation_id)
+    mounted_library_ids = [mount["library_id"] for mount in mounts]
+    write_library_id = next(
+        (mount["library_id"] for mount in mounts if mount.get("is_write_target")),
+        mounted_library_ids[0] if mounted_library_ids else "lib_default",
+    )
+    template = await store.get_conversation_template(conversation_id)
+    _, item_count = await store.list_items(conversation_id, status="active", limit=1)
+    data = config.to_dict()
+    data.update({
+        "mounted_library_ids": mounted_library_ids,
+        "write_library_id": write_library_id,
+        "mounts": mounts,
+        "template_id": data.get("template_id") or (template.template_id if template else None),
+        "template_name": template.name if template else None,
+        "state_item_count": item_count,
+        "is_new_session": item_count == 0 and mounted_library_ids == ["lib_default"],
+    })
+    return data
 
 
 @router.put("/admin/conversations/{conversation_id}/config")
@@ -63,17 +84,35 @@ async def update_conversation_config_api(conversation_id: str, request: Request,
     """Update policy config for a conversation."""
     _require_admin(request)
     from app.core.state import get_config
+    from app.storage.sqlite_cards import set_conversation_mounts
     from app.storage.sqlite_state import SQLiteStateStore
 
     payload = dict(data)
     payload["conversation_id"] = conversation_id
-    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    store = SQLiteStateStore(db_path)
     if payload.get("template_id") and not await store.get_template(payload["template_id"]):
         raise HTTPException(status_code=404, detail="Template not found")
     if payload.get("table_template_id") and not await store.get_table_template(payload["table_template_id"]):
         raise HTTPException(status_code=404, detail="State table template not found")
+    library_ids = payload.get("library_ids") or payload.get("mounted_library_ids") or []
+    if library_ids:
+        await set_conversation_mounts(
+            db_path,
+            conversation_id=conversation_id,
+            library_ids=library_ids,
+            write_library_id=payload.get("write_library_id"),
+            user_id=payload.get("user_id"),
+            character_id=payload.get("character_id"),
+        )
     config = await store.set_conversation_config(payload)
     return {"status": "ok", "config": config.to_dict()}
+
+
+@router.post("/admin/conversations/{conversation_id}/config")
+async def post_conversation_config_api(conversation_id: str, request: Request, data: dict = Body(...)):
+    return await update_conversation_config_api(conversation_id, request, data)
 
 
 def _is_loopback(client_host: str | None) -> bool:
@@ -1916,72 +1955,6 @@ async def reject_inbox_item(inbox_id: str, data=Body(default="")):
         latest_status = latest["status"] if latest else "missing"
         return {"status": "error", "message": f"Item already {latest_status}"}
     await insert_review_action(db_path, action="reject", inbox_id=inbox_id, note=note)
-    return {"status": "ok"}
-
-
-# --- Conversation Config Summary API ---
-
-@router.get("/admin/conversations/{conversation_id}/config")
-async def get_conversation_config(conversation_id: str, request: Request):
-    """Get aggregated session configuration: template, mounts, state item count, write target."""
-    _require_admin(request)
-    from app.core.state import get_config
-    from app.storage.sqlite_cards import get_conversation_mounts
-    from app.storage.sqlite_state import SQLiteStateStore
-
-    cfg = get_config()
-    db_path = cfg.storage.sqlite.memory_db
-
-    mounts = await get_conversation_mounts(db_path, conversation_id)
-    mounted_library_ids = [m["library_id"] for m in mounts]
-    write_library_id = next((m["library_id"] for m in mounts if m.get("is_write_target")), mounted_library_ids[0] if mounted_library_ids else "lib_default")
-
-    store = SQLiteStateStore(db_path)
-    template = await store.get_conversation_template(conversation_id)
-    items, item_count = await store.list_items(conversation_id, status="active", limit=1)
-
-    return {
-        "conversation_id": conversation_id,
-        "mounted_library_ids": mounted_library_ids,
-        "write_library_id": write_library_id,
-        "mounts": mounts,
-        "template_id": template.template_id if template else None,
-        "template_name": template.name if template else None,
-        "state_item_count": item_count,
-        "is_new_session": item_count == 0 and mounted_library_ids == ["lib_default"],
-    }
-
-
-@router.post("/admin/conversations/{conversation_id}/config")
-async def save_conversation_config(conversation_id: str, request: Request, data: dict = Body(...)):
-    """Save all session configuration at once: mounts, write target, template."""
-    _require_admin(request)
-    from app.core.state import get_config
-    from app.storage.sqlite_cards import set_conversation_mounts
-    from app.storage.sqlite_state import SQLiteStateStore
-
-    cfg = get_config()
-    db_path = cfg.storage.sqlite.memory_db
-
-    library_ids = data.get("library_ids") or data.get("mounted_library_ids") or []
-    write_library_id = data.get("write_library_id")
-    template_id = data.get("template_id")
-
-    if library_ids:
-        await set_conversation_mounts(
-            db_path,
-            conversation_id=conversation_id,
-            library_ids=library_ids,
-            write_library_id=write_library_id,
-            user_id=data.get("user_id"),
-            character_id=data.get("character_id"),
-        )
-
-    if template_id:
-        store = SQLiteStateStore(db_path)
-        if await store.get_template(template_id):
-            await store.set_conversation_template(conversation_id, template_id)
-
     return {"status": "ok"}
 
 

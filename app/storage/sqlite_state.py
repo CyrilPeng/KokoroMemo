@@ -1314,6 +1314,17 @@ class SQLiteStateStore:
             )
         )
 
+    async def update_conversation_character_refs(self, conversation_id: str, character_id: str | None) -> dict[str, int]:
+        """Update character references for state data belonging to one conversation."""
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            items = await db.execute(
+                "UPDATE conversation_state_items SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE conversation_id = ?",
+                (character_id, conversation_id),
+            )
+            await db.commit()
+            return {"items": items.rowcount}
+
     async def list_table_templates(self, include_inactive: bool = False) -> list[StateTableTemplate]:
         await self.init_schema()
         where = "" if include_inactive else "WHERE status = 'active'"

@@ -202,3 +202,15 @@ async def get_recent_messages(db_path: str, conversation_id: str, limit: int = 3
             }
             for row in rows
         ]
+
+
+async def update_conversation_character(db_path: str, conversation_id: str, character_id: str | None) -> int:
+    """Update saved turn ownership for a conversation."""
+    await init_chat_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            "UPDATE turns SET character_id = ? WHERE conversation_id = ?",
+            (character_id, conversation_id),
+        )
+        await db.commit()
+        return cursor.rowcount

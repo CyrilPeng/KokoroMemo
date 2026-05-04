@@ -798,6 +798,26 @@ async def copy_conversation_mounts(db_path: str, source_conversation_id: str, ta
     return len(rows)
 
 
+async def update_conversation_character_refs(db_path: str, conversation_id: str, character_id: str | None) -> dict[str, int]:
+    """Update character references tied to one conversation in memory-related tables."""
+    await init_cards_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        mounts = await db.execute(
+            "UPDATE conversation_memory_mounts SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE conversation_id = ?",
+            (character_id, conversation_id),
+        )
+        cards = await db.execute(
+            "UPDATE memory_cards SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE conversation_id = ?",
+            (character_id, conversation_id),
+        )
+        inbox = await db.execute(
+            "UPDATE memory_inbox SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE conversation_id = ?",
+            (character_id, conversation_id),
+        )
+        await db.commit()
+        return {"mounts": mounts.rowcount, "cards": cards.rowcount, "inbox": inbox.rowcount}
+
+
 # --- 记忆挂载预设 ---
 
 async def list_mount_presets(db_path: str, include_deleted: bool = False) -> list[dict]:

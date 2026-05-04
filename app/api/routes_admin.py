@@ -936,6 +936,7 @@ async def update_conversation_profile_api(conversation_id: str, request: Request
     from app.storage.sqlite_app import update_conversation_profile
 
     cfg = get_config()
+    old_item = next((item for item in (await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0))[0] if item.get("conversation_id") == conversation_id), None)
     item = await update_conversation_profile(
         cfg.storage.sqlite.app_db,
         conversation_id,
@@ -944,7 +945,21 @@ async def update_conversation_profile_api(conversation_id: str, request: Request
     )
     if not item:
         return {"status": "error", "message": "会话不存在或没有可更新字段"}
-    return {"status": "ok", "item": item}
+    sync_result = None
+    if "character_id" in data and (old_item or {}).get("character_id") != item.get("character_id"):
+        from pathlib import Path
+        from app.storage.sqlite_cards import update_conversation_character_refs
+        from app.storage.sqlite_conversation import update_conversation_character
+        from app.storage.sqlite_state import SQLiteStateStore
+
+        chat_db_path = str(Path(cfg.storage.root_dir, "conversations", conversation_id, "chat.sqlite"))
+        sync_result = {
+            "app": 1,
+            "chat_turns": await update_conversation_character(chat_db_path, conversation_id, item.get("character_id")),
+            "memory": await update_conversation_character_refs(cfg.storage.sqlite.memory_db, conversation_id, item.get("character_id")),
+            "state": await SQLiteStateStore(cfg.storage.sqlite.memory_db).update_conversation_character_refs(conversation_id, item.get("character_id")),
+        }
+    return {"status": "ok", "item": item, "sync": sync_result}
 
 
 @router.delete("/admin/conversations/{conversation_id}")

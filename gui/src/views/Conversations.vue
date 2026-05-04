@@ -500,5 +500,16 @@ onMounted(fetchAll)
   .conversations-page {
     padding: 0;
   }
+
+  .conversations-page :deep(.n-card__content),
+  .conversations-page :deep(.n-card-header) {
+    padding: 12px;
+  }
+
+  .conversations-page :deep(.n-data-table-th),
+  .conversations-page :deep(.n-data-table-td) {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
 </style>

@@ -141,6 +141,17 @@ const rowsByTable = computed(() => {
   }
   return result
 })
+const boardDiagnostics = computed(() => {
+  const issues: { label: string, type: 'default' | 'info' | 'success' | 'warning' | 'error' }[] = []
+  if (!conversationId.value.trim()) issues.push({ label: '未选择会话', type: 'warning' })
+  if (!config.value) issues.push({ label: '未加载策略', type: 'warning' })
+  if (config.value && !config.value.table_template_id && !config.value.template_id) issues.push({ label: '未绑定模板', type: 'error' })
+  if (config.value?.injection_policy === 'state_only' && rows.value.length === 0) issues.push({ label: '仅状态板但暂无状态行', type: 'warning' })
+  if (config.value?.memory_write_policy !== 'disabled' && config.value?.profile_id === 'rimtalk_colony') issues.push({ label: 'RimTalk 建议关闭长期记忆写入', type: 'error' })
+  if (template.value && rows.value.length === 0) issues.push({ label: '模板已就绪但暂无状态', type: 'info' })
+  if (!issues.length) issues.push({ label: '状态板健康', type: 'success' })
+  return issues
+})
 function conversationDisplayName(item: any) {
   return item?.title?.trim() || item?.conversation_id || '未命名会话'
 }
@@ -205,7 +216,7 @@ async function fetchOptions() {
     if (tableResp.ok) tableTemplates.value = (await tableResp.json()).items || []
     if (presetResp.ok) mountPresets.value = (await presetResp.json()).items || []
   } catch (error) {
-    console.warn('load state config options failed', error)
+    console.warn('加载状态板配置选项失败', error)
   }
 }
 
@@ -565,6 +576,13 @@ onMounted(() => {
         当前模板：{{ template.name }}。状态板已改为“表格模板 + 行级状态 + 操作式更新”，新增内容写入对应表格行，注入时按优先级压缩输出。
       </NAlert>
 
+      <NCard title="健康诊断">
+        <NSpace align="center" :wrap="true">
+          <NTag v-for="item in boardDiagnostics" :key="item.label" :type="item.type">{{ item.label }}</NTag>
+          <span style="color: #a1a1aa; font-size: 13px;">当前状态行 {{ rows.length }} 条，注入预览 {{ preview.char_count || 0 }} 字符。</span>
+        </NSpace>
+      </NCard>
+
       <NCard v-if="defaultConfig" title="新会话默认配置">
         <NForm label-placement="top">
           <NGrid :cols="24" :x-gap="12" :y-gap="12">
@@ -770,5 +788,24 @@ onMounted(() => {
 <style scoped>
 .state-page {
   padding: 20px;
+}
+
+@media (max-width: 768px) {
+  .state-page {
+    padding: 0;
+  }
+
+  .state-page :deep(.n-card__content),
+  .state-page :deep(.n-card-header) {
+    padding: 12px;
+  }
+
+  .state-page :deep(.n-grid) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .state-page :deep(.n-grid-item) {
+    grid-column: span 1 / span 1 !important;
+  }
 }
 </style>

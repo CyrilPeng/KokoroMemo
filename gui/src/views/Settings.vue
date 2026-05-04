@@ -502,6 +502,49 @@ const judgeModeOptions = computed(() => [
 ])
 
 const helpModal = ref('')
+const onboardingScenario = ref('roleplay')
+const onboardingSaving = ref(false)
+
+const onboardingPresets = [
+  {
+    key: 'roleplay',
+    name: '普通角色扮演',
+    desc: '适合 Cherry Studio、SillyTavern 等常规角色聊天，保留长期记忆候选与状态板。',
+    config: { memory_enabled: true, inject_enabled: true, extraction_enabled: true, max_injected_chars: 1500, final_top_k: 6, state_filler_enabled: true, rg_enabled: true, rg_mode: 'auto' },
+    defaults: { profile_id: 'airp_roleplay', memory_write_policy: 'candidate', state_update_policy: 'auto', injection_policy: 'mixed', library_ids: ['lib_default'], write_library_id: 'lib_default' },
+  },
+  {
+    key: 'sillytavern',
+    name: 'SillyTavern 长会话',
+    desc: '适合长篇角色卡聊天，优先减少重复召回，保留会话状态和重要长期记忆。',
+    config: { memory_enabled: true, inject_enabled: true, extraction_enabled: true, max_injected_chars: 1300, final_top_k: 5, state_filler_enabled: true, rg_enabled: true, rg_mode: 'auto', rg_every_n_turns: 8 },
+    defaults: { profile_id: 'airp_roleplay', memory_write_policy: 'stable_only', state_update_policy: 'auto', injection_policy: 'state_first', library_ids: ['lib_default'], write_library_id: 'lib_default' },
+  },
+  {
+    key: 'rimtalk',
+    name: 'RimTalk / 殖民地模拟',
+    desc: '适合大量角色轮换的场景，关闭长期记忆写入，避免把殖民地临时状态写成角色记忆。',
+    config: { memory_enabled: true, inject_enabled: true, extraction_enabled: false, max_injected_chars: 1200, final_top_k: 4, state_filler_enabled: true, rg_enabled: true, rg_mode: 'auto' },
+    defaults: { profile_id: 'rimtalk_colony', memory_write_policy: 'disabled', state_update_policy: 'auto', injection_policy: 'state_only', library_ids: ['lib_default'], write_library_id: 'lib_default' },
+  },
+  {
+    key: 'ttrpg',
+    name: '跑团 / 长篇剧情',
+    desc: '适合多章节剧情推进，强调任务、地点、关系和伏笔状态持续更新。',
+    config: { memory_enabled: true, inject_enabled: true, extraction_enabled: true, max_injected_chars: 1800, final_top_k: 8, state_filler_enabled: true, rg_enabled: true, rg_mode: 'auto', rg_every_n_turns: 4 },
+    defaults: { profile_id: 'ttrpg_story', memory_write_policy: 'candidate', state_update_policy: 'auto', injection_policy: 'state_first', library_ids: ['lib_default'], write_library_id: 'lib_default' },
+  },
+  {
+    key: 'proxy',
+    name: '仅代理转发',
+    desc: '只把 KokoroMemo 当 OpenAI 兼容代理使用，不写入记忆，也不注入状态板。',
+    config: { memory_enabled: false, inject_enabled: false, extraction_enabled: false, state_filler_enabled: false, rg_enabled: false, rg_mode: 'never' },
+    defaults: { profile_id: 'proxy_only', memory_write_policy: 'disabled', state_update_policy: 'disabled', injection_policy: 'none', library_ids: ['lib_default'], write_library_id: 'lib_default' },
+  },
+]
+
+const onboardingOptions = computed(() => onboardingPresets.map((item) => ({ label: item.name, value: item.key })))
+const selectedOnboardingPreset = computed(() => onboardingPresets.find((item) => item.key === onboardingScenario.value) || onboardingPresets[0])
 
 const providerUrlPlaceholder = computed(() => {
   const map: Record<string, string> = {
@@ -656,6 +699,29 @@ async function loadConfig() {
     // 使用默认值
   }
   loading.value = false
+}
+
+async function applyOnboardingPreset() {
+  const preset = selectedOnboardingPreset.value
+  onboardingSaving.value = true
+  try {
+    config.value = { ...config.value, ...preset.config }
+    const saved = await saveConfig()
+    if (!saved) return
+    const resp = await apiFetch('/admin/conversation-defaults', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(preset.defaults),
+    })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.detail || data.message || '保存默认会话策略失败')
+    localStorage.setItem('kokoromemo.onboardingPreset', preset.key)
+    message.success(`已套用“${preset.name}”推荐配置`)
+  } catch (error: any) {
+    message.error(error.message || '套用向导配置失败')
+  } finally {
+    onboardingSaving.value = false
+  }
 }
 
 async function saveConfig(): Promise<boolean> {
@@ -915,6 +981,36 @@ onMounted(() => {
     </div>
 
     <NTabs type="line" animated>
+      <NTabPane name="guide" tab="快速向导">
+        <NSpace vertical :size="16">
+          <NCard style="background: #18181b; border: 1px solid #27272a;">
+            <template #header>首次使用推荐配置</template>
+            <NSpace vertical>
+              <NAlert type="info" :show-icon="false">
+                选择最接近的使用场景后，系统会自动调整记忆、注入、状态板和新会话默认策略。不会修改你的模型 Base URL、API Key 和端口。
+              </NAlert>
+              <NForm label-placement="top" :show-feedback="false">
+                <NFormItem label="使用场景">
+                  <NSelect v-model:value="onboardingScenario" :options="onboardingOptions" />
+                </NFormItem>
+              </NForm>
+              <NCard size="small" :title="selectedOnboardingPreset.name">
+                <p style="color: #d4d4d8; line-height: 1.8; margin-top: 0;">{{ selectedOnboardingPreset.desc }}</p>
+                <NSpace>
+                  <NTag>方案：{{ selectedOnboardingPreset.defaults.profile_id }}</NTag>
+                  <NTag>记忆写入：{{ selectedOnboardingPreset.defaults.memory_write_policy }}</NTag>
+                  <NTag>注入策略：{{ selectedOnboardingPreset.defaults.injection_policy }}</NTag>
+                </NSpace>
+              </NCard>
+              <NSpace>
+                <NButton type="primary" :loading="onboardingSaving" @click="applyOnboardingPreset">套用推荐配置</NButton>
+                <NButton @click="loadConfig">恢复当前已保存配置</NButton>
+              </NSpace>
+            </NSpace>
+          </NCard>
+        </NSpace>
+      </NTabPane>
+
       <!-- 标签页 1： 模型配置 -->
       <NTabPane name="model" :tab="$t('settings.tabModel')">
         <NSpace vertical :size="16">

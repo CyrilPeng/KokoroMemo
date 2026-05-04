@@ -117,25 +117,27 @@ const columns = computed(() => [
 async function fetchAll() {
   loading.value = true
   try {
-    const [charResp, profilesResp, boardResp, tableResp, libResp, presetResp] = await Promise.all([
-      apiFetch('/admin/characters'),
-      apiFetch('/admin/conversation-profiles'),
-      apiFetch('/admin/state/templates'),
-      apiFetch('/admin/state/table-templates'),
-      apiFetch('/admin/memory-libraries'),
-      apiFetch('/admin/memory-mount-presets'),
-    ])
+    const charResp = await apiFetch('/admin/characters', { timeoutMs: 5000 })
     if (charResp.ok) characters.value = (await charResp.json()).items || []
-    if (profilesResp.ok) profiles.value = (await profilesResp.json()).items || []
-    if (boardResp.ok) boardTemplates.value = (await boardResp.json()).items || []
-    if (tableResp.ok) tableTemplates.value = (await tableResp.json()).items || []
-    if (libResp.ok) libraries.value = (await libResp.json()).items || []
-    if (presetResp.ok) mountPresets.value = (await presetResp.json()).items || []
   } catch (error: any) {
     message.error(`加载角色失败：${error.message || error}`)
   } finally {
     loading.value = false
   }
+
+  const results = await Promise.allSettled([
+    apiFetch('/admin/conversation-profiles', { timeoutMs: 5000 }),
+    apiFetch('/admin/state/templates', { timeoutMs: 5000 }),
+    apiFetch('/admin/state/table-templates', { timeoutMs: 5000 }),
+    apiFetch('/admin/memory-libraries', { timeoutMs: 5000 }),
+    apiFetch('/admin/memory-mount-presets', { timeoutMs: 5000 }),
+  ])
+  const [profilesResp, boardResp, tableResp, libResp, presetResp] = results.map((item) => item.status === 'fulfilled' ? item.value : null)
+  if (profilesResp?.ok) profiles.value = (await profilesResp.json()).items || []
+  if (boardResp?.ok) boardTemplates.value = (await boardResp.json()).items || []
+  if (tableResp?.ok) tableTemplates.value = (await tableResp.json()).items || []
+  if (libResp?.ok) libraries.value = (await libResp.json()).items || []
+  if (presetResp?.ok) mountPresets.value = (await presetResp.json()).items || []
 }
 
 async function openCharacter(row: Character) {
@@ -233,23 +235,23 @@ onMounted(fetchAll)
         </template>
         <NSpace vertical>
           <NAlert type="info" :show-icon="false">角色中心用于管理角色档案、默认会话策略、记忆库绑定和该角色已有会话。RimTalk / 殖民地角色建议使用“仅状态板”并关闭长期记忆写入。</NAlert>
-          <NGrid :cols="24" :x-gap="12">
-            <NGridItem :span="10"><NInput v-model:value="keyword" placeholder="搜索角色 ID、名称或别名" clearable /></NGridItem>
-            <NGridItem :span="6"><NSelect v-model:value="profileFilter" :options="filterProfileOptions" /></NGridItem>
-            <NGridItem :span="8"><NSpace justify="end"><NButton :loading="loading" @click="fetchAll"><template #icon><NIcon :component="RefreshOutline" /></template>刷新</NButton></NSpace></NGridItem>
+          <NGrid cols="1 m:24" item-responsive responsive="screen" :x-gap="12" :y-gap="12">
+            <NGridItem span="1 m:10"><NInput v-model:value="keyword" placeholder="搜索角色 ID、名称或别名" clearable /></NGridItem>
+            <NGridItem span="1 m:6"><NSelect v-model:value="profileFilter" :options="filterProfileOptions" /></NGridItem>
+            <NGridItem span="1 m:8"><NSpace justify="end"><NButton :loading="loading" @click="fetchAll"><template #icon><NIcon :component="RefreshOutline" /></template>刷新</NButton></NSpace></NGridItem>
           </NGrid>
         </NSpace>
       </NCard>
 
       <NSpin :show="loading">
         <NCard>
-          <NDataTable v-if="filteredCharacters.length" :columns="columns" :data="filteredCharacters" :pagination="{ pageSize: 12 }" />
+          <NDataTable v-if="filteredCharacters.length" :columns="columns" :data="filteredCharacters" :pagination="{ pageSize: 12 }" :scroll-x="1040" />
           <NEmpty v-else description="暂无角色或没有匹配结果" />
         </NCard>
       </NSpin>
     </NSpace>
 
-    <NDrawer v-model:show="showDrawer" width="900">
+    <NDrawer v-model:show="showDrawer" width="min(900px, 100vw)">
       <NDrawerContent v-if="selected" :title="selected.display_name || selected.character_id" closable>
         <NTabs type="line" animated>
           <NTabPane name="profile" tab="基础档案">
@@ -337,5 +339,16 @@ onMounted(fetchAll)
 <style scoped>
 .characters-page {
   padding: 20px;
+}
+
+@media (max-width: 768px) {
+  .characters-page {
+    padding: 0;
+  }
+
+  .characters-page :deep(.n-card__content),
+  .characters-page :deep(.n-card-header) {
+    padding: 14px;
+  }
 }
 </style>

@@ -34,22 +34,27 @@ const route = useRoute()
 const { t } = useI18n()
 
 const serverVersion = ref('')
-const isMobile = ref(false)
+const isMobile = ref(typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false)
 const mobileMenuOpen = ref(false)
 let mediaQuery: MediaQueryList | null = null
 
 function updateMobileFlag() {
   isMobile.value = Boolean(mediaQuery?.matches ?? window.innerWidth <= 768)
+  if (!isMobile.value) mobileMenuOpen.value = false
 }
 
 onMounted(() => {
   mediaQuery = window.matchMedia('(max-width: 768px)')
   updateMobileFlag()
-  mediaQuery.addEventListener?.('change', updateMobileFlag)
+  if (mediaQuery.addEventListener) mediaQuery.addEventListener('change', updateMobileFlag)
+  else mediaQuery.addListener?.(updateMobileFlag)
+  window.addEventListener('resize', updateMobileFlag, { passive: true })
 })
 
 onBeforeUnmount(() => {
-  mediaQuery?.removeEventListener?.('change', updateMobileFlag)
+  if (mediaQuery?.removeEventListener) mediaQuery.removeEventListener('change', updateMobileFlag)
+  else mediaQuery?.removeListener?.(updateMobileFlag)
+  window.removeEventListener('resize', updateMobileFlag)
 })
 
 onMounted(async () => {
@@ -77,7 +82,7 @@ const menuOptions = computed<MenuOption[]>(() => [
 ])
 
 function handleMenuUpdate(key: string) {
-  router.push(key)
+  if (key !== route.path) router.push(key)
 }
 
 
@@ -107,8 +112,8 @@ async function openGitHub() {
 }
 
 function handleMobileMenuUpdate(key: string) {
-  handleMenuUpdate(key)
   mobileMenuOpen.value = false
+  handleMenuUpdate(key)
 }
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -213,7 +218,8 @@ const themeOverrides: GlobalThemeOverrides = {
 
 <style scoped>
 .app-shell {
-  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
   background: #0f0f11;
 }
 .app-sidebar {
@@ -255,8 +261,8 @@ const themeOverrides: GlobalThemeOverrides = {
   top: 0;
   left: 0;
   right: 0;
-  height: 56px;
-  padding: 0 12px;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 12px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -290,6 +296,7 @@ const themeOverrides: GlobalThemeOverrides = {
   z-index: 1000;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
+  touch-action: manipulation;
 }
 .mobile-menu-panel {
   position: relative;
@@ -298,6 +305,8 @@ const themeOverrides: GlobalThemeOverrides = {
   background: #18181b;
   border-right: 1px solid #27272a;
   box-shadow: 12px 0 32px rgba(0, 0, 0, 0.35);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .mobile-menu-close {
   position: absolute;
@@ -312,8 +321,15 @@ const themeOverrides: GlobalThemeOverrides = {
   gap: 8px;
 }
 @media (max-width: 768px) {
+  .app-shell {
+    height: 100dvh;
+  }
   :deep(.n-layout-scroll-container) {
     min-width: 0;
+  }
+
+  :deep(.n-layout-content .n-layout-scroll-container) {
+    padding: calc(72px + env(safe-area-inset-top, 0px)) 12px 16px !important;
   }
 }
 </style>

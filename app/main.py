@@ -41,9 +41,11 @@ def _read_version() -> str:
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.responses import Response
 
 from app.core.config import load_config, resolve_config_path
 from app.core.logging import setup_logging
@@ -101,14 +103,17 @@ def create_app() -> FastAPI:
 
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
+    class CacheStaticFiles(StaticFiles):
+        def file_response(self, *args, **kwargs) -> Response:
+            response = super().file_response(*args, **kwargs)
+            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+            return response
+
     # 如果存在预构建前端，则提供 Vue SPA 静态资源（Web UI / Termux 模式）。
     _web_dist_env = os.getenv("KOKOROMEMO_WEB_DIST", "").strip()
     _gui_dist = Path(_web_dist_env).expanduser() if _web_dist_env else Path(__file__).resolve().parent.parent / "gui" / "dist"
     if _gui_dist.is_dir():
-        from fastapi.staticfiles import StaticFiles
-        from fastapi.responses import FileResponse
-
-        app.mount("/assets", StaticFiles(directory=_gui_dist / "assets"), name="static-assets")
+        app.mount("/assets", CacheStaticFiles(directory=_gui_dist / "assets"), name="static-assets")
 
         _API_PREFIXES = ("/admin", "/v1", "/health", "/ws")
 
@@ -119,8 +124,12 @@ def create_app() -> FastAPI:
                 return JSONResponse(status_code=404, content={"detail": "Not found"})
             file = _gui_dist / path
             if file.is_file():
-                return FileResponse(file)
-            return FileResponse(_gui_dist / "index.html")
+                response = FileResponse(file)
+                response.headers.setdefault("Cache-Control", "public, max-age=3600")
+                return response
+            response = FileResponse(_gui_dist / "index.html")
+            response.headers.setdefault("Cache-Control", "no-cache")
+            return response
 
     @app.middleware("http")
     async def admin_auth_middleware(request, call_next):

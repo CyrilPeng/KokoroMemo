@@ -9,9 +9,39 @@ body {
   background: #0f0f11;
   color: #e4e4e7;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 #app {
-  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
   overflow: hidden;
+}
+
+button,
+[role='button'],
+.n-button,
+.n-menu-item-content {
+  touch-action: manipulation;
+}
+
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .n-card,
+  .n-modal,
+  .n-drawer-content {
+    max-width: 100vw;
+  }
+
+  .n-data-table {
+    max-width: 100%;
+  }
+
+  .n-space {
+    max-width: 100%;
+  }
 }

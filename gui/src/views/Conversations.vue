@@ -38,6 +38,12 @@ function characterName(characterId?: string | null) {
   return character?.display_name || characterId
 }
 
+function briefText(value?: string | null, maxLength = 72) {
+  const text = (value || '').replace(/\s+/g, ' ').trim()
+  if (!text) return '暂无'
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text
+}
+
 const characterOptions = computed(() => characters.value.map((item) => ({
   label: item.display_name ? `${item.display_name}（${item.character_id}）` : item.character_id,
   value: item.character_id,
@@ -55,7 +61,8 @@ const clientFilterOptions = computed(() => {
 
 const filteredConversations = computed(() => conversations.value.filter((item) => {
   const query = keyword.value.trim().toLowerCase()
-  const searchable = `${item.title || ''} ${item.conversation_id || ''} ${item.character_id || ''} ${item.character_display_name || ''} ${item.client_name || ''}`.toLowerCase()
+  const diagnostics = (item.diagnostics || []).map((diag: any) => diag.label).join(' ')
+  const searchable = `${item.title || ''} ${item.conversation_id || ''} ${item.character_id || ''} ${item.character_display_name || ''} ${item.client_name || ''} ${item.last_user_message || ''} ${item.last_assistant_message || ''} ${diagnostics}`.toLowerCase()
   if (query && !searchable.includes(query)) return false
   if (characterFilter.value && item.character_id !== characterFilter.value) return false
   if (clientFilter.value && item.client_name !== clientFilter.value) return false
@@ -71,11 +78,22 @@ const columns = computed(() => [
   },
   { title: '角色', key: 'character_id', minWidth: 180, render: (row: Conversation) => characterName(row.character_id) },
   { title: '客户端', key: 'client_name', width: 130, render: (row: Conversation) => row.client_name || '-' },
+  {
+    title: '最近消息', key: 'summary', minWidth: 260, render: (row: Conversation) => h('div', { class: 'summary-cell' }, [
+      h('div', [h('span', { class: 'summary-role' }, '用户：'), briefText(row.last_user_message, 56)]),
+      h('div', [h('span', { class: 'summary-role' }, '助手：'), briefText(row.last_assistant_message, 56)]),
+      h('div', { class: 'summary-count' }, `${row.message_count || 0} 条消息，${row.turn_count || 0} 个轮次`),
+    ]),
+  },
   { title: '最近活跃', key: 'last_seen_at', width: 170, render: (row: Conversation) => row.last_seen_at || '-' },
   {
-    title: '状态', key: 'status', width: 120, render: (row: Conversation) => h(NTag, { size: 'small', type: row.title ? 'success' : 'warning' }, {
-      default: () => row.title ? '已命名' : '未命名',
-    }),
+    title: '诊断', key: 'diagnostics', minWidth: 180, render: (row: Conversation) => {
+      const diagnostics = row.diagnostics || []
+      if (!diagnostics.length) return h(NTag, { size: 'small', type: 'success' }, { default: () => '正常' })
+      return h(NSpace, { size: 4 }, {
+        default: () => diagnostics.map((diag: any) => h(NTag, { size: 'small', type: diag.type || 'default' }, { default: () => diag.label })),
+      })
+    },
   },
   {
     title: '操作', key: 'actions', width: 250, render: (row: Conversation) => h(NSpace, { size: 6 }, {
@@ -188,7 +206,7 @@ onMounted(fetchAll)
             会话名称只是便于辨认的别名，后端仍使用原始 conversation_id 识别会话。
           </NAlert>
           <NGrid cols="1 m:24" item-responsive responsive="screen" :x-gap="12" :y-gap="12">
-            <NGridItem span="1 m:9"><NInput v-model:value="keyword" placeholder="搜索会话名称、ID、角色或客户端" clearable /></NGridItem>
+            <NGridItem span="1 m:9"><NInput v-model:value="keyword" placeholder="搜索名称、ID、角色、客户端、最近消息或诊断" clearable /></NGridItem>
             <NGridItem span="1 m:6"><NSelect v-model:value="characterFilter" :options="characterFilterOptions" filterable /></NGridItem>
             <NGridItem span="1 m:5"><NSelect v-model:value="clientFilter" :options="clientFilterOptions" /></NGridItem>
             <NGridItem span="1 m:4"><NSpace justify="end"><NButton :loading="loading" @click="fetchAll">刷新</NButton></NSpace></NGridItem>
@@ -198,7 +216,7 @@ onMounted(fetchAll)
 
       <NSpin :show="loading">
         <NCard>
-          <NDataTable v-if="filteredConversations.length" :columns="columns" :data="filteredConversations" :pagination="{ pageSize: 12 }" :scroll-x="1120" />
+          <NDataTable v-if="filteredConversations.length" :columns="columns" :data="filteredConversations" :pagination="{ pageSize: 12 }" :scroll-x="1380" />
           <NEmpty v-else description="暂无会话或没有匹配结果" />
         </NCard>
       </NSpin>
@@ -232,6 +250,7 @@ onMounted(fetchAll)
             <NDescriptionsItem label="角色">{{ characterName(previewConversation.character_id) }}</NDescriptionsItem>
             <NDescriptionsItem label="客户端">{{ previewConversation.client_name || '-' }}</NDescriptionsItem>
             <NDescriptionsItem label="最近活跃">{{ previewConversation.last_seen_at || '-' }}</NDescriptionsItem>
+            <NDescriptionsItem label="消息数量">{{ previewConversation.message_count || 0 }} 条消息，{{ previewConversation.turn_count || 0 }} 个轮次</NDescriptionsItem>
             <NDescriptionsItem label="原始 ID">{{ previewConversation.conversation_id }}</NDescriptionsItem>
           </NDescriptions>
           <NEmpty v-if="!previewMessages.length" description="暂无可预览消息" />
@@ -250,6 +269,16 @@ onMounted(fetchAll)
 <style scoped>
 .conversations-page {
   padding: 20px;
+}
+
+.summary-cell {
+  line-height: 1.55;
+}
+
+.summary-role,
+.summary-count {
+  color: #a1a1aa;
+  font-size: 12px;
 }
 
 .preview-list {

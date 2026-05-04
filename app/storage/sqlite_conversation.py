@@ -178,7 +178,7 @@ async def get_all_messages(db_path: str, conversation_id: str) -> list[dict]:
 
 
 async def get_recent_messages(db_path: str, conversation_id: str, limit: int = 30) -> list[dict]:
-    """Return recent messages in display order for quick conversation preview."""
+    """??????????????????????"""
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -204,8 +204,47 @@ async def get_recent_messages(db_path: str, conversation_id: str, limit: int = 3
         ]
 
 
+async def get_conversation_message_summary(db_path: str, conversation_id: str) -> dict:
+    """?????????????????"""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM messages WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        row = await cursor.fetchone()
+        message_count = row[0] if row else 0
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM turns WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        row = await cursor.fetchone()
+        turn_count = row[0] if row else 0
+
+        async def latest_content(role: str) -> str | None:
+            cursor = await db.execute(
+                """
+                SELECT content
+                FROM messages
+                WHERE conversation_id = ? AND role = ? AND content IS NOT NULL AND TRIM(content) != ''
+                ORDER BY created_at DESC, message_id DESC
+                LIMIT 1
+                """,
+                (conversation_id, role),
+            )
+            row = await cursor.fetchone()
+            return row["content"] if row else None
+
+        return {
+            "message_count": message_count,
+            "turn_count": turn_count,
+            "last_user_message": await latest_content("user"),
+            "last_assistant_message": await latest_content("assistant"),
+        }
+
+
 async def update_conversation_character(db_path: str, conversation_id: str, character_id: str | None) -> int:
-    """Update saved turn ownership for a conversation."""
+    """?????????????"""
     await init_chat_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         cursor = await db.execute(

@@ -673,20 +673,21 @@ async def preview_conversation_api(
     request: Request,
     limit: int = Query(default=30, ge=1, le=100),
 ):
-    """Return recent messages for quick conversation ownership preview."""
+    """返回最近消息，供快速确认会话归属。"""
     _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_app import list_conversations
-    from app.storage.sqlite_conversation import get_recent_messages
+    from app.storage.sqlite_conversation import get_conversation_message_summary, get_recent_messages
 
     cfg = get_config()
     conversations, _ = await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0)
     conversation = next((item for item in conversations if item.get("conversation_id") == conversation_id), None)
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=404, detail="会话不存在")
     chat_db_path = str(Path(cfg.storage.root_dir, "conversations", conversation_id, "chat.sqlite"))
     messages = await get_recent_messages(chat_db_path, conversation_id, limit=limit) if Path(chat_db_path).exists() else []
-    return {"conversation": conversation, "messages": messages}
+    summary = await get_conversation_message_summary(chat_db_path, conversation_id) if Path(chat_db_path).exists() else {}
+    return {"conversation": {**conversation, **summary}, "messages": messages}
 
 
 @router.get("/admin/discovered-characters")
@@ -918,13 +919,40 @@ async def list_conversations_api(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    """List recent conversations ordered by last activity."""
+    """按最近活跃时间列出会话，并补充摘要与诊断信息。"""
     _require_admin(request)
+    from pathlib import Path
     from app.core.state import get_config
     from app.storage.sqlite_app import list_conversations
+    from app.storage.sqlite_conversation import get_conversation_message_summary
+    from app.storage.sqlite_state import SQLiteStateStore
 
     cfg = get_config()
     items, total = await list_conversations(cfg.storage.sqlite.app_db, limit=limit, offset=offset)
+    store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+    for item in items:
+        conversation_id = item.get("conversation_id")
+        chat_db_path = Path(cfg.storage.root_dir, "conversations", conversation_id, "chat.sqlite")
+        summary = await get_conversation_message_summary(str(chat_db_path), conversation_id) if chat_db_path.exists() else {
+            "message_count": 0,
+            "turn_count": 0,
+            "last_user_message": None,
+            "last_assistant_message": None,
+        }
+        config = await store.get_conversation_config(conversation_id)
+        item.update(summary)
+        issues = []
+        if not (item.get("title") or "").strip():
+            issues.append({"key": "untitled", "label": "未命名", "type": "warning"})
+        if not item.get("character_id"):
+            issues.append({"key": "no_character", "label": "未绑定角色", "type": "error"})
+        if summary["message_count"] <= 0:
+            issues.append({"key": "no_messages", "label": "无消息", "type": "default"})
+        if not config:
+            issues.append({"key": "no_config", "label": "未配置策略", "type": "warning"})
+        elif not config.template_id:
+            issues.append({"key": "no_template", "label": "无状态模板", "type": "warning"})
+        item["diagnostics"] = issues
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 

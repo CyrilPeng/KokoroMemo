@@ -758,6 +758,54 @@ async def get_inbox_item(db_path: str, inbox_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+async def list_memory_diagnostics(
+    db_path: str,
+    character_id: str | None = None,
+    conversation_id: str | None = None,
+    limit: int = 50,
+) -> dict[str, list[dict]]:
+    """按角色或会话列出排查记忆污染所需的记忆卡和待审核项。"""
+    await init_cards_db(db_path)
+    card_where = ["status = 'approved'"]
+    inbox_where = ["status IN ('pending', 'approving')"]
+    params: list[str] = []
+    inbox_params: list[str] = []
+    if character_id:
+        card_where.append("character_id = ?")
+        inbox_where.append("character_id = ?")
+        params.append(character_id)
+        inbox_params.append(character_id)
+    if conversation_id:
+        card_where.append("conversation_id = ?")
+        inbox_where.append("conversation_id = ?")
+        params.append(conversation_id)
+        inbox_params.append(conversation_id)
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        card_cursor = await db.execute(
+            f"""SELECT card_id, library_id, user_id, character_id, conversation_id, scope, card_type,
+                       title, content, summary, importance, confidence, status, is_pinned, created_at, updated_at
+                FROM memory_cards
+                WHERE {' AND '.join(card_where)}
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT ?""",
+            (*params, limit),
+        )
+        inbox_cursor = await db.execute(
+            f"""SELECT inbox_id, library_id, candidate_type, payload_json, user_id, character_id, conversation_id,
+                       suggested_action, risk_level, reason, status, created_at, reviewed_at, review_note
+                FROM memory_inbox
+                WHERE {' AND '.join(inbox_where)}
+                ORDER BY created_at DESC
+                LIMIT ?""",
+            (*inbox_params, limit),
+        )
+        return {
+            "cards": [dict(row) for row in await card_cursor.fetchall()],
+            "inbox": [dict(row) for row in await inbox_cursor.fetchall()],
+        }
+
+
 # --- 复制挂载 ---
 
 async def copy_conversation_mounts(db_path: str, source_conversation_id: str, target_conversation_id: str) -> int:

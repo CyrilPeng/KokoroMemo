@@ -1197,6 +1197,28 @@ async def delete_memory_card(card_id: str):
     return {"status": "ok"}
 
 
+@router.get("/admin/memory-diagnostics")
+async def memory_diagnostics_api(
+    character_id: str | None = Query(default=None),
+    conversation_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """按角色或会话查看相关记忆，便于排查记忆污染。"""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import list_memory_diagnostics
+
+    if not character_id and not conversation_id:
+        raise HTTPException(status_code=400, detail="请至少提供角色 ID 或会话 ID")
+    cfg = get_config()
+    data = await list_memory_diagnostics(
+        cfg.storage.sqlite.memory_db,
+        character_id=character_id,
+        conversation_id=conversation_id,
+        limit=limit,
+    )
+    return data
+
+
 @router.post("/admin/memories/{card_id}/deprecate")
 async def deprecate_memory_card(card_id: str, note: str = Body(default="")):
     """Mark a memory card as deprecated so it is no longer recalled by default."""

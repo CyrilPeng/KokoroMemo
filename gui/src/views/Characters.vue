@@ -23,6 +23,8 @@ const tableTemplates = ref<any[]>([])
 const libraries = ref<any[]>([])
 const mountPresets = ref<any[]>([])
 const conversations = ref<any[]>([])
+const diagnosticCards = ref<any[]>([])
+const diagnosticInbox = ref<any[]>([])
 const selected = ref<Character | null>(null)
 const showDrawer = ref(false)
 const showHelp = ref(false)
@@ -30,6 +32,7 @@ const showPreview = ref(false)
 const previewLoading = ref(false)
 const previewConversation = ref<any | null>(null)
 const previewMessages = ref<any[]>([])
+const diagnosticLoading = ref(false)
 const keyword = ref('')
 const profileFilter = ref<string | null>(null)
 const mergeTargetId = ref<string | null>(null)
@@ -170,6 +173,63 @@ async function openCharacter(row: Character) {
 async function fetchConversations(characterId: string) {
   const resp = await apiFetch(`/admin/characters/${encodeURIComponent(characterId)}/conversations`)
   if (resp.ok) conversations.value = (await resp.json()).items || []
+}
+
+function memoryContent(item: any) {
+  if (item.payload_json) {
+    try {
+      const payload = JSON.parse(item.payload_json)
+      return payload.content || payload.text || payload.summary || item.reason || '-'
+    } catch {
+      return item.payload_json
+    }
+  }
+  return item.content || item.summary || item.title || '-'
+}
+
+async function fetchMemoryDiagnostics(conversationId?: string) {
+  if (!selected.value) return
+  diagnosticLoading.value = true
+  try {
+    const query = conversationId
+      ? `conversation_id=${encodeURIComponent(conversationId)}`
+      : `character_id=${encodeURIComponent(selected.value.character_id)}`
+    const resp = await apiFetch(`/admin/memory-diagnostics?${query}&limit=80`)
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.detail || data.message || '加载记忆诊断失败')
+    diagnosticCards.value = data.cards || []
+    diagnosticInbox.value = data.inbox || []
+  } catch (error: any) {
+    message.error(error.message || '加载记忆诊断失败')
+  } finally {
+    diagnosticLoading.value = false
+  }
+}
+
+async function removeDiagnosticCard(cardId: string) {
+  const resp = await apiFetch(`/admin/memories/${encodeURIComponent(cardId)}`, { method: 'DELETE' })
+  const data = await resp.json()
+  if (!resp.ok || data.status !== 'ok') {
+    message.error(data.detail || data.message || '删除记忆失败')
+    return
+  }
+  diagnosticCards.value = diagnosticCards.value.filter((item) => item.card_id !== cardId)
+  message.success('记忆已删除')
+}
+
+async function rejectDiagnosticInbox(inboxId: string) {
+  const resp = await apiFetch(`/admin/inbox/${encodeURIComponent(inboxId)}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note: '通过角色中心记忆排查拒绝' }),
+  })
+  const data = await resp.json()
+  if (!resp.ok || data.status !== 'ok') {
+    message.error(data.detail || data.message || '拒绝候选失败')
+    return
+  }
+  diagnosticInbox.value = diagnosticInbox.value.filter((item) => item.inbox_id !== inboxId)
+  message.success('候选已拒绝')
 }
 
 async function mergeIntoTarget() {
@@ -369,6 +429,28 @@ onMounted(fetchAll)
               <NAlert :type="health({ ...selected, ...form }).type as any" :show-icon="false">当前诊断：{{ health({ ...selected, ...form }).label }}</NAlert>
               <p>RimTalk / 殖民地模拟角色建议：默认方案为 RimTalk，长期记忆写入关闭，注入策略为仅状态板。</p>
               <NButton type="warning" @click="applyToConversations">应用当前默认策略到已有会话</NButton>
+              <NCard size="small" title="记忆污染排查">
+                <NSpace vertical>
+                  <NSpace>
+                    <NButton :loading="diagnosticLoading" @click="fetchMemoryDiagnostics()">查看该角色记忆</NButton>
+                    <NSelect :options="conversations.map((item) => ({ label: conversationDisplayName(item), value: item.conversation_id }))" filterable clearable placeholder="按会话筛选记忆" style="width: min(360px, 82vw)" @update:value="(value) => value && fetchMemoryDiagnostics(value)" />
+                  </NSpace>
+                  <NAlert type="default" :show-icon="false">已批准记忆 {{ diagnosticCards.length }} 条，待审核候选 {{ diagnosticInbox.length }} 条。发现串角或污染内容时，可直接删除记忆或拒绝候选。</NAlert>
+                  <NDataTable :data="diagnosticCards" :pagination="{ pageSize: 5 }" :columns="[
+                    { title: '内容', key: 'content', minWidth: 260, ellipsis: { tooltip: true }, render: (row: any) => memoryContent(row) },
+                    { title: '类型', key: 'card_type', width: 100 },
+                    { title: '会话', key: 'conversation_id', minWidth: 160, ellipsis: { tooltip: true }, render: (row: any) => row.conversation_id || '-' },
+                    { title: '重要度', key: 'importance', width: 90 },
+                    { title: '操作', key: 'actions', width: 90, render: (row: any) => h(NPopconfirm, { onPositiveClick: () => removeDiagnosticCard(row.card_id) }, { trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => '删除' }), default: () => '删除这条已批准记忆？' }) },
+                  ]" />
+                  <NDataTable :data="diagnosticInbox" :pagination="{ pageSize: 5 }" :columns="[
+                    { title: '候选内容', key: 'payload_json', minWidth: 260, ellipsis: { tooltip: true }, render: (row: any) => memoryContent(row) },
+                    { title: '风险', key: 'risk_level', width: 90 },
+                    { title: '原因', key: 'reason', minWidth: 160, ellipsis: { tooltip: true }, render: (row: any) => row.reason || '-' },
+                    { title: '操作', key: 'actions', width: 90, render: (row: any) => h(NPopconfirm, { onPositiveClick: () => rejectDiagnosticInbox(row.inbox_id) }, { trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => '拒绝' }), default: () => '拒绝这条候选记忆？' }) },
+                  ]" />
+                </NSpace>
+              </NCard>
               <NCard size="small" title="合并重复角色">
                 <NSpace vertical>
                   <NAlert type="warning" :show-icon="false">将当前角色合并到目标角色，会迁移会话、记忆、状态板和聊天轮次引用，并删除当前重复角色。</NAlert>

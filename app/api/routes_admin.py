@@ -182,6 +182,35 @@ async def health(request: Request):
     }
 
 
+@router.get("/admin/logs")
+async def read_server_logs(request: Request, lines: int = Query(default=200, ge=1, le=2000)):
+    """读取后端日志末尾内容，方便移动端和 Termux 排查问题。"""
+    _require_admin(request)
+    from app.core.state import get_config
+
+    cfg = get_config()
+    candidates = [
+        Path(cfg.storage.root_dir).parent / "logs" / "server.log",
+        Path.cwd() / "logs" / "server.log",
+        Path.cwd() / "server.log",
+    ]
+    log_path = next((path for path in candidates if path.exists()), None)
+    if not log_path:
+        return {
+            "status": "missing",
+            "path": str(candidates[0]),
+            "content": "",
+            "message": "未找到 server.log，请确认后端启动脚本是否把输出写入日志文件。",
+        }
+    content = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return {
+        "status": "ok",
+        "path": str(log_path),
+        "line_count": len(content),
+        "content": "\n".join(content[-lines:]),
+    }
+
+
 @router.get("/admin/stats")
 async def get_stats(request: Request):
     """Return memory system statistics for the dashboard."""

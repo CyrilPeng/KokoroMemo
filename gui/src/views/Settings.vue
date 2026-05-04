@@ -43,6 +43,8 @@ const fetchingRerank = ref(false)
 const fetchingJudge = ref(false)
 const fetchingStateFiller = ref(false)
 const updateChecking = ref(false)
+const logLoading = ref(false)
+const logInfo = ref({ path: '', content: '', message: '', status: '' })
 const updateInfo = ref<{
   checked: boolean
   hasUpdate: boolean
@@ -967,6 +969,20 @@ async function retryVectorSync() {
   }
 }
 
+async function fetchServerLogs() {
+  logLoading.value = true
+  try {
+    const resp = await apiFetch('/admin/logs?lines=220')
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.detail || data.message || '读取日志失败')
+    logInfo.value = data
+  } catch (error: any) {
+    message.error(error.message || '读取日志失败')
+  } finally {
+    logLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadConfig()
   syncCloseToTraySetting()
@@ -1006,6 +1022,22 @@ onMounted(() => {
                 <NButton type="primary" :loading="onboardingSaving" @click="applyOnboardingPreset">套用推荐配置</NButton>
                 <NButton @click="loadConfig">恢复当前已保存配置</NButton>
               </NSpace>
+            </NSpace>
+          </NCard>
+          <NCard style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
+            <template #header>日志诊断</template>
+            <NSpace vertical>
+              <NAlert type="info" :show-icon="false">移动端或 Termux 无法访问后端时，可先在这里查看 server.log 末尾内容，确认端口、启动错误和依赖异常。</NAlert>
+              <NSpace align="center">
+                <NButton size="small" :loading="logLoading" @click="fetchServerLogs">读取最近日志</NButton>
+                <NButton v-if="logInfo.content" size="small" @click="copyText(logInfo.content)">复制日志</NButton>
+                <NTag v-if="logInfo.status" :type="logInfo.status === 'ok' ? 'success' : 'warning'">{{ logInfo.status === 'ok' ? '已读取' : '未找到日志' }}</NTag>
+              </NSpace>
+              <NAlert v-if="logInfo.path || logInfo.message" :type="logInfo.status === 'ok' ? 'default' : 'warning'" :show-icon="false">
+                <div v-if="logInfo.path">日志路径：{{ logInfo.path }}</div>
+                <div v-if="logInfo.message">{{ logInfo.message }}</div>
+              </NAlert>
+              <NInput v-if="logInfo.content" :value="logInfo.content" type="textarea" readonly :autosize="{ minRows: 10, maxRows: 24 }" />
             </NSpace>
           </NCard>
         </NSpace>

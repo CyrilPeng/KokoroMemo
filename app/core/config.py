@@ -347,7 +347,7 @@ def resolve_config_path(config_path: str | Path | None = None, for_write: bool =
     if config_path is not None:
         return Path(config_path).resolve()
 
-    env_path = os.getenv("KOKOROMEMO_CONFIG_PATH")
+    env_path = os.getenv("KOKOROMEMO_CONFIG_PATH") or os.getenv("KOKOROMEMO_CONFIG")
     if env_path:
         return Path(env_path).resolve()
 

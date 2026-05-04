@@ -117,6 +117,11 @@ def create_app() -> FastAPI:
 
         _API_PREFIXES = ("/admin", "/v1", "/health", "/ws")
 
+        @app.get("/.port")
+        async def serve_actual_port():
+            actual_port = getattr(app.state, "actual_port", None) or os.getenv("KOKOROMEMO_ACTUAL_PORT")
+            return Response(str(actual_port or ""), media_type="text/plain")
+
         @app.get("/{path:path}")
         async def serve_spa(path: str):
             # 让 API 路由自行处理所属路径

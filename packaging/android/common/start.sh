@@ -21,19 +21,30 @@ fi
 
 export KOKOROMEMO_WEB_DIST="$ROOT_DIR/webui/dist"
 export KOKOROMEMO_CONFIG="$ROOT_DIR/config.yaml"
+export KOKOROMEMO_CONFIG_PATH="$ROOT_DIR/config.yaml"
 export KOKOROMEMO_RELOAD=0
 export PYTHONPATH="$APP_DIR${PYTHONPATH:+:$PYTHONPATH}"
+
+rm -f "$ROOT_DIR/.port" "$APP_DIR/.port"
 
 cd "$APP_DIR"
 nohup "$VENV_DIR/bin/python" -m app.main > "$LOG_DIR/server.log" 2>&1 &
 echo $! > "$PID_FILE"
 
-sleep 2
-if [[ -f "$ROOT_DIR/.port" ]]; then
-  PORT="$(cat "$ROOT_DIR/.port")"
-else
-  PORT="14514"
-fi
+PORT=""
+for _ in $(seq 1 20); do
+  if [[ -f "$ROOT_DIR/.port" ]]; then
+    PORT="$(cat "$ROOT_DIR/.port")"
+    break
+  fi
+  if [[ -f "$APP_DIR/.port" ]]; then
+    PORT="$(cat "$APP_DIR/.port")"
+    cp "$APP_DIR/.port" "$ROOT_DIR/.port" 2>/dev/null || true
+    break
+  fi
+  sleep 0.2
+done
+PORT="${PORT:-14514}"
 
 echo "KokoroMemo 已启动，PID=$(cat "$PID_FILE")"
 echo "Web UI: http://127.0.0.1:${PORT}"

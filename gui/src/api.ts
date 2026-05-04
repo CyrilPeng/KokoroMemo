@@ -1,7 +1,9 @@
 const DEFAULT_SERVER_URL = 'http://127.0.0.1:14514'
 const DEFAULT_TIMEOUT_MS = 8000
+const PROBE_TIMEOUT_MS = 1200
 
 let _resolvedUrl: string | null = null
+let _resolvingUrl: Promise<string> | null = null
 
 export function getServerUrl() {
   const stored = localStorage.getItem('kokoromemo.serverUrl')
@@ -19,11 +21,66 @@ export function setServerUrl(url: string) {
   return normalized
 }
 
+async function fetchJsonWithTimeout(url: string, timeoutMs = PROBE_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const resp = await fetch(url, { signal: controller.signal, cache: 'no-store' })
+    if (!resp.ok) return null
+    return await resp.json()
+  } catch {
+    return null
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+async function tryHealthBase(base: string): Promise<string | null> {
+  const normalized = base.replace(/\/$/, '')
+  const data = await fetchJsonWithTimeout(`${normalized}/health`)
+  if (data?.status !== 'ok') return null
+  const actualPort = Number(data.actual_port || data.server_port)
+  if (actualPort && window.location.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:${actualPort}`
+  }
+  return normalized
+}
+
+async function discoverWebBackendUrl(): Promise<string> {
+  const origin = window.location.origin
+  const fromOrigin = await tryHealthBase(origin)
+  if (fromOrigin) return fromOrigin
+
+  const portText = await fetch('/.port', { cache: 'no-store' }).then((resp) => resp.ok ? resp.text() : '').catch(() => '')
+  const port = Number(portText.trim())
+  if (port) {
+    const fromPortFile = await tryHealthBase(`${window.location.protocol}//${window.location.hostname}:${port}`)
+    if (fromPortFile) return fromPortFile
+  }
+
+  const stored = localStorage.getItem('kokoromemo.serverUrl')
+  if (stored) {
+    const fromStored = await tryHealthBase(stored)
+    if (fromStored) return fromStored
+  }
+
+  const fromDefault = await tryHealthBase(DEFAULT_SERVER_URL)
+  return fromDefault || origin
+}
+
 /**
  * 通过 Tauri 命令发现实际后端端口。
  * Web 模式或发现失败时回退到同源地址/默认地址。
  */
 export async function resolveBackendUrl(): Promise<string> {
+  if (_resolvingUrl) return _resolvingUrl
+  _resolvingUrl = resolveBackendUrlInner().finally(() => {
+    _resolvingUrl = null
+  })
+  return _resolvingUrl
+}
+
+async function resolveBackendUrlInner(): Promise<string> {
   // 仅在 Tauri 内运行时尝试读取后端端口。
   if ((window as any).__TAURI_INTERNALS__) {
     try {
@@ -38,14 +95,15 @@ export async function resolveBackendUrl(): Promise<string> {
     }
   }
   const url = !(window as any).__TAURI_INTERNALS__
-    ? window.location.origin
+    ? await discoverWebBackendUrl()
     : localStorage.getItem('kokoromemo.serverUrl') || DEFAULT_SERVER_URL
   _resolvedUrl = url
+  localStorage.setItem('kokoromemo.serverUrl', url)
   return url
 }
 
 export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number }) {
-  const base = getServerUrl()
+  let base = getServerUrl()
   const timeoutMs = init?.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const externalSignal = init?.signal
   const controller = new AbortController()
@@ -58,7 +116,21 @@ export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: 
 
   const { timeoutMs: _timeoutMs, signal: _signal, ...fetchInit } = init || {}
   try {
-    return await fetch(`${base}${path}`, { ...fetchInit, signal: controller.signal })
+    let resp: Response
+    try {
+      resp = await fetch(`${base}${path}`, { ...fetchInit, signal: controller.signal })
+    } catch (error) {
+      if (path === '/health' || (window as any).__TAURI_INTERNALS__) throw error
+      _resolvedUrl = null
+      base = await resolveBackendUrl()
+      resp = await fetch(`${base}${path}`, { ...fetchInit, signal: controller.signal })
+    }
+    if ((resp.status === 404 || resp.status === 0) && path !== '/health' && !(window as any).__TAURI_INTERNALS__) {
+      _resolvedUrl = null
+      base = await resolveBackendUrl()
+      resp = await fetch(`${base}${path}`, { ...fetchInit, signal: controller.signal })
+    }
+    return resp
   } finally {
     window.clearTimeout(timer)
   }

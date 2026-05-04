@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import Request
 
@@ -26,6 +27,40 @@ def _hash_short(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
+def _first_text(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _metadata_value(meta: dict, *keys: str) -> str | None:
+    for key in keys:
+        value = meta.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _stable_system_prompt(messages: list[dict]) -> str:
+    system_contents: list[str] = []
+    for msg in messages:
+        if msg.get("role") == "system":
+            content = msg.get("content", "")
+            if isinstance(content, str) and content.strip():
+                system_contents.append(content.strip())
+    return "\n\n".join(system_contents)
+
+
+def _assistant_name(messages: list[dict]) -> str | None:
+    for msg in messages:
+        if msg.get("role") == "assistant":
+            name = msg.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    return None
+
+
 async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None) -> RequestContext:
     """Extract user/character/conversation identifiers from request."""
     headers = request.headers
@@ -34,26 +69,36 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
     user_id = headers.get("x-user-id") or body.get("user") or "default"
     user_id = sanitize_id(user_id)
 
+    meta = body.get("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+    messages = body.get("messages", [])
+    if not isinstance(messages, list):
+        messages = []
+
+    # 会话 ID
+    conversation_id = _first_text(headers.get("x-conversation-id"), headers.get("x-chat-id"), headers.get("x-session-id"))
+    if not conversation_id:
+        conversation_id = _metadata_value(meta, "conversation_id", "chat_id", "session_id", "chat_session_id", "thread_id")
+    explicit_conv_id = bool(conversation_id)
+
     # 角色 ID
-    character_id = headers.get("x-character-id") or None
+    character_id = _first_text(
+        headers.get("x-character-id"),
+        _metadata_value(meta, "character_id", "char_id", "character_name", "char_name", "persona", "bot_name"),
+        _assistant_name(messages),
+    )
     if not character_id:
-        messages = body.get("messages", [])
-        system_msgs = [m for m in messages if m.get("role") == "system"]
-        if system_msgs:
-            sp_hash = _hash_short(system_msgs[0].get("content", ""))
-            model = body.get("model", "unknown")
-            character_id = f"char_{_hash_short(f'{sp_hash}_{model}')}"
+        system_prompt = _stable_system_prompt(messages)
+        if system_prompt:
+            character_id = f"char_{_hash_short(system_prompt)}"
     if character_id:
         character_id = sanitize_id(character_id)
 
-    # 会话 ID
-    conversation_id = headers.get("x-conversation-id") or None
-    if not conversation_id:
-        meta = body.get("metadata", {})
-        if isinstance(meta, dict):
-            conversation_id = meta.get("conversation_id")
-
-    explicit_conv_id = bool(conversation_id)
+    if explicit_conv_id and cfg:
+        existing_character_id = await _existing_character_for_conversation(cfg.storage.sqlite.app_db, sanitize_id(conversation_id))
+        if existing_character_id:
+            character_id = existing_character_id
     if not conversation_id:
         seed = f"{user_id}_{character_id or 'none'}"
         conversation_id = f"conv_{_hash_short(seed)}"
@@ -66,7 +111,7 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
         )
 
     # 客户端名称
-    client_name = headers.get("x-client-name") or None
+    client_name = _first_text(headers.get("x-client-name"), _metadata_value(meta, "client_name", "app", "source"))
 
     # 路径
     conv_dir = str(Path(root_dir, "conversations", conversation_id))
@@ -151,3 +196,23 @@ def _allocate_new_session_id(base_conv_id: str, app_db: str, db) -> str:
     import time
     suffix = hex(int(time.time()) % 0xFFFFFF)[2:]
     return f"{base_conv_id}_{suffix}"
+
+
+async def _existing_character_for_conversation(app_db: str, conversation_id: str) -> str | None:
+    """Reuse the character already bound to an explicit conversation ID."""
+    try:
+        import aiosqlite
+        from app.storage.sqlite_app import init_app_db
+
+        await init_app_db(app_db)
+        async with aiosqlite.connect(app_db) as db:
+            cursor = await db.execute(
+                "SELECT character_id FROM conversations WHERE conversation_id = ?",
+                (conversation_id,),
+            )
+            row = await cursor.fetchone()
+            if row and row[0]:
+                return sanitize_id(row[0])
+    except Exception:
+        return None
+    return None

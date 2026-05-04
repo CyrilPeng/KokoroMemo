@@ -667,6 +667,28 @@ async def list_character_conversations_api(character_id: str, request: Request):
     return {"items": items}
 
 
+@router.get("/admin/conversations/{conversation_id}/preview")
+async def preview_conversation_api(
+    conversation_id: str,
+    request: Request,
+    limit: int = Query(default=30, ge=1, le=100),
+):
+    """Return recent messages for quick conversation ownership preview."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import list_conversations
+    from app.storage.sqlite_conversation import get_recent_messages
+
+    cfg = get_config()
+    conversations, _ = await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0)
+    conversation = next((item for item in conversations if item.get("conversation_id") == conversation_id), None)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    chat_db_path = str(Path(cfg.storage.root_dir, "conversations", conversation_id, "chat.sqlite"))
+    messages = await get_recent_messages(chat_db_path, conversation_id, limit=limit) if Path(chat_db_path).exists() else []
+    return {"conversation": conversation, "messages": messages}
+
+
 @router.get("/admin/discovered-characters")
 async def discover_characters_api(request: Request):
     """Discover characters from conversations and merge default configs."""

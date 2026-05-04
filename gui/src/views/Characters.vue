@@ -26,6 +26,10 @@ const conversations = ref<any[]>([])
 const selected = ref<Character | null>(null)
 const showDrawer = ref(false)
 const showHelp = ref(false)
+const showPreview = ref(false)
+const previewLoading = ref(false)
+const previewConversation = ref<any | null>(null)
+const previewMessages = ref<any[]>([])
 const keyword = ref('')
 const profileFilter = ref<string | null>(null)
 
@@ -157,6 +161,24 @@ async function openCharacter(row: Character) {
 async function fetchConversations(characterId: string) {
   const resp = await apiFetch(`/admin/characters/${encodeURIComponent(characterId)}/conversations`)
   if (resp.ok) conversations.value = (await resp.json()).items || []
+}
+
+async function openConversationPreview(conversationId: string) {
+  showPreview.value = true
+  previewLoading.value = true
+  previewConversation.value = conversations.value.find((item) => item.conversation_id === conversationId) || null
+  previewMessages.value = []
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId)}/preview?limit=24`)
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.detail || data.message || '加载预览失败')
+    previewConversation.value = data.conversation || previewConversation.value
+    previewMessages.value = data.messages || []
+  } catch (error: any) {
+    message.error(error.message || '加载预览失败')
+  } finally {
+    previewLoading.value = false
+  }
 }
 
 function applyProfile(profileId: string) {
@@ -303,7 +325,10 @@ onMounted(fetchAll)
                 { title: '客户端', key: 'client_name', width: 120, render: (row: any) => row.client_name || '-' },
                 { title: '最近活跃', key: 'last_seen_at', width: 160 },
                 { title: '当前方案', key: 'config', width: 180, render: (row: any) => profileName(row.config?.profile_id) },
-                { title: '操作', key: 'actions', width: 120, render: (row: any) => h(NButton, { size: 'tiny', quaternary: true, onClick: () => openStateBoard(row.conversation_id) }, { icon: () => h(NIcon, null, { default: () => h(OpenOutline) }), default: () => '状态板' }) },
+                { title: '操作', key: 'actions', width: 180, render: (row: any) => h(NSpace, { size: 6 }, { default: () => [
+                  h(NButton, { size: 'tiny', quaternary: true, onClick: () => openConversationPreview(row.conversation_id) }, { default: () => '预览' }),
+                  h(NButton, { size: 'tiny', quaternary: true, onClick: () => openStateBoard(row.conversation_id) }, { icon: () => h(NIcon, null, { default: () => h(OpenOutline) }), default: () => '状态板' }),
+                ] }) },
               ]" />
             </NSpace>
           </NTabPane>
@@ -333,12 +358,57 @@ onMounted(fetchAll)
         <p><b>相关会话</b>：查看该角色已有会话，并可批量套用当前默认策略。</p>
       </NSpace>
     </NModal>
+
+    <NModal v-model:show="showPreview" preset="card" title="会话预览" style="width: min(820px, 96vw)">
+      <NSpin :show="previewLoading">
+        <NSpace vertical>
+          <NDescriptions v-if="previewConversation" bordered size="small" :column="2">
+            <NDescriptionsItem label="会话 ID">{{ previewConversation.conversation_id }}</NDescriptionsItem>
+            <NDescriptionsItem label="客户端">{{ previewConversation.client_name || '-' }}</NDescriptionsItem>
+            <NDescriptionsItem label="首次出现">{{ previewConversation.first_seen_at || '-' }}</NDescriptionsItem>
+            <NDescriptionsItem label="最近活跃">{{ previewConversation.last_seen_at || '-' }}</NDescriptionsItem>
+          </NDescriptions>
+          <NEmpty v-if="!previewMessages.length" description="暂无可预览的消息" />
+          <div v-else class="conversation-preview-list">
+            <div v-for="(item, index) in previewMessages" :key="index" class="conversation-preview-message">
+              <div class="conversation-preview-role">{{ item.name || item.role }}</div>
+              <div class="conversation-preview-content">{{ item.content || '-' }}</div>
+            </div>
+          </div>
+        </NSpace>
+      </NSpin>
+    </NModal>
   </div>
 </template>
 
 <style scoped>
 .characters-page {
   padding: 20px;
+}
+
+.conversation-preview-list {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.conversation-preview-message {
+  padding: 10px 12px;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  background: #18181b;
+}
+
+.conversation-preview-role {
+  color: #a1a1aa;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.conversation-preview-content {
+  white-space: pre-wrap;
+  color: #e4e4e7;
+  line-height: 1.7;
 }
 
 @media (max-width: 768px) {

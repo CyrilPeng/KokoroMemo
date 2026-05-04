@@ -175,3 +175,30 @@ async def get_all_messages(db_path: str, conversation_id: str) -> list[dict]:
         )
         rows = await cursor.fetchall()
         return [{"role": row["role"], "content": row["content"]} for row in rows]
+
+
+async def get_recent_messages(db_path: str, conversation_id: str, limit: int = 30) -> list[dict]:
+    """Return recent messages in display order for quick conversation preview."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """
+            SELECT role, name, content, created_at
+            FROM messages
+            WHERE conversation_id = ?
+            ORDER BY created_at DESC, message_id DESC
+            LIMIT ?
+            """,
+            (conversation_id, limit),
+        )
+        rows = list(await cursor.fetchall())
+        rows.reverse()
+        return [
+            {
+                "role": row["role"],
+                "name": row["name"],
+                "content": row["content"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]

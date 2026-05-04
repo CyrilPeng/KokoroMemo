@@ -269,6 +269,7 @@ async def set_character_defaults(
 
 async def list_characters(db_path: str) -> list[dict]:
     """List all known characters."""
+    await init_app_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -326,6 +327,7 @@ async def discover_characters(db_path: str) -> list[dict]:
     This helper derives a per-character summary from conversations and merges
     in the configured defaults from `character_defaults`.
     """
+    await init_app_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -385,6 +387,7 @@ async def discover_characters(db_path: str) -> list[dict]:
 
 async def list_conversations(db_path: str, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
     """List recent conversations ordered by last_seen_at descending."""
+    await init_app_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT COUNT(*) FROM conversations")
@@ -410,6 +413,7 @@ async def list_conversations(db_path: str, limit: int = 50, offset: int = 0) -> 
 
 
 async def list_character_conversations(db_path: str, character_id: str) -> list[dict]:
+    await init_app_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(

@@ -73,6 +73,7 @@ const saving = ref(false)
 const previewLoading = ref(false)
 const conversationId = ref(localStorage.getItem('kokoromemo.stateConversationId') || '')
 const adminToken = ref(localStorage.getItem('kokoromemo.adminToken') || '')
+const conversations = ref<any[]>([])
 const template = ref<any | null>(null)
 const rows = ref<StateRow[]>([])
 const config = ref<ConversationConfig | null>(null)
@@ -105,6 +106,10 @@ const mountPresetOptions = computed(() => [
   { label: '不套用挂载预设', value: null },
   ...mountPresets.value.map((item) => ({ label: item.name, value: item.preset_id })),
 ])
+const conversationOptions = computed(() => conversations.value.map((item) => ({
+  label: `${item.character_id || '未知角色'} · ${item.client_name || '未知客户端'} · ${item.last_seen_at || item.conversation_id}`,
+  value: item.conversation_id,
+})))
 const memoryPolicyOptions = [
   { label: '关闭长期记忆写入', value: 'disabled' },
   { label: '生成候选待审核', value: 'candidate' },
@@ -194,6 +199,21 @@ async function fetchOptions() {
     if (presetResp.ok) mountPresets.value = (await presetResp.json()).items || []
   } catch (error) {
     console.warn('load state config options failed', error)
+  }
+}
+
+async function fetchConversations() {
+  try {
+    const resp = await apiFetch('/admin/conversations?limit=200', { headers: authHeaders() })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.detail || data.message || '加载会话列表失败')
+    conversations.value = data.items || []
+    if (!conversationId.value.trim() && conversations.value.length) {
+      conversationId.value = conversations.value[0].conversation_id
+      persistInputs()
+    }
+  } catch (error: any) {
+    message.error(error.message || '加载会话列表失败')
   }
 }
 
@@ -414,6 +434,7 @@ function columnsFor(table: StateTable) {
 
 onMounted(() => {
   fetchOptions()
+  fetchConversations()
   fetchDefaultConfig()
   if (conversationId.value.trim()) fetchBoard()
 })
@@ -433,7 +454,15 @@ onMounted(() => {
         </template>
         <NGrid :cols="24" :x-gap="12" :y-gap="12">
           <NGridItem :span="10">
-            <NInput v-model:value="conversationId" placeholder="输入 conversation_id" @keyup.enter="fetchBoard" />
+            <NSelect
+              v-model:value="conversationId"
+              filterable
+              clearable
+              tag
+              :options="conversationOptions"
+              placeholder="选择会话"
+              @update:value="persistInputs"
+            />
           </NGridItem>
           <NGridItem :span="8">
             <NInput v-model:value="adminToken" type="password" show-password-on="click" placeholder="Admin Token（可选）" />

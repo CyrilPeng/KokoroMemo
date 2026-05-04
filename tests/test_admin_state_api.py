@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+import yaml
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import AppConfig
@@ -92,6 +93,59 @@ async def test_admin_config_returns_direct_config_keys(monkeypatch):
     assert data["memory"]["judge"]["enabled"] is True
     assert data["memory"]["judge"]["mode"] == "model_only"
     assert data["memory"]["judge"]["user_rules"] == ["称呼变化生成 preference"]
+
+
+@pytest.mark.asyncio
+async def test_admin_config_save_keeps_existing_api_keys_when_form_empty(monkeypatch):
+    test_dir = make_test_dir()
+    try:
+        config_path = test_dir / "config.yaml"
+        config_path.write_text(
+            yaml.dump({
+                "server": {"port": 14514},
+                "storage": {"root_dir": str(test_dir / "data")},
+                "llm": {"api_key": "saved-llm", "model": "old-model"},
+                "embedding": {"api_key": "saved-embedding"},
+                "rerank": {"api_key": "saved-rerank"},
+                "memory": {
+                    "judge": {"api_key": "saved-judge"},
+                    "state_updater": {"api_key": "saved-state"},
+                },
+            }, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("KOKOROMEMO_CONFIG_PATH", str(config_path))
+        cfg = AppConfig()
+        cfg.config_path = str(config_path)
+        cfg.storage.root_dir = str(test_dir / "data")
+        cfg.llm.api_key = "saved-llm"
+        cfg.embedding.api_key = "saved-embedding"
+        cfg.rerank.api_key = "saved-rerank"
+        cfg.memory.judge.api_key = "saved-judge"
+        cfg.memory.state_updater.api_key = "saved-state"
+        set_config(cfg)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/admin/config", json={
+                "llm": {"api_key": "", "model": "new-model"},
+                "embedding": {"api_key": ""},
+                "rerank": {"api_key": ""},
+                "memory": {
+                    "judge": {"api_key": ""},
+                    "state_updater": {"api_key": ""},
+                },
+            })
+        assert resp.status_code == 200
+        saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        assert saved["llm"]["api_key"] == "saved-llm"
+        assert saved["llm"]["model"] == "new-model"
+        assert saved["embedding"]["api_key"] == "saved-embedding"
+        assert saved["rerank"]["api_key"] == "saved-rerank"
+        assert saved["memory"]["judge"]["api_key"] == "saved-judge"
+        assert saved["memory"]["state_updater"]["api_key"] == "saved-state"
+    finally:
+        cleanup_test_dir(test_dir)
 
 
 @pytest.mark.asyncio

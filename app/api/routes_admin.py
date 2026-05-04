@@ -452,6 +452,18 @@ async def save_config(data: dict = Body(...)):
             else:
                 target[k] = v
 
+    def _drop_empty_api_keys(section: dict | None) -> None:
+        """避免设置页未重新填写密钥时，用空字符串覆盖已经保存的 API Key。"""
+        if isinstance(section, dict) and section.get("api_key") == "":
+            section.pop("api_key", None)
+
+    _drop_empty_api_keys(data.get("llm"))
+    _drop_empty_api_keys(data.get("embedding"))
+    _drop_empty_api_keys(data.get("rerank"))
+    if isinstance(data.get("memory"), dict):
+        _drop_empty_api_keys(data["memory"].get("judge"))
+        _drop_empty_api_keys(data["memory"].get("state_updater"))
+
     if "server" in data:
         existing.setdefault("server", {}).update(data["server"])
     if "llm" in data:

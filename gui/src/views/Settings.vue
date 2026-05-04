@@ -561,7 +561,9 @@ function applyConfigToForm(data: any) {
   timezone.value = data.server?.timezone || ''
   if (data.server?.actual_port) {
     actualServerPort.value = data.server.actual_port
-    const actualUrl = `http://127.0.0.1:${data.server.actual_port}`
+    const actualUrl = (window as any).__TAURI_INTERNALS__
+      ? `http://127.0.0.1:${data.server.actual_port}`
+      : window.location.origin
     backendUrl.value = actualUrl
     setServerUrl(actualUrl)
   } else {

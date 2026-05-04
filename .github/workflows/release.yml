@@ -141,10 +141,6 @@ jobs:
         working-directory: gui
         run: npm install
 
-      - name: Build frontend (for Web UI dist)
-        working-directory: gui
-        run: npm run build
-
       - name: Build Windows single-exe app and MSI
         if: runner.os == 'Windows'
         working-directory: gui
@@ -193,15 +189,6 @@ jobs:
             throw "No MSI asset found under $msiDir"
           }
           Copy-Item $msi.FullName (Join-Path $assetDir "KokoroMemo-$version-Windows-${{ matrix.arch }}.msi") -Force
-
-      - name: Package Web UI dist (gui/dist)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
-          $assetDir = Join-Path $PWD 'release-assets'
-          New-Item -ItemType Directory -Force $assetDir | Out-Null
-          Compress-Archive -Path 'gui/dist' -DestinationPath (Join-Path $assetDir "KokoroMemo-$version-WebUI-dist.zip") -Force
 
       - name: Rename Unix bundle asset
         if: runner.os != 'Windows'
@@ -291,7 +278,6 @@ jobs:
               ("macOS-arm64.zip", "macos-app-arm64"),
               ("Android-Termux-aarch64.tar.gz", "android-termux-aarch64"),
               ("Android-ProotUbuntu-aarch64.tar.gz", "android-prootubuntu-aarch64"),
-              ("WebUI-dist.zip", "webui-dist"),
           ]
 
           assets = {}

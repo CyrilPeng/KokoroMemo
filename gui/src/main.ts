@@ -29,7 +29,13 @@ const router = createRouter({
   ],
 })
 
+function shouldPreloadViews() {
+  if (!(window as any).__TAURI_INTERNALS__) return false
+  return !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
+}
+
 function preloadViews() {
+  if (!shouldPreloadViews()) return
   const run = () => {
     for (const loader of Object.values(viewLoaders)) loader().catch(() => {})
   }
@@ -39,8 +45,8 @@ function preloadViews() {
 }
 
 async function bootstrap() {
-  // 挂载前解析实际后端端口（通过 Tauri 读取 .port 文件）
-  await resolveBackendUrl()
+  // 桌面端需要先通过 Tauri 获取实际后端端口；浏览器模式直接走同源，避免移动端首屏等待探测。
+  if ((window as any).__TAURI_INTERNALS__) await resolveBackendUrl()
 
   const app = createApp(App)
   app.use(i18n)

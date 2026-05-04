@@ -9,7 +9,7 @@ INSTALL_DIR="${KOKOROMEMO_INSTALL_DIR:-$HOME/kokoromemo}"
 TMP_BASE="${TMPDIR:-${PREFIX:-/tmp}/tmp}"
 TMP_DIR="$TMP_BASE/kokoromemo-install"
 MANIFEST_FILE="$TMP_DIR/latest.json"
-FALLBACK_VERSION="${KOKOROMEMO_FALLBACK_VERSION:-0.8.3}"
+FALLBACK_VERSION="${KOKOROMEMO_FALLBACK_VERSION:-0.8.4}"
 
 MANIFEST_URLS=(
   "https://github.com/$REPO/releases/latest/download/latest.json"
@@ -319,7 +319,7 @@ check_path() {
 }
 
 check_path "$APP_DIR/app/main.py" "后端源码"
-check_path "$ROOT_DIR/webui/dist/index.html" "预构建 Web UI"
+check_path "$ROOT_DIR/webui/dist/index.html" "预构建 网页界面"
 check_path "$ROOT_DIR/config.yaml" "配置文件"
 check_path "$VENV_DIR/bin/python" "虚拟环境"
 
@@ -436,6 +436,16 @@ case "$cmd" in
     cd "$APP_DIR"
     bash doctor.sh
     ;;
+  logs|log)
+    log_file="$APP_DIR/logs/server.log"
+    if [[ -f "$log_file" ]]; then
+      tail -n "${2:-120}" "$log_file"
+    else
+      echo "未找到日志文件: $log_file"
+      echo "请先运行 kokoromemo start；注意文件名是 server.log，不是 sever.log。"
+      exit 1
+    fi
+    ;;
   backup)
     cd "$APP_DIR"
     bash backup.sh
@@ -443,12 +453,12 @@ case "$cmd" in
   url)
     port="14514"
     [[ -f "$APP_DIR/.port" ]] && port="$(cat "$APP_DIR/.port")"
-    echo "Web UI: http://127.0.0.1:${port}"
-    echo "OpenAI Base URL: http://127.0.0.1:${port}/v1"
+    echo "网页界面：http://127.0.0.1:${port}"
+    echo "OpenAI 基础地址：http://127.0.0.1:${port}/v1"
     ;;
   help|-h|--help)
     cat <<HELP
-KokoroMemo Android CLI
+KokoroMemo Android 命令行工具
 
 用法：kokoromemo <命令>
 
@@ -458,8 +468,9 @@ KokoroMemo Android CLI
   restart   重启服务
   update    更新到最新版本
   doctor    诊断环境
+  logs      查看后端日志，默认最近 120 行
   backup    备份配置和数据
-  url       显示 Web UI 与 OpenAI Base URL
+  url       显示 网页界面 与 OpenAI 基础地址
 
 兼容别名：kokoromemo updata 等价于 kokoromemo update
 HELP
@@ -573,8 +584,8 @@ cat <<EOF
 
 === KokoroMemo 安装完成 ===
 
-Web UI: http://127.0.0.1:$PORT
-OpenAI Base URL: http://127.0.0.1:$PORT/v1
+网页界面: http://127.0.0.1:$PORT
+OpenAI 基础地址: http://127.0.0.1:$PORT/v1
 
 常用命令：
   kokoromemo start      启动

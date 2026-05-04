@@ -48,6 +48,9 @@ async function tryHealthBase(base: string): Promise<string | null> {
 
 async function discoverWebBackendUrl(): Promise<string> {
   const origin = window.location.origin
+  // Android/Termux 的网页界面由后端同源提供，直接使用当前地址最快。
+  if (/Android|Mobile/i.test(navigator.userAgent || '')) return origin
+
   const fromOrigin = await tryHealthBase(origin)
   if (fromOrigin) return fromOrigin
 
@@ -94,6 +97,11 @@ async function resolveBackendUrlInner(): Promise<string> {
       console.warn('读取后端端口失败，使用默认地址:', e)
     }
   }
+  if (!(window as any).__TAURI_INTERNALS__) {
+    const url = window.location.origin
+    _resolvedUrl = url
+    return url
+  }
   const url = !(window as any).__TAURI_INTERNALS__
     ? await discoverWebBackendUrl()
     : localStorage.getItem('kokoromemo.serverUrl') || DEFAULT_SERVER_URL
@@ -120,7 +128,7 @@ export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: 
     try {
       resp = await fetch(`${base}${path}`, { ...fetchInit, signal: controller.signal })
     } catch (error) {
-      if (path === '/health' || (window as any).__TAURI_INTERNALS__) throw error
+      if (path === '/health' || !(window as any).__TAURI_INTERNALS__) throw error
       _resolvedUrl = null
       base = await resolveBackendUrl()
       resp = await fetch(`${base}${path}`, { ...fetchInit, signal: controller.signal })

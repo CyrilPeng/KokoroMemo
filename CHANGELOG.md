@@ -1,14 +1,17 @@
 # Changelog
 
-## v0.8.3 (2026-05-04)
+## v0.8.4 (2026-05-04)
 
 ### 修复
 
+- **Android 网页界面首屏速度** - 浏览器模式不再在挂载前串行探测多个后端地址，也不再预加载所有页面分包，Termux 上打开网页界面会优先走同源地址。
+- **配置密钥保存** - 保存设置时忽略空的 `api_key` 字段，避免设置页未重新填写密钥时覆盖已保存的 API Key。
+- **Android Termux 启动健康检查** - 启动脚本现在会等待 `/health` 真正可访问后才提示启动成功；后端提前退出或端口未监听时会打印 `logs/server.log` 最近日志，并提示日志文件名是 `server.log`。
 - **Android 实际端口发现** - 修复配置端口 `14514` 被占用后自动切换到随机端口时，`.port` 写入位置和启动脚本读取位置不一致，导致 Web UI 仍访问旧端口的问题。
 - **Web UI 后端地址校准** - 浏览器模式启动时会通过 `/health`、`/.port`、本地缓存和默认地址探测实际后端端口；API 请求遇到旧端口不可达时会重新发现后端地址。
 - **移动端 Web UI 适配** - 修复手机浏览器下布局错位、侧栏折叠入口缺失、点击导航响应慢和“角色”页空数据卡加载等问题。
 
-## v0.8.2 (2026-05-04)
+## v0.8.3 (2026-05-04)
 
 ### 修复
 
@@ -22,7 +25,7 @@
 - **Termux 依赖安装优化** - 首次安装不再执行 `pkg upgrade` 全量升级，只安装必要依赖；安装过程使用非交互 apt 参数，并补齐 `python-pip`、`python-ensurepip-wheels` 等组件，提升 venv 创建成功率。
 - **Termux 原生依赖兼容** - Termux 端固定使用不依赖 `pydantic-core` 的 `pydantic v1` 兼容组合，并以 `pip --no-deps` 安装应用依赖和项目本体，避免在手机上源码编译 `pydantic-core` / Rust 扩展。
 
-## v0.8.1 (2026-05-03)
+## v0.8.2 (2026-05-04)
 
 ### 新增
 
@@ -181,7 +184,7 @@
 
 - **Web UI 模式** — 后端启动时自动检测 `gui/dist` 目录，存在则同时提供 Web 管理界面（手机浏览器访问 `http://127.0.0.1:14514` 即可使用完整 GUI）
 - **Termux 一键部署** — 新增 `scripts/termux-setup.sh`，安卓手机通过 Termux 即可本地运行后端 + Web UI，自动从 GitHub Release 下载前端构建产物
-- **Release 附带 WebUI-dist.zip** — GitHub Release 自动打包 `gui/dist/` 为独立 zip，供 Termux 或无 Node.js 环境使用
+- **Release 附带 WebUI-dist ??** — GitHub Release 自动打包 `gui/dist/` 为独立 zip，供 Termux 或无 Node.js 环境使用
 
 ### 改进
 

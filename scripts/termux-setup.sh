@@ -9,7 +9,7 @@ INSTALL_DIR="${KOKOROMEMO_INSTALL_DIR:-$HOME/kokoromemo}"
 TMP_BASE="${TMPDIR:-${PREFIX:-/tmp}/tmp}"
 TMP_DIR="$TMP_BASE/kokoromemo-install"
 MANIFEST_FILE="$TMP_DIR/latest.json"
-FALLBACK_VERSION="${KOKOROMEMO_FALLBACK_VERSION:-0.8.4}"
+FALLBACK_VERSION="${KOKOROMEMO_FALLBACK_VERSION:-0.8.5}"
 
 MANIFEST_URLS=(
   "https://github.com/$REPO/releases/latest/download/latest.json"

@@ -15,11 +15,14 @@ const router = useRouter()
 const message = useMessage()
 const loading = ref(false)
 const saving = ref(false)
+const batchSaving = ref(false)
 const conversations = ref<Conversation[]>([])
 const characters = ref<Character[]>([])
 const keyword = ref('')
 const characterFilter = ref<string | null>(null)
 const clientFilter = ref<string | null>(null)
+const checkedConversationIds = ref<string[]>([])
+const batchCharacterId = ref<string | null>(null)
 const showEditModal = ref(false)
 const showPreviewModal = ref(false)
 const previewLoading = ref(false)
@@ -69,7 +72,10 @@ const filteredConversations = computed(() => conversations.value.filter((item) =
   return true
 }))
 
+const selectedConversations = computed(() => conversations.value.filter((item) => checkedConversationIds.value.includes(item.conversation_id)))
+
 const columns = computed(() => [
+  { type: 'selection' as const, width: 48 },
   {
     title: '会话', key: 'title', minWidth: 240, render: (row: Conversation) => h('div', [
       h('div', { style: 'font-weight: 600;' }, displayName(row)),
@@ -109,6 +115,10 @@ const columns = computed(() => [
     }),
   },
 ])
+
+function conversationRowKey(row: Conversation) {
+  return row.conversation_id
+}
 
 async function fetchAll() {
   loading.value = true
@@ -193,6 +203,81 @@ async function deleteConversation(row: Conversation) {
   }
 }
 
+async function batchAssignCharacter() {
+  if (!checkedConversationIds.value.length || !batchCharacterId.value) return
+  batchSaving.value = true
+  try {
+    for (const conversationId of checkedConversationIds.value) {
+      const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character_id: batchCharacterId.value }),
+      })
+      const data = await resp.json()
+      if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || `更新会话 ${conversationId} 失败`)
+      const index = conversations.value.findIndex((item) => item.conversation_id === conversationId)
+      if (index >= 0) conversations.value[index] = { ...conversations.value[index], ...data.item }
+    }
+    message.success(`已更新 ${checkedConversationIds.value.length} 个会话的角色归属`)
+  } catch (error: any) {
+    message.error(error.message || '批量改归属失败')
+  } finally {
+    batchSaving.value = false
+  }
+}
+
+async function batchApplyDefaults() {
+  if (!selectedConversations.value.length) return
+  const grouped = new Map<string, string[]>()
+  for (const item of selectedConversations.value) {
+    if (!item.character_id) continue
+    grouped.set(item.character_id, [...(grouped.get(item.character_id) || []), item.conversation_id])
+  }
+  if (!grouped.size) {
+    message.warning('所选会话没有可套用默认策略的角色归属')
+    return
+  }
+  batchSaving.value = true
+  try {
+    let updated = 0
+    for (const [characterId, conversationIds] of grouped.entries()) {
+      const resp = await apiFetch(`/admin/characters/${encodeURIComponent(characterId)}/apply-defaults`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversation_ids: conversationIds, apply_policy: true, apply_mounts: true, overwrite_existing: true }),
+      })
+      const data = await resp.json()
+      if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || `套用角色 ${characterName(characterId)} 默认策略失败`)
+      updated += data.updated || 0
+    }
+    message.success(`已为 ${updated} 个会话套用角色默认策略`)
+    await fetchAll()
+  } catch (error: any) {
+    message.error(error.message || '批量套用默认策略失败')
+  } finally {
+    batchSaving.value = false
+  }
+}
+
+async function batchDeleteConversations() {
+  if (!checkedConversationIds.value.length) return
+  batchSaving.value = true
+  try {
+    for (const conversationId of checkedConversationIds.value) {
+      const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId)}`, { method: 'DELETE' })
+      const data = await resp.json()
+      if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || `删除会话 ${conversationId} 失败`)
+    }
+    conversations.value = conversations.value.filter((item) => !checkedConversationIds.value.includes(item.conversation_id))
+    message.success(`已删除 ${checkedConversationIds.value.length} 个会话记录`)
+    checkedConversationIds.value = []
+  } catch (error: any) {
+    message.error(error.message || '批量删除会话失败')
+  } finally {
+    batchSaving.value = false
+  }
+}
+
 onMounted(fetchAll)
 </script>
 
@@ -211,12 +296,33 @@ onMounted(fetchAll)
             <NGridItem span="1 m:5"><NSelect v-model:value="clientFilter" :options="clientFilterOptions" /></NGridItem>
             <NGridItem span="1 m:4"><NSpace justify="end"><NButton :loading="loading" @click="fetchAll">刷新</NButton></NSpace></NGridItem>
           </NGrid>
+          <NAlert v-if="checkedConversationIds.length" type="info" :show-icon="false">
+            <NSpace align="center" :wrap="true">
+              <span>已选择 {{ checkedConversationIds.length }} 个会话</span>
+              <NSelect v-model:value="batchCharacterId" :options="characterOptions" filterable clearable placeholder="批量改归属到角色" style="width: min(320px, 80vw)" />
+              <NButton size="small" type="primary" :loading="batchSaving" :disabled="!batchCharacterId" @click="batchAssignCharacter">改归属</NButton>
+              <NButton size="small" :loading="batchSaving" @click="batchApplyDefaults">套用默认策略</NButton>
+              <NPopconfirm @positive-click="batchDeleteConversations">
+                <template #trigger><NButton size="small" type="error" :loading="batchSaving">批量删除</NButton></template>
+                删除选中的会话记录？不会删除磁盘聊天文件。
+              </NPopconfirm>
+              <NButton size="small" quaternary @click="checkedConversationIds = []">清空选择</NButton>
+            </NSpace>
+          </NAlert>
         </NSpace>
       </NCard>
 
       <NSpin :show="loading">
         <NCard>
-          <NDataTable v-if="filteredConversations.length" :columns="columns" :data="filteredConversations" :pagination="{ pageSize: 12 }" :scroll-x="1380" />
+          <NDataTable
+            v-if="filteredConversations.length"
+            v-model:checked-row-keys="checkedConversationIds"
+            :columns="columns"
+            :data="filteredConversations"
+            :row-key="conversationRowKey"
+            :pagination="{ pageSize: 12 }"
+            :scroll-x="1420"
+          />
           <NEmpty v-else description="暂无会话或没有匹配结果" />
         </NCard>
       </NSpin>

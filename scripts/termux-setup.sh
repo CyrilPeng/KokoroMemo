@@ -10,6 +10,7 @@ TMP_BASE="${TMPDIR:-${PREFIX:-/tmp}/tmp}"
 TMP_DIR="$TMP_BASE/kokoromemo-install"
 MANIFEST_FILE="$TMP_DIR/latest.json"
 FALLBACK_VERSION="${KOKOROMEMO_FALLBACK_VERSION:-0.8.5}"
+FALLBACK_PREVIOUS_VERSIONS="${KOKOROMEMO_FALLBACK_PREVIOUS_VERSIONS:-0.8.4 0.8.3}"
 
 MANIFEST_URLS=(
   "https://github.com/$REPO/releases/latest/download/latest.json"
@@ -179,7 +180,8 @@ PY
 }
 
 write_fallback_manifest() {
-  local version="${FALLBACK_VERSION#v}"
+  local version="${1:-$FALLBACK_VERSION}"
+  version="${version#v}"
   local asset_name="KokoroMemo-$version-Android-Termux-aarch64.tar.gz"
   echo "无法获取 latest.json，使用脚本内置版本 v$version 兜底。"
   python - "$MANIFEST_FILE" "$version" "$asset_name" "$REPO" "$GITEE_REPO" <<'PY'
@@ -204,10 +206,26 @@ manifest = {
         }
     },
 }
+
 with open(path, "w", encoding="utf-8") as file:
     json.dump(manifest, file, ensure_ascii=False, indent=2)
     file.write("\n")
 PY
+}
+
+
+fallback_versions() {
+  local seen=""
+  local version
+  for version in "$FALLBACK_VERSION" $FALLBACK_PREVIOUS_VERSIONS; do
+    version="${version#v}"
+    [[ -z "$version" ]] && continue
+    case " $seen " in
+      *" $version "*) continue ;;
+    esac
+    seen="$seen $version"
+    echo "$version"
+  done
 }
 
 sha256_file() {
@@ -512,29 +530,46 @@ install_base_deps
 echo "[2/6] 准备安装包信息..."
 if [[ "${KOKOROMEMO_USE_LATEST:-0}" == "1" ]]; then
   if ! download_first "$MANIFEST_FILE" "${MANIFEST_URLS[@]}"; then
-    write_fallback_manifest
+    write_fallback_manifest "$FALLBACK_VERSION"
   fi
 else
-  write_fallback_manifest
+  write_fallback_manifest "$FALLBACK_VERSION"
 fi
-
-VERSION="$(json_get version)"
-ASSET_NAME="$(json_get assets.android-termux-aarch64.name)"
-EXPECTED_SHA="$(json_get assets.android-termux-aarch64.sha256)"
-if [[ -z "$ASSET_NAME" ]]; then
-  echo "更新清单中没有 Android-Termux-aarch64 安装包。"
-  exit 1
-fi
-
-echo "最新版本: $VERSION"
-echo "安装包: $ASSET_NAME"
-
-mapfile -t URLS < <(asset_urls)
-ARCHIVE="$TMP_DIR/$ASSET_NAME"
 
 echo "[3/6] 下载安装包..."
-if ! download_first "$ARCHIVE" "${URLS[@]}"; then
-  echo "下载安装包失败。"
+ARCHIVE=""
+EXPECTED_SHA=""
+VERSION=""
+ASSET_NAME=""
+for fallback_version in "" $(fallback_versions); do
+  if [[ -n "$fallback_version" ]]; then
+    write_fallback_manifest "$fallback_version"
+  fi
+
+  VERSION="$(json_get version)"
+  ASSET_NAME="$(json_get assets.android-termux-aarch64.name)"
+  EXPECTED_SHA="$(json_get assets.android-termux-aarch64.sha256)"
+  if [[ -z "$ASSET_NAME" ]]; then
+    echo "更新清单中没有 Android-Termux-aarch64 安装包。"
+    continue
+  fi
+
+  echo "准备下载版本: $VERSION"
+  echo "安装包: $ASSET_NAME"
+
+  mapfile -t URLS < <(asset_urls)
+  ARCHIVE="$TMP_DIR/$ASSET_NAME"
+  if download_first "$ARCHIVE" "${URLS[@]}"; then
+    break
+  fi
+
+  echo "版本 $VERSION 的安装包暂不可用，尝试下一个稳定版本..."
+  ARCHIVE=""
+done
+
+if [[ -z "$ARCHIVE" || ! -f "$ARCHIVE" ]]; then
+  echo "下载安装包失败：所有候选版本都不可用。"
+  echo "如果最新版本正在 GitHub Actions 打包，请稍后重试；也可以设置 KOKOROMEMO_FALLBACK_VERSION 指定已发布版本。"
   exit 1
 fi
 

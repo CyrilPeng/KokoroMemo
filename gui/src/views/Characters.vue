@@ -83,6 +83,10 @@ const filteredCharacters = computed(() => characters.value.filter((item) => {
   return okKeyword && okProfile
 }))
 
+function conversationDisplayName(item: any) {
+  return item?.title?.trim() || item?.conversation_id || '未命名会话'
+}
+
 function profileName(profileId?: string | null) {
   return profiles.value.find((item) => item.profile_id === profileId)?.name || profileId || '未配置'
 }
@@ -321,7 +325,8 @@ onMounted(fetchAll)
             <NSpace vertical>
               <NAlert type="default" :show-icon="false">共 {{ conversations.length }} 个会话。可批量套用当前角色默认策略，修复仍在使用旧模板或错误记忆策略的会话。</NAlert>
               <NDataTable :data="conversations" :pagination="{ pageSize: 8 }" :columns="[
-                { title: '会话 ID', key: 'conversation_id', minWidth: 220, ellipsis: { tooltip: true } },
+                { title: '会话', key: 'title', minWidth: 240, ellipsis: { tooltip: true }, render: (row: any) => conversationDisplayName(row) },
+                { title: '原始 ID', key: 'conversation_id', minWidth: 180, ellipsis: { tooltip: true } },
                 { title: '客户端', key: 'client_name', width: 120, render: (row: any) => row.client_name || '-' },
                 { title: '最近活跃', key: 'last_seen_at', width: 160 },
                 { title: '当前方案', key: 'config', width: 180, render: (row: any) => profileName(row.config?.profile_id) },
@@ -364,6 +369,7 @@ onMounted(fetchAll)
         <NSpace vertical>
           <NDescriptions v-if="previewConversation" bordered size="small" :column="2">
             <NDescriptionsItem label="会话 ID">{{ previewConversation.conversation_id }}</NDescriptionsItem>
+            <NDescriptionsItem label="会话名称">{{ conversationDisplayName(previewConversation) }}</NDescriptionsItem>
             <NDescriptionsItem label="客户端">{{ previewConversation.client_name || '-' }}</NDescriptionsItem>
             <NDescriptionsItem label="首次出现">{{ previewConversation.first_seen_at || '-' }}</NDescriptionsItem>
             <NDescriptionsItem label="最近活跃">{{ previewConversation.last_seen_at || '-' }}</NDescriptionsItem>

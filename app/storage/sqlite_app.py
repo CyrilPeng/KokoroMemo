@@ -81,6 +81,11 @@ _CHARACTER_DEFAULT_COLUMNS = {
 }
 
 
+_CONVERSATION_COLUMNS = {
+    "title": "TEXT",
+}
+
+
 async def _ensure_columns(db: aiosqlite.Connection, table: str, columns: dict[str, str]) -> None:
     cursor = await db.execute(f"PRAGMA table_info({table})")
     existing = {row[1] for row in await cursor.fetchall()}
@@ -96,6 +101,7 @@ async def init_app_db(db_path: str) -> None:
         await db.executescript(_APP_SCHEMA)
         await _ensure_columns(db, "characters", _CHARACTER_COLUMNS)
         await _ensure_columns(db, "character_defaults", _CHARACTER_DEFAULT_COLUMNS)
+        await _ensure_columns(db, "conversations", _CONVERSATION_COLUMNS)
         await db.commit()
 
 
@@ -393,8 +399,15 @@ async def list_conversations(db_path: str, limit: int = 50, offset: int = 0) -> 
         cursor = await db.execute("SELECT COUNT(*) FROM conversations")
         total = (await cursor.fetchone())[0]
         cursor = await db.execute(
-            "SELECT conversation_id, user_id, character_id, client_name, last_seen_at, first_seen_at "
-            "FROM conversations ORDER BY last_seen_at DESC LIMIT ? OFFSET ?",
+            """
+            SELECT
+              conv.conversation_id, conv.user_id, conv.character_id, conv.client_name,
+              conv.title, conv.last_seen_at, conv.first_seen_at,
+              ch.display_name AS character_display_name
+            FROM conversations conv
+            LEFT JOIN characters ch ON conv.character_id = ch.character_id
+            ORDER BY conv.last_seen_at DESC LIMIT ? OFFSET ?
+            """,
             (limit, offset),
         )
         rows = await cursor.fetchall()
@@ -403,7 +416,9 @@ async def list_conversations(db_path: str, limit: int = 50, offset: int = 0) -> 
                 "conversation_id": row["conversation_id"],
                 "user_id": row["user_id"],
                 "character_id": row["character_id"],
+                "character_display_name": row["character_display_name"],
                 "client_name": row["client_name"],
+                "title": row["title"],
                 "last_seen_at": row["last_seen_at"],
                 "first_seen_at": row["first_seen_at"],
             }
@@ -417,13 +432,51 @@ async def list_character_conversations(db_path: str, character_id: str) -> list[
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            """SELECT conversation_id, user_id, character_id, client_name, first_seen_at, last_seen_at
+            """SELECT conversation_id, user_id, character_id, client_name, title, first_seen_at, last_seen_at
                FROM conversations
                WHERE character_id = ?
                ORDER BY last_seen_at DESC""",
             (character_id,),
         )
         return [dict(row) for row in await cursor.fetchall()]
+
+
+async def update_conversation_profile(
+    db_path: str,
+    conversation_id: str,
+    title: str | None = None,
+    character_id: str | None = None,
+) -> dict | None:
+    """Update user-facing conversation fields without changing the original ID."""
+    await init_app_db(db_path)
+    updates: list[str] = []
+    params: list[str | None] = []
+    if title is not None:
+        normalized_title = title.strip() or None
+        updates.append("title = ?")
+        params.append(normalized_title)
+    if character_id is not None:
+        updates.append("character_id = ?")
+        params.append(character_id.strip() or None)
+    if not updates:
+        return None
+    params.append(conversation_id)
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            f"UPDATE conversations SET {', '.join(updates)}, last_seen_at = last_seen_at WHERE conversation_id = ?",
+            params,
+        )
+        if cursor.rowcount <= 0:
+            await db.rollback()
+            return None
+        await db.commit()
+        row_cursor = await db.execute(
+            "SELECT conversation_id, user_id, character_id, client_name, title, first_seen_at, last_seen_at FROM conversations WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        row = await row_cursor.fetchone()
+        return dict(row) if row else None
 
 
 async def delete_conversation(db_path: str, conversation_id: str) -> bool:

@@ -914,16 +914,37 @@ async def delete_memory_library_api(library_id: str):
 
 @router.get("/admin/conversations")
 async def list_conversations_api(
+    request: Request,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
     """List recent conversations ordered by last activity."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_app import list_conversations
 
     cfg = get_config()
     items, total = await list_conversations(cfg.storage.sqlite.app_db, limit=limit, offset=offset)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@router.patch("/admin/conversations/{conversation_id}")
+async def update_conversation_profile_api(conversation_id: str, request: Request, data: dict = Body(...)):
+    """Update user-facing conversation profile fields."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import update_conversation_profile
+
+    cfg = get_config()
+    item = await update_conversation_profile(
+        cfg.storage.sqlite.app_db,
+        conversation_id,
+        title=data.get("title") if "title" in data else None,
+        character_id=data.get("character_id") if "character_id" in data else None,
+    )
+    if not item:
+        return {"status": "error", "message": "会话不存在或没有可更新字段"}
+    return {"status": "ok", "item": item}
 
 
 @router.delete("/admin/conversations/{conversation_id}")

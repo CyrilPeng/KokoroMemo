@@ -87,11 +87,13 @@ const preview = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0 })
 const showEditModal = ref(false)
 const showFillModal = ref(false)
 const showHelpModal = ref(false)
+const showRenameModal = ref(false)
 const editingTable = ref<StateTable | null>(null)
 const editingRow = ref<StateRow | null>(null)
 const editValues = ref<Record<string, string>>({})
 const editMeta = ref({ priority: 80, confidence: 0.9 })
 const fillForm = ref({ user_message: '', assistant_message: '' })
+const renameForm = ref({ title: '' })
 
 const profileOptions = computed(() => profiles.value.map((item) => ({ label: item.name, value: item.profile_id })))
 const boardTemplateOptions = computed(() => [
@@ -107,9 +109,10 @@ const mountPresetOptions = computed(() => [
   ...mountPresets.value.map((item) => ({ label: item.name, value: item.preset_id })),
 ])
 const conversationOptions = computed(() => conversations.value.map((item) => ({
-  label: `${item.character_id || '未知角色'} · ${item.client_name || '未知客户端'} · ${item.last_seen_at || item.conversation_id}`,
+  label: `${conversationDisplayName(item)} · ${item.character_display_name || item.character_id || '未知角色'} · ${item.last_seen_at || item.conversation_id}`,
   value: item.conversation_id,
 })))
+const selectedConversation = computed(() => conversations.value.find((item) => item.conversation_id === conversationId.value.trim()) || null)
 const memoryPolicyOptions = [
   { label: '关闭长期记忆写入', value: 'disabled' },
   { label: '生成候选待审核', value: 'candidate' },
@@ -138,6 +141,10 @@ const rowsByTable = computed(() => {
   }
   return result
 })
+function conversationDisplayName(item: any) {
+  return item?.title?.trim() || item?.conversation_id || '未命名会话'
+}
+
 function authHeaders(json = false) {
   const headers: Record<string, string> = {}
   if (json) headers['Content-Type'] = 'application/json'
@@ -242,6 +249,39 @@ async function deleteSelectedConversation() {
     if (conversationId.value) await fetchBoard()
   } catch (error: any) {
     message.error(error.message || '删除会话失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+function openRenameConversation() {
+  const current = selectedConversation.value
+  if (!current) {
+    message.warning('请先选择会话')
+    return
+  }
+  renameForm.value = { title: current.title || '' }
+  showRenameModal.value = true
+}
+
+async function saveConversationTitle() {
+  const target = conversationId.value.trim()
+  if (!target) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(target)}`, {
+      method: 'PATCH',
+      headers: authHeaders(true),
+      body: JSON.stringify({ title: renameForm.value.title }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存会话名称失败')
+    const index = conversations.value.findIndex((item) => item.conversation_id === target)
+    if (index >= 0) conversations.value[index] = { ...conversations.value[index], ...data.item }
+    message.success('会话名称已保存')
+    showRenameModal.value = false
+  } catch (error: any) {
+    message.error(error.message || '保存会话名称失败')
   } finally {
     saving.value = false
   }
@@ -504,6 +544,7 @@ onMounted(() => {
                 加载
               </NButton>
               <NButton :disabled="!template" @click="exportBoard">导出</NButton>
+              <NButton :disabled="!selectedConversation" @click="openRenameConversation">重命名</NButton>
               <NPopconfirm
                 :disabled="!conversationId.trim()"
                 positive-text="删除"
@@ -670,6 +711,28 @@ onMounted(() => {
         </NGrid>
       </NSpin>
     </NSpace>
+
+    <NModal v-model:show="showRenameModal" preset="card" title="重命名会话" style="width: min(520px, 96vw)">
+      <NSpace vertical>
+        <NAlert type="info" :show-icon="false">
+          会话名称仅用于界面辨认，不会改变原始会话 ID。
+        </NAlert>
+        <NForm label-placement="top">
+          <NFormItem label="会话名称">
+            <NInput v-model:value="renameForm.title" placeholder="例如：芙莉莲主线第 3 章" clearable />
+          </NFormItem>
+          <NFormItem label="原始会话 ID">
+            <NInput :value="conversationId" readonly />
+          </NFormItem>
+        </NForm>
+      </NSpace>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showRenameModal = false">取消</NButton>
+          <NButton type="primary" :loading="saving" @click="saveConversationTitle">保存</NButton>
+        </NSpace>
+      </template>
+    </NModal>
 
     <NModal v-model:show="showEditModal" preset="card" style="width: 720px" :title="editingRow ? '编辑状态行' : '新增状态行'">
       <NForm v-if="editingTable" label-placement="top">

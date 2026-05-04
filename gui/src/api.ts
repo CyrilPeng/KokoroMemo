@@ -145,12 +145,11 @@ export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: 
   try {
     resp = await requestOnce(base)
   } catch (error) {
-    if (path === '/health') throw error
     _resolvedUrl = null
     base = await resolveBackendUrl()
     resp = await requestOnce(base)
   }
-  if ((resp.status === 404 || resp.status === 0) && path !== '/health' && !(window as any).__TAURI_INTERNALS__) {
+  if (resp.status === 404 || resp.status === 0) {
     _resolvedUrl = null
     base = await resolveBackendUrl()
     resp = await requestOnce(base)

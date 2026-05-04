@@ -156,25 +156,25 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
           <h2 style="font-size: 16px; font-weight: 600; color: #e4e4e7; margin-bottom: 12px;">{{ $t('dashboard.statsTitle') }}</h2>
           <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
             <NGridItem span="4 m:1">
-              <NCard style="background: #18181b; border: 1px solid #27272a;">
+              <NCard class="dashboard-stat-card" style="background: #18181b; border: 1px solid #27272a;">
                 <NStatistic :label="$t('dashboard.totalMemories')" :value="totalApproved" />
                 <div style="color: #52525b; font-size: 12px; margin-top: 4px;">{{ $t('dashboard.totalAll') }} {{ totalCards }}</div>
               </NCard>
             </NGridItem>
             <NGridItem span="4 m:1">
-              <NCard hoverable style="background: #18181b; border: 1px solid #27272a; cursor: pointer;" @click="router.push('/inbox')">
+              <NCard class="dashboard-stat-card" hoverable style="background: #18181b; border: 1px solid #27272a; cursor: pointer;" @click="router.push('/inbox')">
                 <NStatistic :label="$t('dashboard.inboxPending')" :value="inboxPending" />
                 <div style="color: #52525b; font-size: 12px; margin-top: 4px;">{{ $t('dashboard.awaitingReview') }}</div>
               </NCard>
             </NGridItem>
             <NGridItem span="4 m:1">
-              <NCard style="background: #18181b; border: 1px solid #27272a;">
+              <NCard class="dashboard-stat-card" style="background: #18181b; border: 1px solid #27272a;">
                 <NStatistic :label="$t('dashboard.gateRequests24h')" :value="gateTotal" />
                 <div style="color: #52525b; font-size: 12px; margin-top: 4px;">{{ $t('dashboard.skipRate') }} {{ gateSkipRate }}</div>
               </NCard>
             </NGridItem>
             <NGridItem span="4 m:1">
-              <NCard style="background: #18181b; border: 1px solid #27272a;">
+              <NCard class="dashboard-stat-card" style="background: #18181b; border: 1px solid #27272a;">
                 <NStatistic :label="$t('dashboard.dailyGrowth7d')" :value="stats.daily_growth?.length ? stats.daily_growth.reduce((s: number, d: any) => s + d.count, 0) : 0" />
                 <div v-if="stats.daily_growth?.length" style="color: #52525b; font-size: 12px; margin-top: 4px;">
                   {{ stats.daily_growth.map((d: any) => d.count).join(' \u2192 ') }}
@@ -227,5 +227,17 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 .help-content p strong {
   color: #ffffff;
   font-weight: 600;
+}
+
+.dashboard-stat-card {
+  height: 100%;
+}
+
+.dashboard-stat-card :deep(.n-card__content) {
+  min-height: 86px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 </style>

@@ -14,6 +14,8 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent, WindowEvent,
 };
+#[cfg(not(debug_assertions))]
+use tauri::path::BaseDirectory;
 #[cfg(not(all(windows, kokoromemo_embedded_backend)))]
 use tauri_plugin_shell::process::CommandChild;
 #[cfg(not(all(windows, kokoromemo_embedded_backend)))]
@@ -59,7 +61,7 @@ impl Default for AppState {
 
 #[tauri::command]
 fn greet(name: &str) -> String {
-    format!("Hello, {}! KokoroMemo is running.", name)
+    format!("你好，{}！KokoroMemo 正在运行。", name)
 }
 
 #[tauri::command]
@@ -76,7 +78,7 @@ fn get_close_to_tray(state: tauri::State<'_, AppState>) -> bool {
 fn write_text_file(path: String, contents: String) -> Result<(), String> {
     let path = PathBuf::from(path);
     if path.is_dir() {
-        return Err("target path is a directory".to_string());
+        return Err("目标路径是目录".to_string());
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
@@ -95,7 +97,7 @@ fn show_main_window(app: &tauri::AppHandle) {
 fn backend_work_dir(_app: &tauri::AppHandle) -> PathBuf {
     #[cfg(debug_assertions)]
     {
-        // In debug mode, Python backend runs from the project root (two levels up from src-tauri)
+        // 开发模式下，Python 后端从项目根目录启动。
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         manifest_dir
             .parent()
@@ -114,6 +116,30 @@ fn backend_work_dir(_app: &tauri::AppHandle) -> PathBuf {
     }
 }
 
+fn web_dist_dir(_app: &tauri::AppHandle, _work_dir: &PathBuf) -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    {
+        let repo_dist = repo_root_dir()?.join("gui").join("dist");
+        return repo_dist.is_dir().then_some(repo_dist);
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        if let Ok(resource_dist) = _app.path().resolve("dist", BaseDirectory::Resource) {
+            if resource_dist.is_dir() {
+                return Some(resource_dist);
+            }
+        }
+        let adjacent_dist = _work_dir.join("dist");
+        if adjacent_dist.is_dir() {
+            return Some(adjacent_dist);
+        }
+        let legacy_dist = _work_dir.join("gui").join("dist");
+        legacy_dist.is_dir().then_some(legacy_dist)
+    }
+}
+
+#[cfg(debug_assertions)]
 fn repo_root_dir() -> Option<PathBuf> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
@@ -163,32 +189,37 @@ fn spawn_embedded_backend(app: &tauri::AppHandle, work_dir: &PathBuf) -> std::io
 
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     let backend_path = embedded_backend_path(app)?;
-    std::process::Command::new(backend_path)
+    let mut command = std::process::Command::new(backend_path);
+    command
         .current_dir(work_dir)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
+        .creation_flags(CREATE_NO_WINDOW);
+    if let Some(dist_dir) = web_dist_dir(app, work_dir) {
+        command.env("KOKOROMEMO_WEB_DIST", dist_dir);
+    }
+    command.spawn()
 }
 
 fn spawn_backend(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         let work_dir = backend_work_dir(&app);
-        // Remove stale .port file so get_backend_port won't read old value
+        let web_dist = web_dist_dir(&app, &work_dir);
+        // 清理旧端口文件，避免读取上一次启动留下的端口。
         let _ = fs::remove_file(work_dir.join(".port"));
 
         #[cfg(all(windows, kokoromemo_embedded_backend))]
         {
             match spawn_embedded_backend(&app, &work_dir) {
                 Ok(child) => {
-                    eprintln!("KokoroMemo embedded backend started, pid={}", child.id());
+                    eprintln!("KokoroMemo 内置后端已启动，PID={}", child.id());
                     if let Some(state) = app.try_state::<AppState>() {
-                        *state.backend_child.lock().expect("backend child lock poisoned") =
+                        *state.backend_child.lock().expect("后端进程锁已损坏") =
                             Some(BackendChild::Embedded(child));
                     }
                 }
-                Err(error) => eprintln!("failed to start embedded KokoroMemo backend: {error}"),
+                Err(error) => eprintln!("启动 KokoroMemo 内置后端失败：{error}"),
             }
         }
 
@@ -207,26 +238,32 @@ fn spawn_backend(app: tauri::AppHandle) {
             let command = match app.shell().sidecar("kokoromemo-server") {
                 Ok(command) => command.current_dir(&work_dir),
                 Err(error) => {
-                    eprintln!("failed to resolve backend sidecar: {error}");
+                    eprintln!("解析后端随附程序失败：{error}");
                     return;
                 }
             };
 
+            let command = if let Some(dist_dir) = web_dist {
+                command.env("KOKOROMEMO_WEB_DIST", dist_dir)
+            } else {
+                command
+            };
+
             match command.spawn() {
                 Ok((mut rx, child)) => {
-                    eprintln!("KokoroMemo backend started, pid={}", child.pid());
+                    eprintln!("KokoroMemo 后端已启动，PID={}", child.pid());
                     if let Some(state) = app.try_state::<AppState>() {
-                        *state.backend_child.lock().expect("backend child lock poisoned") =
+                        *state.backend_child.lock().expect("后端进程锁已损坏") =
                             Some(BackendChild::Sidecar(child));
                     }
                     while let Some(event) = rx.recv().await {
-                        eprintln!("backend: {event:?}");
+                        eprintln!("后端输出：{event:?}");
                     }
                     if let Some(state) = app.try_state::<AppState>() {
-                        let _ = state.backend_child.lock().expect("backend child lock poisoned").take();
+                        let _ = state.backend_child.lock().expect("后端进程锁已损坏").take();
                     }
                 }
-                Err(error) => eprintln!("failed to start KokoroMemo backend: {error}"),
+                Err(error) => eprintln!("启动 KokoroMemo 后端失败：{error}"),
             }
         }
     });
@@ -237,7 +274,7 @@ fn kill_backend(app: &tauri::AppHandle) {
         if let Some(child) = state
             .backend_child
             .lock()
-            .expect("backend child lock poisoned")
+            .expect("后端进程锁已损坏")
             .take()
         {
             child.kill();
@@ -248,10 +285,10 @@ fn kill_backend(app: &tauri::AppHandle) {
 #[tauri::command]
 async fn restart_backend(app: tauri::AppHandle) -> Result<String, String> {
     kill_backend(&app);
-    // Wait for port release
+    // 等待端口释放。
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
     spawn_backend(app.clone());
-    Ok("backend restarting".to_string())
+    Ok("后端正在重启".to_string())
 }
 
 #[tauri::command]
@@ -259,13 +296,13 @@ async fn get_backend_port(app: tauri::AppHandle) -> Result<u16, String> {
     let work_dir = backend_work_dir(&app);
     let config_dir = config_dir(&app);
     let port_files = [config_dir.join(".port"), work_dir.join(".port")];
-    // Poll for .port file — backend may still be starting
+    // 轮询端口文件，后端可能仍在启动中。
     for _ in 0..30 {
         for port_file in &port_files {
             if let Ok(content) = fs::read_to_string(port_file) {
                 if let Ok(port) = content.trim().parse::<u16>() {
                     if port > 0 {
-                        // Verify the port is actually listening
+                        // 确认端口已经开始监听。
                         let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
                         if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)).is_ok() {
                             return Ok(port);
@@ -276,7 +313,7 @@ async fn get_backend_port(app: tauri::AppHandle) -> Result<u16, String> {
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
-    Err("backend .port file not found or port not listening after 6s".to_string())
+    Err("6 秒内未找到后端端口文件，或端口尚未开始监听".to_string())
 }
 
 fn main() {
@@ -341,7 +378,7 @@ fn main() {
             get_backend_port
         ])
         .build(tauri::generate_context!())
-        .expect("error while building tauri application");
+        .expect("构建 Tauri 应用失败");
 
     app.run(|app_handle, event| {
         if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {

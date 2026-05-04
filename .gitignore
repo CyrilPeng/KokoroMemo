@@ -30,3 +30,6 @@ Thumbs.db
 # Claude
 .claude/
 config.yaml
+
+# 项目临时文件
+.port

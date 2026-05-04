@@ -35,6 +35,20 @@ async function fetchJsonWithTimeout(url: string, timeoutMs = PROBE_TIMEOUT_MS) {
   }
 }
 
+async function fetchTextWithTimeout(url: string, timeoutMs = PROBE_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const resp = await fetch(url, { signal: controller.signal, cache: 'no-store' })
+    if (!resp.ok) return ''
+    return await resp.text()
+  } catch {
+    return ''
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
 async function tryHealthBase(base: string): Promise<string | null> {
   const normalized = base.replace(/\/$/, '')
   const data = await fetchJsonWithTimeout(`${normalized}/health`)
@@ -48,13 +62,10 @@ async function tryHealthBase(base: string): Promise<string | null> {
 
 async function discoverWebBackendUrl(): Promise<string> {
   const origin = window.location.origin
-  // Android/Termux 的网页界面由后端同源提供，直接使用当前地址最快。
-  if (/Android|Mobile/i.test(navigator.userAgent || '')) return origin
-
   const fromOrigin = await tryHealthBase(origin)
   if (fromOrigin) return fromOrigin
 
-  const portText = await fetch('/.port', { cache: 'no-store' }).then((resp) => resp.ok ? resp.text() : '').catch(() => '')
+  const portText = await fetchTextWithTimeout(`${origin}/.port`, 600)
   const port = Number(portText.trim())
   if (port) {
     const fromPortFile = await tryHealthBase(`${window.location.protocol}//${window.location.hostname}:${port}`)
@@ -98,7 +109,7 @@ async function resolveBackendUrlInner(): Promise<string> {
     }
   }
   if (!(window as any).__TAURI_INTERNALS__) {
-    const url = window.location.origin
+    const url = await discoverWebBackendUrl()
     _resolvedUrl = url
     return url
   }
@@ -114,34 +125,37 @@ export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: 
   let base = getServerUrl()
   const timeoutMs = init?.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const externalSignal = init?.signal
-  const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
-
-  if (externalSignal) {
-    if (externalSignal.aborted) controller.abort()
-    else externalSignal.addEventListener('abort', () => controller.abort(), { once: true })
-  }
-
   const { timeoutMs: _timeoutMs, signal: _signal, ...fetchInit } = init || {}
-  try {
-    let resp: Response
+
+  async function requestOnce(targetBase: string) {
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+    if (externalSignal) {
+      if (externalSignal.aborted) controller.abort()
+      else externalSignal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
     try {
-      resp = await fetch(`${base}${path}`, { ...fetchInit, signal: controller.signal })
-    } catch (error) {
-      if (path === '/health' || !(window as any).__TAURI_INTERNALS__) throw error
-      _resolvedUrl = null
-      base = await resolveBackendUrl()
-      resp = await fetch(`${base}${path}`, { ...fetchInit, signal: controller.signal })
+      return await fetch(`${targetBase}${path}`, { ...fetchInit, signal: controller.signal })
+    } finally {
+      window.clearTimeout(timer)
     }
-    if ((resp.status === 404 || resp.status === 0) && path !== '/health' && !(window as any).__TAURI_INTERNALS__) {
-      _resolvedUrl = null
-      base = await resolveBackendUrl()
-      resp = await fetch(`${base}${path}`, { ...fetchInit, signal: controller.signal })
-    }
-    return resp
-  } finally {
-    window.clearTimeout(timer)
   }
+
+  let resp: Response
+  try {
+    resp = await requestOnce(base)
+  } catch (error) {
+    if (path === '/health') throw error
+    _resolvedUrl = null
+    base = await resolveBackendUrl()
+    resp = await requestOnce(base)
+  }
+  if ((resp.status === 404 || resp.status === 0) && path !== '/health' && !(window as any).__TAURI_INTERNALS__) {
+    _resolvedUrl = null
+    base = await resolveBackendUrl()
+    resp = await requestOnce(base)
+  }
+  return resp
 }
 
 export function createWebSocket(onMessage: (data: any) => void): WebSocket {

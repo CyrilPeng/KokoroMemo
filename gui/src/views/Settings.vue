@@ -1580,6 +1580,37 @@ onMounted(() => {
   gap: 14px;
 }
 @media (max-width: 720px) {
+  :deep(.n-card) {
+    --n-padding-left: 12px !important;
+    --n-padding-right: 12px !important;
+  }
+  :deep(.n-card-header) {
+    padding: 12px 12px 8px !important;
+  }
+  :deep(.n-card__content) {
+    padding: 10px 12px 12px !important;
+  }
+  :deep(.n-form) {
+    gap: 8px !important;
+  }
+  :deep(.n-form-item) {
+    grid-template-columns: minmax(72px, 88px) minmax(0, 1fr) !important;
+  }
+  :deep(.n-form-item-label) {
+    padding-right: 8px !important;
+    white-space: normal !important;
+    line-height: 1.25 !important;
+  }
+  :deep(.n-form-item-blank) {
+    min-width: 0 !important;
+  }
+  :deep(.n-input),
+  :deep(.n-select),
+  :deep(.n-input-number),
+  :deep(.n-dynamic-tags) {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
   .adv-layout {
     flex-direction: column;
   }

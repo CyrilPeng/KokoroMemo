@@ -927,8 +927,9 @@ async def list_conversations_api(
 
 
 @router.delete("/admin/conversations/{conversation_id}")
-async def delete_conversation_api(conversation_id: str):
+async def delete_conversation_api(conversation_id: str, request: Request):
     """Delete a conversation record."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_app import delete_conversation
 

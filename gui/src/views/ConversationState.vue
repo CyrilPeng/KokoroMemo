@@ -217,6 +217,36 @@ async function fetchConversations() {
   }
 }
 
+async function deleteSelectedConversation() {
+  const target = conversationId.value.trim()
+  if (!target) {
+    message.warning('请先选择会话')
+    return
+  }
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(target)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '删除会话失败')
+    message.success('会话已删除')
+    conversations.value = conversations.value.filter((item) => item.conversation_id !== target)
+    conversationId.value = conversations.value[0]?.conversation_id || ''
+    template.value = null
+    rows.value = []
+    config.value = null
+    preview.value = { preview: '', char_count: 0, max_chars: 0, item_count: 0 }
+    persistInputs()
+    if (conversationId.value) await fetchBoard()
+  } catch (error: any) {
+    message.error(error.message || '删除会话失败')
+  } finally {
+    saving.value = false
+  }
+}
+
 async function fetchDefaultConfig() {
   try {
     const resp = await apiFetch('/admin/conversation-defaults', { headers: authHeaders() })
@@ -474,6 +504,17 @@ onMounted(() => {
                 加载
               </NButton>
               <NButton :disabled="!template" @click="exportBoard">导出</NButton>
+              <NPopconfirm
+                :disabled="!conversationId.trim()"
+                positive-text="删除"
+                negative-text="取消"
+                @positive-click="deleteSelectedConversation"
+              >
+                <template #trigger>
+                  <NButton type="error" quaternary :disabled="!conversationId.trim()" :loading="saving">删除会话</NButton>
+                </template>
+                删除当前会话记录？此操作会从会话列表移除该 ID，但不会删除磁盘上的聊天文件。
+              </NPopconfirm>
             </NSpace>
           </NGridItem>
         </NGrid>

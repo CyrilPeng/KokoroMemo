@@ -7,6 +7,7 @@ import {
   NSelect, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { apiFetch } from '../api'
+import { saveJsonExport } from '../export'
 
 type Conversation = Record<string, any>
 type Character = Record<string, any>
@@ -25,11 +26,15 @@ const checkedConversationIds = ref<string[]>([])
 const batchCharacterId = ref<string | null>(null)
 const showEditModal = ref(false)
 const showPreviewModal = ref(false)
+const showImportModal = ref(false)
 const previewLoading = ref(false)
 const editing = ref<Conversation | null>(null)
 const editForm = ref({ title: '', character_id: null as string | null })
 const previewConversation = ref<Conversation | null>(null)
 const previewMessages = ref<any[]>([])
+const importText = ref('')
+const importTargetId = ref('')
+const importOverwrite = ref(false)
 
 function displayName(item: Conversation) {
   return item.title?.trim() || item.conversation_id || '未命名会话'
@@ -102,11 +107,12 @@ const columns = computed(() => [
     },
   },
   {
-    title: '操作', key: 'actions', width: 250, render: (row: Conversation) => h(NSpace, { size: 6 }, {
+    title: '操作', key: 'actions', width: 300, render: (row: Conversation) => h(NSpace, { size: 6 }, {
       default: () => [
         h(NButton, { size: 'tiny', quaternary: true, onClick: () => openPreview(row) }, { default: () => '预览' }),
         h(NButton, { size: 'tiny', quaternary: true, onClick: () => openEdit(row) }, { default: () => '编辑' }),
         h(NButton, { size: 'tiny', quaternary: true, onClick: () => openState(row) }, { default: () => '状态板' }),
+        h(NButton, { size: 'tiny', quaternary: true, onClick: () => exportConversation(row) }, { default: () => '导出' }),
         h(NPopconfirm, { onPositiveClick: () => deleteConversation(row) }, {
           trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => '删除' }),
           default: () => '删除该会话记录？不会删除磁盘聊天文件。',
@@ -203,6 +209,57 @@ async function deleteConversation(row: Conversation) {
   }
 }
 
+async function exportConversation(row: Conversation) {
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(row.conversation_id)}/export`)
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.detail || data.message || '导出会话配置失败')
+    const savedPath = await saveJsonExport(`conversation_${row.conversation_id}.json`, data)
+    if (savedPath) message.success('会话配置已导出')
+  } catch (error: any) {
+    message.error(error.message || '导出会话配置失败')
+  }
+}
+
+function openImportModal() {
+  importText.value = ''
+  importTargetId.value = ''
+  importOverwrite.value = false
+  showImportModal.value = true
+}
+
+function triggerImportFile() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json,application/json'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+    importText.value = await file.text()
+  }
+  input.click()
+}
+
+async function importConversationConfig() {
+  try {
+    const payload = JSON.parse(importText.value)
+    if (importTargetId.value.trim()) payload.target_conversation_id = importTargetId.value.trim()
+    payload.overwrite_state = importOverwrite.value
+    const resp = await apiFetch('/admin/conversations/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '导入会话配置失败')
+    message.success(`已导入 ${data.imported_items || 0} 条状态项`)
+    showImportModal.value = false
+    await fetchAll()
+  } catch (error: any) {
+    message.error(error.message || '导入会话配置失败')
+  }
+}
+
 async function batchAssignCharacter() {
   if (!checkedConversationIds.value.length || !batchCharacterId.value) return
   batchSaving.value = true
@@ -294,7 +351,7 @@ onMounted(fetchAll)
             <NGridItem span="1 m:9"><NInput v-model:value="keyword" placeholder="搜索名称、ID、角色、客户端、最近消息或诊断" clearable /></NGridItem>
             <NGridItem span="1 m:6"><NSelect v-model:value="characterFilter" :options="characterFilterOptions" filterable /></NGridItem>
             <NGridItem span="1 m:5"><NSelect v-model:value="clientFilter" :options="clientFilterOptions" /></NGridItem>
-            <NGridItem span="1 m:4"><NSpace justify="end"><NButton :loading="loading" @click="fetchAll">刷新</NButton></NSpace></NGridItem>
+            <NGridItem span="1 m:4"><NSpace justify="end"><NButton @click="openImportModal">导入</NButton><NButton :loading="loading" @click="fetchAll">刷新</NButton></NSpace></NGridItem>
           </NGrid>
           <NAlert v-if="checkedConversationIds.length" type="info" :show-icon="false">
             <NSpace align="center" :wrap="true">
@@ -368,6 +425,33 @@ onMounted(fetchAll)
           </div>
         </NSpace>
       </NSpin>
+    </NModal>
+
+    <NModal v-model:show="showImportModal" preset="card" title="导入会话配置" style="width: min(720px, 96vw)">
+      <NSpace vertical>
+        <NAlert type="info" :show-icon="false">可导入从会话管理或状态板导出的 JSON 配置，包含状态板模板、挂载库和状态项。</NAlert>
+        <NSpace>
+          <NButton @click="triggerImportFile">选择 JSON 文件</NButton>
+          <NPopconfirm @positive-click="importOverwrite = !importOverwrite">
+            <template #trigger><NTag :type="importOverwrite ? 'warning' : 'default'">{{ importOverwrite ? '覆盖已有状态' : '追加导入状态' }}</NTag></template>
+            切换导入模式？覆盖模式会先清空目标会话已有状态项。
+          </NPopconfirm>
+        </NSpace>
+        <NForm label-placement="top">
+          <NFormItem label="目标会话 ID（留空则使用导出文件中的 ID）">
+            <NInput v-model:value="importTargetId" placeholder="例如：my_conversation_id" clearable />
+          </NFormItem>
+          <NFormItem label="JSON 内容">
+            <NInput v-model:value="importText" type="textarea" :autosize="{ minRows: 8, maxRows: 18 }" placeholder="粘贴导出的会话配置 JSON" />
+          </NFormItem>
+        </NForm>
+      </NSpace>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showImportModal = false">取消</NButton>
+          <NButton type="primary" :disabled="!importText.trim()" @click="importConversationConfig">导入</NButton>
+        </NSpace>
+      </template>
     </NModal>
   </div>
 </template>

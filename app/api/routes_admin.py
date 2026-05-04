@@ -648,6 +648,41 @@ async def update_character_api(character_id: str, request: Request, data: dict =
     return {"status": "ok", "character_id": character_id}
 
 
+@router.post("/admin/characters/{character_id}/merge")
+async def merge_character_api(character_id: str, request: Request, data: dict = Body(...)):
+    """将一个重复角色合并到当前目标角色。"""
+    _require_admin(request)
+    from pathlib import Path
+    from app.core.state import get_config
+    from app.storage.sqlite_app import merge_character_profile, list_characters
+    from app.storage.sqlite_cards import merge_character_refs
+    from app.storage.sqlite_conversation import merge_character_turn_refs
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    source_character_id = (data.get("source_character_id") or "").strip()
+    if not source_character_id:
+        raise HTTPException(status_code=400, detail="缺少源角色 ID")
+    if source_character_id == character_id:
+        raise HTTPException(status_code=400, detail="不能合并到同一个角色")
+    cfg = get_config()
+    known_ids = {item.get("character_id") for item in await list_characters(cfg.storage.sqlite.app_db)}
+    if source_character_id not in known_ids or character_id not in known_ids:
+        raise HTTPException(status_code=404, detail="角色不存在")
+
+    app_result = await merge_character_profile(cfg.storage.sqlite.app_db, source_character_id, character_id)
+    memory_result = await merge_character_refs(cfg.storage.sqlite.memory_db, source_character_id, character_id)
+    state_result = await SQLiteStateStore(cfg.storage.sqlite.memory_db).merge_character_refs(source_character_id, character_id)
+    turn_count = 0
+    for chat_db_path in Path(cfg.storage.root_dir, "conversations").glob("*/chat.sqlite"):
+        turn_count += await merge_character_turn_refs(str(chat_db_path), source_character_id, character_id)
+    return {
+        "status": "ok",
+        "source_character_id": source_character_id,
+        "target_character_id": character_id,
+        "sync": {"app": app_result, "memory": memory_result, "state": state_result, "chat_turns": turn_count},
+    }
+
+
 @router.get("/admin/characters/{character_id}/conversations")
 async def list_character_conversations_api(character_id: str, request: Request):
     """List conversations associated with one character, including state config when present."""

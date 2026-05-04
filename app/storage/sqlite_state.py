@@ -1315,12 +1315,23 @@ class SQLiteStateStore:
         )
 
     async def update_conversation_character_refs(self, conversation_id: str, character_id: str | None) -> dict[str, int]:
-        """Update character references for state data belonging to one conversation."""
+        """更新单个会话状态数据中的角色引用。"""
         await self.init_schema()
         async with aiosqlite.connect(self.db_path) as db:
             items = await db.execute(
                 "UPDATE conversation_state_items SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE conversation_id = ?",
                 (character_id, conversation_id),
+            )
+            await db.commit()
+            return {"items": items.rowcount}
+
+    async def merge_character_refs(self, source_character_id: str, target_character_id: str) -> dict[str, int]:
+        """将状态板数据中的源角色引用迁移到目标角色。"""
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            items = await db.execute(
+                "UPDATE conversation_state_items SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE character_id = ?",
+                (target_character_id, source_character_id),
             )
             await db.commit()
             return {"items": items.rowcount}

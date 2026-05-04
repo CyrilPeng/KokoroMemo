@@ -185,6 +185,44 @@ async def update_character_profile(
         await db.commit()
 
 
+async def merge_character_profile(db_path: str, source_character_id: str, target_character_id: str) -> dict[str, int]:
+    """将源角色合并到目标角色，并迁移应用库中的会话归属。"""
+    await init_app_db(db_path)
+    if source_character_id == target_character_id:
+        return {"conversations": 0, "characters": 0, "defaults": 0}
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM characters WHERE character_id = ?", (source_character_id,))
+        source = await cursor.fetchone()
+        cursor = await db.execute("SELECT * FROM characters WHERE character_id = ?", (target_character_id,))
+        target = await cursor.fetchone()
+        if not source or not target:
+            return {"conversations": 0, "characters": 0, "defaults": 0}
+
+        source_aliases = json.loads(source["aliases_json"] or "[]")
+        target_aliases = json.loads(target["aliases_json"] or "[]")
+        merged_aliases = []
+        for alias in [source["display_name"], source_character_id, *target_aliases, *source_aliases]:
+            alias = (alias or "").strip()
+            if alias and alias != target["display_name"] and alias not in merged_aliases:
+                merged_aliases.append(alias)
+        notes = "\n\n".join(part for part in [target["notes"], source["notes"]] if part)
+        await db.execute(
+            """UPDATE characters
+               SET aliases_json = ?, notes = ?, updated_at = datetime('now', 'localtime')
+               WHERE character_id = ?""",
+            (json.dumps(merged_aliases, ensure_ascii=False), notes or None, target_character_id),
+        )
+        conversations = await db.execute(
+            "UPDATE conversations SET character_id = ? WHERE character_id = ?",
+            (target_character_id, source_character_id),
+        )
+        defaults = await db.execute("DELETE FROM character_defaults WHERE character_id = ?", (source_character_id,))
+        characters = await db.execute("DELETE FROM characters WHERE character_id = ?", (source_character_id,))
+        await db.commit()
+        return {"conversations": conversations.rowcount, "characters": characters.rowcount, "defaults": defaults.rowcount}
+
+
 async def get_character_defaults(db_path: str, character_id: str) -> dict | None:
     """Get default template and library config for a character."""
     async with aiosqlite.connect(db_path) as db:

@@ -799,7 +799,7 @@ async def copy_conversation_mounts(db_path: str, source_conversation_id: str, ta
 
 
 async def update_conversation_character_refs(db_path: str, conversation_id: str, character_id: str | None) -> dict[str, int]:
-    """Update character references tied to one conversation in memory-related tables."""
+    """更新单个会话在记忆相关表中的角色引用。"""
     await init_cards_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         mounts = await db.execute(
@@ -813,6 +813,26 @@ async def update_conversation_character_refs(db_path: str, conversation_id: str,
         inbox = await db.execute(
             "UPDATE memory_inbox SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE conversation_id = ?",
             (character_id, conversation_id),
+        )
+        await db.commit()
+        return {"mounts": mounts.rowcount, "cards": cards.rowcount, "inbox": inbox.rowcount}
+
+
+async def merge_character_refs(db_path: str, source_character_id: str, target_character_id: str) -> dict[str, int]:
+    """将记忆相关表中的源角色引用迁移到目标角色。"""
+    await init_cards_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        mounts = await db.execute(
+            "UPDATE conversation_memory_mounts SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE character_id = ?",
+            (target_character_id, source_character_id),
+        )
+        cards = await db.execute(
+            "UPDATE memory_cards SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE character_id = ?",
+            (target_character_id, source_character_id),
+        )
+        inbox = await db.execute(
+            "UPDATE memory_inbox SET character_id = ?, updated_at = datetime('now', 'localtime') WHERE character_id = ?",
+            (target_character_id, source_character_id),
         )
         await db.commit()
         return {"mounts": mounts.rowcount, "cards": cards.rowcount, "inbox": inbox.rowcount}

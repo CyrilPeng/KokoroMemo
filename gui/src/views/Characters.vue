@@ -3,7 +3,7 @@ import { computed, h, onMounted, ref } from 'vue'
 import {
   NAlert, NButton, NCard, NDataTable, NDescriptions, NDescriptionsItem,
   NDrawer, NDrawerContent, NDynamicTags, NEmpty, NForm, NFormItem, NGrid,
-  NGridItem, NIcon, NInput, NModal, NSelect, NSpace, NSpin, NSwitch, NTabPane,
+  NGridItem, NIcon, NInput, NModal, NPopconfirm, NSelect, NSpace, NSpin, NSwitch, NTabPane,
   NTabs, NTag, useDialog, useMessage,
 } from 'naive-ui'
 import { CreateOutline, HelpCircleOutline, OpenOutline, RefreshOutline } from '@vicons/ionicons5'
@@ -32,6 +32,7 @@ const previewConversation = ref<any | null>(null)
 const previewMessages = ref<any[]>([])
 const keyword = ref('')
 const profileFilter = ref<string | null>(null)
+const mergeTargetId = ref<string | null>(null)
 
 const profileOptions = computed(() => profiles.value.map((item) => ({ label: item.name, value: item.profile_id })))
 const filterProfileOptions = computed(() => [{ label: '全部方案', value: null }, ...profileOptions.value])
@@ -40,6 +41,9 @@ const boardTemplateOptions = computed(() => [{ label: '不使用旧字段模板'
 const libraryOptions = computed(() => libraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
 const writeLibraryOptions = computed(() => libraryOptions.value.filter((item) => form.value.library_ids.includes(item.value)))
 const mountPresetOptions = computed(() => [{ label: '不套用挂载预设', value: null }, ...mountPresets.value.map((item) => ({ label: item.name, value: item.preset_id }))])
+const mergeTargetOptions = computed(() => characters.value
+  .filter((item) => item.character_id !== selected.value?.character_id)
+  .map((item) => ({ label: item.display_name ? `${item.display_name}（${item.character_id}）` : item.character_id, value: item.character_id })))
 const memoryPolicyOptions = [
   { label: '关闭长期记忆写入', value: 'disabled' },
   { label: '生成候选待审核', value: 'candidate' },
@@ -150,6 +154,7 @@ async function fetchAll() {
 
 async function openCharacter(row: Character) {
   selected.value = row
+  mergeTargetId.value = null
   form.value = {
     display_name: row.display_name || '', aliases: [...(row.aliases || [])], notes: row.notes || '', source: row.source || '',
     profile_id: row.profile_id || 'airp_roleplay', template_id: row.template_id ?? null, table_template_id: row.table_template_id ?? null,
@@ -165,6 +170,27 @@ async function openCharacter(row: Character) {
 async function fetchConversations(characterId: string) {
   const resp = await apiFetch(`/admin/characters/${encodeURIComponent(characterId)}/conversations`)
   if (resp.ok) conversations.value = (await resp.json()).items || []
+}
+
+async function mergeIntoTarget() {
+  if (!selected.value || !mergeTargetId.value) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/characters/${encodeURIComponent(mergeTargetId.value)}/merge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_character_id: selected.value.character_id }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '合并角色失败')
+    message.success('角色已合并')
+    showDrawer.value = false
+    await fetchAll()
+  } catch (error: any) {
+    message.error(error.message || '合并角色失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 async function openConversationPreview(conversationId: string) {
@@ -343,6 +369,16 @@ onMounted(fetchAll)
               <NAlert :type="health({ ...selected, ...form }).type as any" :show-icon="false">当前诊断：{{ health({ ...selected, ...form }).label }}</NAlert>
               <p>RimTalk / 殖民地模拟角色建议：默认方案为 RimTalk，长期记忆写入关闭，注入策略为仅状态板。</p>
               <NButton type="warning" @click="applyToConversations">应用当前默认策略到已有会话</NButton>
+              <NCard size="small" title="合并重复角色">
+                <NSpace vertical>
+                  <NAlert type="warning" :show-icon="false">将当前角色合并到目标角色，会迁移会话、记忆、状态板和聊天轮次引用，并删除当前重复角色。</NAlert>
+                  <NSelect v-model:value="mergeTargetId" :options="mergeTargetOptions" filterable clearable placeholder="选择要合并到的目标角色" />
+                  <NPopconfirm :disabled="!mergeTargetId" @positive-click="mergeIntoTarget">
+                    <template #trigger><NButton type="error" :loading="saving" :disabled="!mergeTargetId">合并到目标角色</NButton></template>
+                    确认将当前角色合并到目标角色？该操作不可撤销。
+                  </NPopconfirm>
+                </NSpace>
+              </NCard>
             </NSpace>
           </NTabPane>
         </NTabs>

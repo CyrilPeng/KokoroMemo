@@ -244,12 +244,24 @@ async def get_conversation_message_summary(db_path: str, conversation_id: str) -
 
 
 async def update_conversation_character(db_path: str, conversation_id: str, character_id: str | None) -> int:
-    """?????????????"""
+    """更新已保存轮次的角色归属。"""
     await init_chat_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         cursor = await db.execute(
             "UPDATE turns SET character_id = ? WHERE conversation_id = ?",
             (character_id, conversation_id),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def merge_character_turn_refs(db_path: str, source_character_id: str, target_character_id: str) -> int:
+    """将聊天轮次中的源角色引用迁移到目标角色。"""
+    await init_chat_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            "UPDATE turns SET character_id = ? WHERE character_id = ?",
+            (target_character_id, source_character_id),
         )
         await db.commit()
         return cursor.rowcount

@@ -178,7 +178,7 @@ async def get_all_messages(db_path: str, conversation_id: str) -> list[dict]:
 
 
 async def get_recent_messages(db_path: str, conversation_id: str, limit: int = 30) -> list[dict]:
-    """??????????????????????"""
+    """按展示顺序返回最近消息，供会话快速预览使用。"""
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -205,7 +205,7 @@ async def get_recent_messages(db_path: str, conversation_id: str, limit: int = 3
 
 
 async def get_conversation_message_summary(db_path: str, conversation_id: str) -> dict:
-    """?????????????????"""
+    """返回会话列表所需的消息摘要和计数。"""
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(

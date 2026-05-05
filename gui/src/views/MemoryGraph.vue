@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, triggerRef, watch } from 'vue'
 import {
-  NButton, NCard, NEmpty, NIcon, NInputNumber, NModal, NSelect, NSpace,
+  NButton, NCard, NEmpty, NIcon, NInputNumber, NSelect, NSpace,
   NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'

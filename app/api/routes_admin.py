@@ -12,6 +12,64 @@ router = APIRouter()
 
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+_UPDATE_MANIFEST_SOURCES = [
+    ("GitHub", "https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json"),
+    ("GitHub Proxy", "https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json"),
+]
+_GITEE_LATEST_RELEASE_API = "https://gitee.com/api/v5/repos/Cyril_P/KokoroMemo/releases/latest"
+
+
+async def _fetch_update_json(client: httpx.AsyncClient, url: str) -> dict:
+    resp = await client.get(url, headers={"Accept": "application/json"})
+    if resp.status_code != 200:
+        raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:120]}")
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise RuntimeError("返回内容不是 JSON 对象")
+    return data
+
+
+async def _fetch_gitee_update_manifest(client: httpx.AsyncClient) -> dict:
+    release = await _fetch_update_json(client, _GITEE_LATEST_RELEASE_API)
+    tag = release.get("tag_name") or release.get("name")
+    attachments = release.get("attach_files") if isinstance(release.get("attach_files"), list) else release.get("assets")
+    if not isinstance(attachments, list):
+        attachments = []
+    manifest_asset = next((item for item in attachments if (item.get("name") or item.get("filename")) == "latest.json"), None)
+    manifest_url = ""
+    if manifest_asset:
+        manifest_url = (
+            manifest_asset.get("browser_download_url")
+            or manifest_asset.get("download_url")
+            or manifest_asset.get("url")
+            or manifest_asset.get("html_url")
+            or ""
+        )
+    if not manifest_url and tag:
+        manifest_url = f"https://gitee.com/Cyril_P/KokoroMemo/releases/download/{tag}/latest.json"
+    if not manifest_url:
+        raise RuntimeError("未找到 latest.json")
+    return await _fetch_update_json(client, manifest_url)
+
+
+@router.get("/admin/update-manifest")
+async def get_update_manifest_api(request: Request):
+    """按 GitHub、GitHub 代理、Gitee 顺序获取更新清单，避免浏览器跨域失败。"""
+    _require_admin(request)
+    errors: list[str] = []
+    async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+        for source_name, url in _UPDATE_MANIFEST_SOURCES:
+            try:
+                data = await _fetch_update_json(client, url)
+                return {"status": "ok", "sourceName": source_name, "data": data, "errors": errors}
+            except Exception as exc:
+                errors.append(f"{source_name}: {exc}")
+        try:
+            data = await _fetch_gitee_update_manifest(client)
+            return {"status": "ok", "sourceName": "Gitee", "data": data, "errors": errors}
+        except Exception as exc:
+            errors.append(f"Gitee: {exc}")
+    return {"status": "error", "message": "；".join(errors) or "无法获取更新清单", "errors": errors}
 
 
 @router.get("/admin/conversation-profiles")

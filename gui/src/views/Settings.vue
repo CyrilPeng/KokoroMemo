@@ -156,20 +156,35 @@ async function fetchGiteeUpdateManifest() {
 }
 
 async function fetchUpdateManifest() {
-  let lastError = ''
+  const errors: string[] = []
+  try {
+    const resp = await apiFetch('/admin/update-manifest', { timeoutMs: 10000 })
+    const payload = await resp.json()
+    if (resp.ok && payload.status === 'ok') {
+      return {
+        sourceName: payload.sourceName || payload.source_name || '后端代理',
+        data: payload.data,
+        errors: Array.isArray(payload.errors) ? payload.errors : [],
+      }
+    }
+    errors.push(`后端代理: ${payload.message || payload.detail || `HTTP ${resp.status}`}`)
+    if (Array.isArray(payload.errors)) errors.push(...payload.errors)
+  } catch (e) {
+    errors.push(`后端代理: ${e instanceof Error ? e.message : String(e)}`)
+  }
   for (const source of UPDATE_MANIFEST_URLS) {
     try {
-      return { sourceName: source.name, data: await fetchJsonWithTimeout(source.url) }
+      return { sourceName: source.name, data: await fetchJsonWithTimeout(source.url), errors }
     } catch (e) {
-      lastError = `${source.name}: ${e instanceof Error ? e.message : String(e)}`
+      errors.push(`${source.name}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
   try {
-    return { sourceName: 'Gitee', data: await fetchGiteeUpdateManifest() }
+    return { sourceName: 'Gitee', data: await fetchGiteeUpdateManifest(), errors }
   } catch (e) {
-    lastError = `Gitee: ${e instanceof Error ? e.message : String(e)}`
+    errors.push(`Gitee: ${e instanceof Error ? e.message : String(e)}`)
   }
-  throw new Error(lastError || 'manifest unavailable')
+  throw new Error(errors.join('；') || 'manifest unavailable')
 }
 
 function pickUpdateAsset(manifest: any) {

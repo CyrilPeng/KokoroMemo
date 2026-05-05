@@ -294,6 +294,10 @@ async def get_stats(request: Request):
             row = await cursor.fetchone()
             result["inbox_pending"] = row[0] if row else 0
 
+            cursor = await db.execute("SELECT COUNT(*) FROM memory_inbox WHERE status IN ('discarded', 'rejected')")
+            row = await cursor.fetchone()
+            result["inbox_discarded"] = row[0] if row else 0
+
             cursor = await db.execute(
                 "SELECT vector_synced, COUNT(*) FROM memory_cards WHERE status='approved' GROUP BY vector_synced"
             )
@@ -314,6 +318,7 @@ async def get_stats(request: Request):
     except Exception:
         result.setdefault("cards_by_status", {})
         result.setdefault("inbox_pending", 0)
+        result.setdefault("inbox_discarded", 0)
 
     return result
 

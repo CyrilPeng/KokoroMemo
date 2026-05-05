@@ -18,6 +18,8 @@ export default {
     totalAll: 'Total (all statuses):',
     inboxPending: 'Inbox Pending',
     awaitingReview: 'Awaiting review',
+    inboxDiscarded: 'Discarded',
+    discardedHint: 'Dedup / rejected candidates',
     gateRequests24h: 'Retrieval Gate (24h)',
     skipRate: 'Skip rate:',
     dailyGrowth7d: '7-Day Growth',

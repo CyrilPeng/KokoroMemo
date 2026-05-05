@@ -20,6 +20,7 @@ const helpModal = ref(false)
 
 const totalApproved = computed(() => stats.value?.cards_by_status?.approved || 0)
 const inboxPending = computed(() => stats.value?.inbox_pending || 0)
+const inboxDiscarded = computed(() => stats.value?.inbox_discarded || 0)
 const totalCards = computed(() => {
   if (!stats.value?.cards_by_status) return 0
   return Object.values(stats.value.cards_by_status as Record<string, number>).reduce((a: number, b: number) => a + b, 0)
@@ -165,6 +166,12 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
               <NCard class="dashboard-stat-card" hoverable style="background: #18181b; border: 1px solid #27272a; cursor: pointer;" @click="router.push('/inbox')">
                 <NStatistic :label="$t('dashboard.inboxPending')" :value="inboxPending" />
                 <div style="color: #52525b; font-size: 12px; margin-top: 4px;">{{ $t('dashboard.awaitingReview') }}</div>
+              </NCard>
+            </NGridItem>
+            <NGridItem span="4 m:1">
+              <NCard class="dashboard-stat-card" hoverable style="background: #18181b; border: 1px solid #27272a; cursor: pointer;" @click="router.push('/inbox')">
+                <NStatistic :label="$t('dashboard.inboxDiscarded')" :value="inboxDiscarded" />
+                <div style="color: #52525b; font-size: 12px; margin-top: 4px;">{{ $t('dashboard.discardedHint') }}</div>
               </NCard>
             </NGridItem>
             <NGridItem span="4 m:1">

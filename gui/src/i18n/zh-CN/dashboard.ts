@@ -18,6 +18,8 @@ export default {
     totalAll: '总计（含所有状态）:',
     inboxPending: '待审核',
     awaitingReview: '等待审核处理',
+    inboxDiscarded: '已丢弃',
+    discardedHint: '去重/拒绝的候选',
     gateRequests24h: '检索门控 (24h)',
     skipRate: '跳过率:',
     dailyGrowth7d: '7 日新增',

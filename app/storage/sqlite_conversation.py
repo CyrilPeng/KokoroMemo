@@ -179,11 +179,11 @@ async def get_turn_count(db_path: str, conversation_id: str) -> int:
 
 
 async def get_all_messages(db_path: str, conversation_id: str) -> list[dict]:
-    """Return all messages in a conversation ordered by creation time."""
+    """Return all messages in a conversation ordered by insertion order."""
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, message_id ASC",
+            "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY rowid ASC",
             (conversation_id,),
         )
         rows = await cursor.fetchall()
@@ -191,21 +191,43 @@ async def get_all_messages(db_path: str, conversation_id: str) -> list[dict]:
 
 
 async def get_recent_messages(db_path: str, conversation_id: str, limit: int = 30) -> list[dict]:
-    """按展示顺序返回最近消息，供会话快速预览使用。"""
+    """按插入顺序返回最近消息，供会话快速预览使用。
+
+    为了保留长会话的上下文起点，会把会话最早的 system 消息（若存在）置顶。
+    """
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
+        recent_cursor = await db.execute(
             """
-            SELECT role, name, content, created_at
+            SELECT rowid AS rid, role, name, content, created_at
             FROM messages
             WHERE conversation_id = ?
-            ORDER BY created_at DESC, message_id DESC
+            ORDER BY rowid DESC
             LIMIT ?
             """,
             (conversation_id, limit),
         )
-        rows = list(await cursor.fetchall())
-        rows.reverse()
+        recent_rows = list(await recent_cursor.fetchall())
+        recent_rows.reverse()
+
+        system_row = None
+        if recent_rows and not any(row["role"] == "system" for row in recent_rows):
+            sys_cursor = await db.execute(
+                """
+                SELECT rowid AS rid, role, name, content, created_at
+                FROM messages
+                WHERE conversation_id = ? AND role = 'system'
+                ORDER BY rowid ASC
+                LIMIT 1
+                """,
+                (conversation_id,),
+            )
+            system_row = await sys_cursor.fetchone()
+
+        ordered = []
+        if system_row is not None:
+            ordered.append(system_row)
+        ordered.extend(recent_rows)
         return [
             {
                 "role": row["role"],
@@ -213,7 +235,7 @@ async def get_recent_messages(db_path: str, conversation_id: str, limit: int = 3
                 "content": row["content"],
                 "created_at": row["created_at"],
             }
-            for row in rows
+            for row in ordered
         ]
 
 

@@ -792,6 +792,9 @@ onMounted(() => {
         <NGrid :cols="24" :x-gap="16" :y-gap="16">
           <NGridItem :span="16">
             <NCard title="状态表格">
+              <div v-if="rowSource === 'legacy_state_items'" class="hint-text" style="margin-bottom: 12px;">
+                当前显示的是从旧版状态字段映射来的视图。编辑任意一行后会保存为新的状态表格行；旧字段仍保留用于兼容。
+              </div>
               <NTabs v-if="tables.length" v-model:value="activeTableKey" type="line" animated>
                 <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">
                   <NSpace vertical size="medium">

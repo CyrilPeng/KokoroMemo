@@ -1738,64 +1738,165 @@ def _state_table_row_to_dict(row) -> dict:
     }
 
 
+# 旧 state_items 字段到新表格 (table_key, column_key) 的语义映射。
+# 由于旧字段命名（current_mood / speech_habit 等）与新表格列名（mood / rule 等）不同，
+# 需要显式映射，否则用户从旧版本升级后状态表格永远为空。
+_LEGACY_FIELD_TO_TABLE_COLUMN: dict[str, list[tuple[str, str]]] = {
+    # 互动状态 → 优先 current_interaction / character_state
+    "current_mood": [("current_interaction", "mood"), ("character_state", "mood")],
+    "current_task": [("current_interaction", "next_step"), ("character_state", "goal")],
+    "current_scene": [("current_scene", "scene"), ("current_interaction", "topic")],
+    "current_location": [("current_scene", "scene"), ("current_interaction", "topic")],
+    # 角色身份与口癖 → roleplay_rules 多行 / character_state
+    "roleplay_persona": [("character_state", "identity"), ("roleplay_rules", "rule")],
+    "speech_habit": [("character_state", "speech"), ("roleplay_rules", "rule")],
+    "user_addressing": [("roleplay_rules", "rule")],
+    "character_addressing": [("roleplay_rules", "rule")],
+    "user_preference": [("roleplay_rules", "rule")],
+    "stable_boundary": [("roleplay_rules", "rule")],
+    # 关系 → relationship_state
+    "relationship_state": [("relationship_state", "relationship")],
+    # 任务与摘要
+    "unfinished_promise": [("promises_tasks", "task"), ("recent_summary", "summary")],
+    "recent_summary": [("recent_summary", "summary"), ("important_events", "event")],
+}
+
+# legacy field_key 在生成 roleplay_rules 行时附带的 scope 标签，便于用户识别来源
+_LEGACY_RULE_SCOPE_HINT: dict[str, str] = {
+    "speech_habit": "口癖",
+    "user_addressing": "称呼",
+    "character_addressing": "称呼",
+    "user_preference": "偏好",
+    "stable_boundary": "边界",
+    "roleplay_persona": "扮演身份",
+}
+
+
+def _resolve_legacy_target(field_key: str, tables_by_key: dict, columns_by_table: dict) -> tuple[str, str] | None:
+    """根据 legacy field_key 找到当前模板里第一个可用的 (table_key, column_key)。"""
+    candidates = _LEGACY_FIELD_TO_TABLE_COLUMN.get(field_key, [])
+    for table_key, column_key in candidates:
+        if table_key in tables_by_key and column_key in columns_by_table.get(table_key, set()):
+            return (table_key, column_key)
+    return None
+
+
 def _legacy_items_to_table_rows(conversation_id: str, template, items: list) -> list:
     """把旧状态字段临时映射成表格行，避免已有状态只出现在注入预览里。"""
     from app.memory.state_schema import StateTableCell, StateTableRow
 
-    rows = []
     tables_by_key = {table.table_key: table for table in template.tables}
-    consumed_item_ids: set[str] = set()
-    for table in template.tables:
-        cells = {}
-        matched_items = []
-        columns_by_key = {column.column_key: column for column in table.columns}
-        ordered_columns = sorted(table.columns, key=lambda item: (item.sort_order, item.name))
-        primary_column = ordered_columns[0] if ordered_columns else None
-        for item in items:
-            if item.item_id and item.item_id in consumed_item_ids:
+    columns_by_table = {table.table_key: {col.column_key for col in table.columns} for table in template.tables}
+
+    # 第一步：把每个 legacy item 解析到 (table_key, column_key)；
+    # as_status 表收集到同一行的 cells，普通表每条 item 单独成行。
+    status_cells: dict[str, dict[str, tuple[StateTableCell, object]]] = {}  # table_key -> column_key -> (cell, item)
+    list_rows: list[tuple[str, dict[str, StateTableCell], list, dict | None]] = []  # (table_key, cells, items, scope_hint)
+
+    for item in items:
+        for candidate in (item.field_key, item.item_key, item.category):
+            if not candidate:
                 continue
-            candidates = [item.field_key, item.item_key, item.category]
-            column_key = next((key for key in candidates if key and key in columns_by_key), None)
-            target_column = columns_by_key.get(column_key) if column_key else None
-            if not target_column:
-                table_match = next((key for key in candidates if key and key in tables_by_key), None)
-                if table_match == table.table_key and primary_column and primary_column.column_key not in cells:
-                    target_column = primary_column
-                    column_key = primary_column.column_key
-            if not target_column or column_key in cells:
+            target = _resolve_legacy_target(candidate, tables_by_key, columns_by_table)
+            if not target:
+                # 兜底：候选 key 直接命中某表的某列
+                for table_key, columns in columns_by_table.items():
+                    if candidate in columns:
+                        target = (table_key, candidate)
+                        break
+            if not target:
+                # 再兜底：候选 key 等于某 table_key，落到该表首列
+                if candidate in tables_by_key:
+                    table = tables_by_key[candidate]
+                    ordered = sorted(table.columns, key=lambda c: (c.sort_order, c.name))
+                    if ordered:
+                        target = (candidate, ordered[0].column_key)
+            if not target:
                 continue
-            cells[column_key] = StateTableCell(
+
+            table_key, column_key = target
+            table = tables_by_key[table_key]
+            column = next((c for c in table.columns if c.column_key == column_key), None)
+            if not column:
+                continue
+            cell = StateTableCell(
                 cell_id=None,
                 row_id="",
-                column_id=target_column.column_id,
+                column_id=column.column_id,
                 column_key=column_key,
                 value=item.content or "",
                 confidence=item.confidence,
                 updated_at=item.updated_at,
             )
-            matched_items.append(item)
-            if item.item_id:
-                consumed_item_ids.add(item.item_id)
-        if not cells:
-            continue
-        priority = max((item.priority for item in matched_items), default=table.prompt_priority)
-        confidence_values = [item.confidence for item in matched_items]
-        confidence = sum(confidence_values) / len(confidence_values) if confidence_values else 0.7
-        updated_at = max((item.updated_at or "" for item in matched_items), default="") or None
+            if table.as_status:
+                bucket = status_cells.setdefault(table_key, {})
+                if column_key not in bucket:
+                    bucket[column_key] = (cell, item)
+            else:
+                cells = {column_key: cell}
+                hint = _LEGACY_RULE_SCOPE_HINT.get(candidate)
+                if hint and table_key == "roleplay_rules" and "scope" in columns_by_table.get(table_key, set()):
+                    scope_column = next((c for c in table.columns if c.column_key == "scope"), None)
+                    if scope_column:
+                        cells["scope"] = StateTableCell(
+                            cell_id=None,
+                            row_id="",
+                            column_id=scope_column.column_id,
+                            column_key="scope",
+                            value=hint,
+                            confidence=item.confidence,
+                            updated_at=item.updated_at,
+                        )
+                list_rows.append((table_key, cells, [item], hint))
+            break  # 当前 item 已落位
+
+    rows = []
+    # 输出 as_status 行
+    for table_key, bucket in status_cells.items():
+        table = tables_by_key[table_key]
+        cells = {col_key: pair[0] for col_key, pair in bucket.items()}
+        matched_items = [pair[1] for pair in bucket.values()]
+        priority = max((it.priority for it in matched_items), default=table.prompt_priority)
+        confidences = [it.confidence for it in matched_items]
+        confidence = sum(confidences) / len(confidences) if confidences else 0.7
+        updated_at = max((it.updated_at or "" for it in matched_items), default="") or None
         rows.append(StateTableRow(
             row_id=None,
             conversation_id=conversation_id,
             template_id=template.template_id or "",
             table_id=table.table_id or "",
-            table_key=table.table_key,
+            table_key=table_key,
             status="active",
             priority=priority,
             confidence=confidence,
             source="旧状态字段",
-            metadata={"legacy_state_items": [item.item_id for item in matched_items if item.item_id]},
+            metadata={"legacy_state_items": [it.item_id for it in matched_items if it.item_id]},
             cells=cells,
             updated_at=updated_at,
         ))
+
+    # 输出普通行
+    for table_key, cells, matched_items, _hint in list_rows:
+        table = tables_by_key[table_key]
+        priority = max((it.priority for it in matched_items), default=table.prompt_priority)
+        confidences = [it.confidence for it in matched_items]
+        confidence = sum(confidences) / len(confidences) if confidences else 0.7
+        updated_at = max((it.updated_at or "" for it in matched_items), default="") or None
+        rows.append(StateTableRow(
+            row_id=None,
+            conversation_id=conversation_id,
+            template_id=template.template_id or "",
+            table_id=table.table_id or "",
+            table_key=table_key,
+            status="active",
+            priority=priority,
+            confidence=confidence,
+            source="旧状态字段",
+            metadata={"legacy_state_items": [it.item_id for it in matched_items if it.item_id]},
+            cells=cells,
+            updated_at=updated_at,
+        ))
+
     return rows
 
 

@@ -123,7 +123,7 @@ const columns = computed(() => [
         row.status === 'archived'
           ? h(NButton, { size: 'tiny', quaternary: true, onClick: () => restoreConversation(row) }, { default: () => '恢复' })
           : h(NButton, { size: 'tiny', quaternary: true, onClick: () => archiveConversation(row) }, { default: () => '归档' }),
-        h(NPopconfirm, { onPositiveClick: () => deleteConversation(row) }, {
+        h(NPopconfirm, { positiveText: '确认', negativeText: '取消', onPositiveClick: () => deleteConversation(row) }, {
           trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => '删除' }),
           default: () => '真正删除该会话？会清理聊天文件、状态板和会话记忆，无法撤销。',
         }),
@@ -452,7 +452,7 @@ onMounted(fetchAll)
               <NButton size="small" :loading="batchSaving" @click="batchApplyDefaults">套用默认策略</NButton>
               <NButton v-if="statusFilter !== 'archived'" size="small" :loading="batchSaving" @click="batchArchiveConversations">批量归档</NButton>
               <NButton v-if="statusFilter !== 'active'" size="small" :loading="batchSaving" @click="batchRestoreConversations">批量恢复</NButton>
-              <NPopconfirm @positive-click="batchDeleteConversations">
+              <NPopconfirm positive-text="确认" negative-text="取消" @positive-click="batchDeleteConversations">
                 <template #trigger><NButton size="small" type="error" :loading="batchSaving">批量删除</NButton></template>
                 真正删除选中的会话？会清理聊天文件、状态板和会话记忆，无法撤销。
               </NPopconfirm>

@@ -15,6 +15,8 @@ import {
   NDialogProvider,
   NButton,
   darkTheme,
+  dateZhCN,
+  zhCN,
 } from 'naive-ui'
 import type { MenuOption, GlobalThemeOverrides } from 'naive-ui'
 import {
@@ -146,7 +148,7 @@ const themeOverrides: GlobalThemeOverrides = {
 </script>
 
 <template>
-  <NConfigProvider :theme="darkTheme" :theme-overrides="themeOverrides">
+  <NConfigProvider :theme="darkTheme" :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
     <NMessageProvider>
       <NDialogProvider>
       <EventBridge />

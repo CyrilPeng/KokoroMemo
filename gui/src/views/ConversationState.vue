@@ -76,6 +76,7 @@ const adminToken = ref(localStorage.getItem('kokoromemo.adminToken') || '')
 const conversations = ref<any[]>([])
 const template = ref<any | null>(null)
 const rows = ref<StateRow[]>([])
+const rowSource = ref('table')
 const config = ref<ConversationConfig | null>(null)
 const defaultConfig = ref<ConversationConfig | null>(null)
 const profiles = ref<any[]>([])
@@ -184,6 +185,7 @@ async function fetchBoard() {
     if (!resp.ok) throw new Error(data.detail || data.message || '加载失败')
     template.value = data.template
     rows.value = data.rows || []
+    rowSource.value = data.source || 'table'
     if (!activeTableKey.value && tables.value.length) activeTableKey.value = tables.value[0].table_key
     await fetchPreview()
   } catch (error: any) {
@@ -685,6 +687,9 @@ onMounted(() => {
             <NCard title="状态表格">
               <NAlert v-if="template && rows.length === 0" type="info" style="margin-bottom: 12px">
                 当前会话暂无状态行，但已可配置模板、挂载预设和记忆策略。下一轮对话或手动新增后会按当前策略写入状态表格。
+              </NAlert>
+              <NAlert v-else-if="rowSource === 'legacy_state_items'" type="warning" style="margin-bottom: 12px">
+                当前显示的是旧状态字段的兼容视图。编辑后会保存为新的状态表格行，旧字段仍会保留用于历史兼容。
               </NAlert>
               <NTabs v-if="tables.length" v-model:value="activeTableKey" type="line" animated>
                 <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">

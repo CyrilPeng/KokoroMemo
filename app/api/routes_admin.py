@@ -1671,6 +1671,54 @@ def _state_table_row_to_dict(row) -> dict:
     }
 
 
+def _legacy_items_to_table_rows(conversation_id: str, template, items: list) -> list:
+    """把旧状态字段临时映射成表格行，避免已有状态只出现在注入预览里。"""
+    from app.memory.state_schema import StateTableCell, StateTableRow
+
+    rows = []
+    for table in template.tables:
+        cells = {}
+        matched_items = []
+        columns_by_key = {column.column_key: column for column in table.columns}
+        for item in items:
+            candidates = [item.field_key, item.item_key, item.category]
+            column_key = next((key for key in candidates if key and key in columns_by_key), None)
+            if not column_key or column_key in cells:
+                continue
+            column = columns_by_key[column_key]
+            cells[column_key] = StateTableCell(
+                cell_id=None,
+                row_id="",
+                column_id=column.column_id,
+                column_key=column_key,
+                value=item.content or "",
+                confidence=item.confidence,
+                updated_at=item.updated_at,
+            )
+            matched_items.append(item)
+        if not cells:
+            continue
+        priority = max((item.priority for item in matched_items), default=table.prompt_priority)
+        confidence_values = [item.confidence for item in matched_items]
+        confidence = sum(confidence_values) / len(confidence_values) if confidence_values else 0.7
+        updated_at = max((item.updated_at or "" for item in matched_items), default="") or None
+        rows.append(StateTableRow(
+            row_id=None,
+            conversation_id=conversation_id,
+            template_id=template.template_id or "",
+            table_id=table.table_id or "",
+            table_key=table.table_key,
+            status="active",
+            priority=priority,
+            confidence=confidence,
+            source="旧状态字段",
+            metadata={"legacy_state_items": [item.item_id for item in matched_items if item.item_id]},
+            cells=cells,
+            updated_at=updated_at,
+        ))
+    return rows
+
+
 def _template_from_payload(data: dict):
     from app.memory.state_schema import StateBoardField, StateBoardTab, StateBoardTemplate
 
@@ -1901,10 +1949,17 @@ async def get_conversation_state_tables(conversation_id: str, request: Request):
     if not template:
         raise HTTPException(status_code=404, detail="State table template not found")
     rows = await store.list_table_rows(conversation_id, template.template_id)
+    source = "table"
+    if not rows:
+        items = await store.list_active_items(conversation_id)
+        rows = _legacy_items_to_table_rows(conversation_id, template, items)
+        if rows:
+            source = "legacy_state_items"
     return {
         "conversation_id": conversation_id,
         "template": _state_table_template_to_dict(template),
         "rows": [_state_table_row_to_dict(row) for row in rows],
+        "source": source,
     }
 
 

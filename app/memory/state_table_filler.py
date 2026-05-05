@@ -54,21 +54,33 @@ async def fill_conversation_state_tables(
     current_rows = await store.list_table_rows(conversation_id, template.template_id)
     prompt = _build_table_prompt(config.prompt, template, current_rows, lang=lang)
     user_content = (
-        "请根据本轮用户与助手对话，仅输出 JSON。\n"
-        f"用户消息：{user_message}\n\n助手回复：{assistant_message}"
+        "Convert the latest user/assistant turn into JSON operations for the state tables.\n"
+        f"User message: {user_message}\n\nAssistant message: {assistant_message}"
     )
 
-    provider = create_llm_provider(config.provider, config.base_url, config.api_key, config.timeout_seconds)
+    provider = create_llm_provider(
+        provider=config.provider,
+        base_url=config.base_url,
+        api_key=config.api_key,
+        model=config.model,
+    )
     try:
-        text = await provider.chat(
-            model=config.model,
-            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_content}],
-            temperature=config.temperature,
+        response = await provider.chat(
+            {
+                "model": config.model,
+                "temperature": config.temperature,
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": user_content},
+                ],
+            },
+            config.timeout_seconds,
         )
     except Exception as exc:
         result.notes.append(f"llm_error:{exc}")
         return result
 
+    text = _extract_response_text(response)
     payload = _parse_json(text)
     operations = _parse_operations(payload)
     if not operations:
@@ -159,24 +171,43 @@ def _build_table_prompt(custom_prompt: str, template: StateTableTemplate, rows: 
         base = custom_prompt.strip()
     else:
         base = (
-            "你是 KokoroMemo 的会话状态板维护器。你的任务是把本轮对话转化为表格行级操作，"
-            "只记录对后续角色扮演/剧情连续性有帮助的信息。不要记录流水账，不要臆造未出现的信息。"
+            "You are KokoroMemo's conversation state-table maintainer. "
+            "Convert the latest turn into row-level table operations. "
+            "Only record information useful for roleplay continuity, plot continuity, current tasks, relationships, or persistent interaction rules. "
+            "Do not record trivial chat logs or invent facts that were not stated."
         )
     lines = [
         base,
-        "输出必须是严格 JSON，不要使用 Markdown。格式：",
+        "Return strict JSON only. Do not use Markdown. Schema:",
         '{"operations":[{"op":"insert_row|update_row|upsert_row|resolve_row|delete_row","table_key":"...","match":{},"values":{},"confidence":0.8,"reason":"..."}]}',
-        "可用表格：",
+        "Available tables:",
     ]
     for table in sorted(template.tables, key=lambda item: (item.sort_order, item.name)):
         columns = ", ".join(f"{column.column_key}({column.name})" for column in table.columns)
         lines.append(f"- {table.table_key}: {table.name}; {table.description}; columns: {columns}")
     if rows:
-        lines.append("当前已有行（匹配时优先 update/upsert）：")
+        lines.append("Existing rows (prefer update/upsert when matched):")
         for row in rows[:80]:
             values = {key: cell.value for key, cell in row.cells.items() if cell.value.strip()}
             lines.append(f"- row_id={row.row_id}; table_key={row.table_key}; values={json.dumps(values, ensure_ascii=False)}")
     return "\n".join(lines)
+
+
+def _extract_response_text(response: Any) -> str:
+    if isinstance(response, str):
+        return response
+    if not isinstance(response, dict):
+        return ""
+    choices = response.get("choices")
+    if isinstance(choices, list) and choices:
+        choice = choices[0]
+        message = choice.get("message") if isinstance(choice, dict) else None
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
+    content = response.get("content")
+    return content if isinstance(content, str) else ""
 
 
 def _parse_json(text: str) -> dict[str, Any]:

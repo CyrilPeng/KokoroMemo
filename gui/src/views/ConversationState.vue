@@ -29,6 +29,19 @@ import {
 import { AddOutline, HelpCircleOutline, RefreshOutline, SettingsOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
+import HelpModal from '../components/HelpModal.vue'
+
+const stateHelpSections = [
+  { title: '这是什么', body: '状态板用于追踪当前会话的"热信息"——场景、角色情绪、规则、关系等会随对话演变的内容。它会和长期记忆一起注入到 AI 的 system prompt，帮助 AI 维持连续性。' },
+  { title: '会话方案与策略', body: '「会话方案」是一组预设组合，选中后会自动套用对应的模板/写入/注入策略。也可以单独调整每一项。改完记得点「保存会话策略」。' },
+  { title: '新会话默认配置（右上⚙）', body: '仅影响之后第一次出现的新 conversation_id；已有会话不会被自动覆盖。建议在开始 RimTalk、跑团或新角色之前先设好默认方案。' },
+  { title: '状态行与 AI 填充', body: '每一行是一条独立状态。AI 会尽量更新已有行而非堆砌新行。若注入预览显示空，说明当前还没有任何状态行。' },
+  { title: '常见误解', bullets: [
+    'RimTalk / 殖民地模拟：建议「不写入长期记忆」+「只注入状态板」，避免资源/小人状态污染长期记忆',
+    '普通助手：用「长期记忆助手」方案，不维护状态板',
+    '注入预览有内容但状态表格为空：可能是旧版字段兼容兜底，编辑后会迁移到新表格',
+  ] },
+]
 
 type StateColumn = {
   column_id: string
@@ -899,34 +912,7 @@ onMounted(() => {
       </template>
     </NModal>
 
-    <NModal v-model:show="showHelpModal" preset="card" style="width: 760px" title="会话状态板帮助">
-      <NSpace vertical size="medium">
-        <div>
-          <b>这是什么</b>
-          <p class="hint-text">状态板用于追踪当前会话的"热信息"——场景、角色情绪、规则、关系等会随对话演变的内容。它会和长期记忆一起注入到 AI 的 system prompt，帮助 AI 维持连续性。</p>
-        </div>
-        <div>
-          <b>会话方案与策略</b>
-          <p class="hint-text">「会话方案」是一组预设组合，选中后会自动套用对应的模板/写入/注入策略。也可以单独调整每一项。改完记得点「保存会话策略」。</p>
-        </div>
-        <div>
-          <b>新会话默认配置（右上⚙）</b>
-          <p class="hint-text">仅影响之后第一次出现的新 conversation_id；已有会话不会被自动覆盖。建议在开始 RimTalk、跑团或新角色之前先设好默认方案。</p>
-        </div>
-        <div>
-          <b>状态行与 AI 填充</b>
-          <p class="hint-text">每一行是一条独立状态。AI 会尽量更新已有行而非堆砌新行。若注入预览显示空，说明当前还没有任何状态行。</p>
-        </div>
-        <div>
-          <b>常见误解</b>
-          <ul class="hint-text" style="margin: 4px 0 0 18px; padding: 0;">
-            <li>RimTalk / 殖民地模拟：建议「不写入长期记忆」+「只注入状态板」，避免资源/小人状态污染长期记忆</li>
-            <li>普通助手：用「长期记忆助手」方案，不维护状态板</li>
-            <li>注入预览有内容但状态表格为空：可能是旧版字段兼容兜底，编辑后会迁移到新表格</li>
-          </ul>
-        </div>
-      </NSpace>
-    </NModal>
+    <HelpModal v-model:show="showHelpModal" title="会话状态板帮助" :sections="stateHelpSections" />
   </div>
 </template>
 

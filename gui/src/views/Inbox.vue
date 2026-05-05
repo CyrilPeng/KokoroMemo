@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import type { InboxItem } from '../types/memory'
+import HelpModal from '../components/HelpModal.vue'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -22,6 +23,17 @@ const rejectingId = ref('')
 const rejectNote = ref('')
 const helpModal = ref(false)
 const processingIds = ref<Set<string>>(new Set())
+
+const inboxHelpSections = computed(() => [
+  { title: t('inbox.help.intro'), body: '' },
+  { title: t('inbox.help.sourceTitle'), body: t('inbox.help.source') },
+  { title: t('inbox.help.statusTitle'), body: t('inbox.help.status') },
+  { title: t('inbox.help.approveTitle'), body: t('inbox.help.approve') },
+  { title: t('inbox.help.rejectTitle'), body: t('inbox.help.reject') },
+  { title: t('inbox.help.discardedTitle'), body: t('inbox.help.discarded') },
+  { title: t('inbox.help.discardedLimitTitle'), body: t('inbox.help.discardedLimit') },
+  { title: t('inbox.help.riskTitle'), body: t('inbox.help.risk') },
+])
 
 function isProcessing(inboxId: string) {
   return processingIds.value.has(inboxId)
@@ -310,18 +322,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
       </template>
     </NModal>
 
-    <NModal v-model:show="helpModal" preset="card" :title="$t('inbox.help.title')" style="width: 640px; background: #18181b;" :mask-closable="true">
-      <div class="help-content">
-        <p>{{ $t('inbox.help.intro') }}</p>
-        <p><strong>{{ $t('inbox.help.sourceTitle') }}</strong>: {{ $t('inbox.help.source') }}</p>
-        <p><strong>{{ $t('inbox.help.statusTitle') }}</strong>: {{ $t('inbox.help.status') }}</p>
-        <p><strong>{{ $t('inbox.help.approveTitle') }}</strong>: {{ $t('inbox.help.approve') }}</p>
-        <p><strong>{{ $t('inbox.help.rejectTitle') }}</strong>: {{ $t('inbox.help.reject') }}</p>
-        <p><strong>{{ $t('inbox.help.discardedTitle') }}</strong>: {{ $t('inbox.help.discarded') }}</p>
-        <p><strong>{{ $t('inbox.help.discardedLimitTitle') }}</strong>: {{ $t('inbox.help.discardedLimit') }}</p>
-        <p><strong>{{ $t('inbox.help.riskTitle') }}</strong>: {{ $t('inbox.help.risk') }}</p>
-      </div>
-    </NModal>
+    <HelpModal v-model:show="helpModal" :title="$t('inbox.help.title')" :sections="inboxHelpSections" />
   </div>
 </template>
 

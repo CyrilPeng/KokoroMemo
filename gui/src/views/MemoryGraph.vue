@@ -7,6 +7,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { HelpCircleOutline, RefreshOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
+import HelpModal from '../components/HelpModal.vue'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -16,6 +17,14 @@ const selectedLibraryId = ref<string | null>(null)
 const limit = ref(100)
 const loading = ref(false)
 const helpModal = ref(false)
+
+const graphHelpSections = computed(() => [
+  { title: t('graph.help.intro'), body: '' },
+  { title: t('graph.help.nodesTitle'), body: t('graph.help.nodes') },
+  { title: t('graph.help.edgesTitle'), body: t('graph.help.edges') },
+  { title: t('graph.help.colorsTitle'), body: t('graph.help.colors') },
+  { title: t('graph.help.limitTitle'), body: t('graph.help.limit') },
+])
 const nodes = ref<any[]>([])
 const edges = ref<any[]>([])
 const hoveredNode = ref<any | null>(null)
@@ -263,15 +272,7 @@ watch([selectedLibraryId, limit], () => fetchGraph())
       </NSpin>
     </NCard>
 
-    <NModal v-model:show="helpModal" preset="card" :title="$t('graph.helpTitle')" style="width: 600px; background: #18181b;" :mask-closable="true">
-      <div class="help-content">
-        <p>{{ $t('graph.help.intro') }}</p>
-        <p><strong>{{ $t('graph.help.nodesTitle') }}</strong>: {{ $t('graph.help.nodes') }}</p>
-        <p><strong>{{ $t('graph.help.edgesTitle') }}</strong>: {{ $t('graph.help.edges') }}</p>
-        <p><strong>{{ $t('graph.help.colorsTitle') }}</strong>: {{ $t('graph.help.colors') }}</p>
-        <p><strong>{{ $t('graph.help.limitTitle') }}</strong>: {{ $t('graph.help.limit') }}</p>
-      </div>
-    </NModal>
+    <HelpModal v-model:show="helpModal" :title="$t('graph.helpTitle')" :sections="graphHelpSections" />
   </div>
 </template>
 

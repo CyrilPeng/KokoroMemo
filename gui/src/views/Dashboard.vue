@@ -5,6 +5,7 @@ import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic, NIco
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 import { apiFetch, getServerUrl, setServerUrl } from '../api'
+import HelpModal from '../components/HelpModal.vue'
 const router = useRouter()
 const { t } = useI18n()
 function typeLabel(type: string): string {
@@ -21,6 +22,15 @@ const helpModal = ref(false)
 const totalApproved = computed(() => stats.value?.cards_by_status?.approved || 0)
 const inboxPending = computed(() => stats.value?.inbox_pending || 0)
 const inboxDiscarded = computed(() => stats.value?.inbox_discarded || 0)
+
+const dashboardHelpSections = computed(() => [
+  { title: t('dashboard.help.intro'), body: '' },
+  { title: t('dashboard.totalMemories'), body: t('dashboard.help.totalMemories') },
+  { title: t('dashboard.inboxPending'), body: t('dashboard.help.inboxPending') },
+  { title: t('dashboard.gateRequests24h'), body: t('dashboard.help.gateRequests') },
+  { title: t('dashboard.dailyGrowth7d'), body: t('dashboard.help.dailyGrowth') },
+  { title: t('dashboard.cardsByType'), body: t('dashboard.help.cardsByType') },
+])
 const totalCards = computed(() => {
   if (!stats.value?.cards_by_status) return 0
   return Object.values(stats.value.cards_by_status as Record<string, number>).reduce((a: number, b: number) => a + b, 0)
@@ -211,16 +221,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
       </NCard>
     </NSpin>
 
-    <NModal v-model:show="helpModal" preset="card" :title="$t('dashboard.help.title')" style="width: 600px; background: #18181b;" :mask-closable="true">
-      <div class="help-content">
-        <p>{{ $t('dashboard.help.intro') }}</p>
-        <p><strong>{{ $t('dashboard.totalMemories') }}</strong>: {{ $t('dashboard.help.totalMemories') }}</p>
-        <p><strong>{{ $t('dashboard.inboxPending') }}</strong>: {{ $t('dashboard.help.inboxPending') }}</p>
-        <p><strong>{{ $t('dashboard.gateRequests24h') }}</strong>: {{ $t('dashboard.help.gateRequests') }}</p>
-        <p><strong>{{ $t('dashboard.dailyGrowth7d') }}</strong>: {{ $t('dashboard.help.dailyGrowth') }}</p>
-        <p><strong>{{ $t('dashboard.cardsByType') }}</strong>: {{ $t('dashboard.help.cardsByType') }}</p>
-      </div>
-    </NModal>
+    <HelpModal v-model:show="helpModal" :title="$t('dashboard.help.title')" :sections="dashboardHelpSections" />
   </div>
 </template>
 

@@ -8,6 +8,22 @@ import {
 } from 'naive-ui'
 import { CreateOutline, HelpCircleOutline, OpenOutline, RefreshOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
+import HelpModal from '../components/HelpModal.vue'
+
+const characterHelpSections = [
+  { title: '这是什么', body: '为每个 character_id 维护档案、默认会话策略与记忆库绑定。新会话出现时若该角色已配置，会自动套用对应策略与挂载。' },
+  { title: '四个标签页', bullets: [
+    '基础档案：显示名 / 别名 / 备注，仅影响界面显示',
+    '默认策略：决定该角色新会话使用哪个状态板模板、是否写长期记忆、注入什么上下文',
+    '记忆库绑定：默认挂载哪些记忆库、新记忆写入哪个库',
+    '诊断与工具：查看记忆污染、批量应用策略、合并重复角色',
+  ] },
+  { title: '常见误解', bullets: [
+    '修改默认策略不会自动覆盖已有会话，需手动点「应用到已有会话」',
+    'RimTalk / 殖民地角色：建议使用「RimTalk / 殖民地模拟」方案，写入关闭，仅注入状态板',
+    '合并角色不可撤销，会迁移所有会话/记忆/状态板引用并删除被合并方',
+  ] },
+]
 
 type Character = Record<string, any>
 
@@ -497,31 +513,7 @@ onMounted(fetchAll)
       </NDrawerContent>
     </NDrawer>
 
-    <NModal v-model:show="showHelp" preset="card" title="角色中心帮助" style="width: 720px">
-      <NSpace vertical size="medium">
-        <div>
-          <b>这是什么</b>
-          <p class="hint-text">为每个 character_id 维护档案、默认会话策略与记忆库绑定。新会话出现时若该角色已配置，会自动套用对应策略与挂载。</p>
-        </div>
-        <div>
-          <b>四个标签页</b>
-          <ul class="hint-text" style="margin: 4px 0 0 18px; padding: 0;">
-            <li>基础档案：显示名 / 别名 / 备注，仅影响界面显示</li>
-            <li>默认策略：决定该角色新会话使用哪个状态板模板、是否写长期记忆、注入什么上下文</li>
-            <li>记忆库绑定：默认挂载哪些记忆库、新记忆写入哪个库</li>
-            <li>诊断与工具：查看记忆污染、批量应用策略、合并重复角色</li>
-          </ul>
-        </div>
-        <div>
-          <b>常见误解</b>
-          <ul class="hint-text" style="margin: 4px 0 0 18px; padding: 0;">
-            <li>修改默认策略不会自动覆盖已有会话，需手动点「应用到已有会话」</li>
-            <li>RimTalk / 殖民地角色：建议使用「RimTalk / 殖民地模拟」方案，写入关闭，仅注入状态板</li>
-            <li>合并角色不可撤销，会迁移所有会话/记忆/状态板引用并删除被合并方</li>
-          </ul>
-        </div>
-      </NSpace>
-    </NModal>
+    <HelpModal v-model:show="showHelp" title="角色中心帮助" :sections="characterHelpSections" />
 
     <NModal v-model:show="showPreview" preset="card" title="会话预览" style="width: min(820px, 96vw)">
       <NSpin :show="previewLoading">

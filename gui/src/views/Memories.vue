@@ -10,6 +10,7 @@ import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
 import type { MemoryCard } from '../types/memory'
+import HelpModal from '../components/HelpModal.vue'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -281,6 +282,16 @@ const extractForm = ref({ conversation_id: '', character_id: '', max_pairs: 50, 
 const router = useRouter()
 const helpModal = ref(false)
 
+const memoriesHelpSections = computed(() => [
+  { title: t('memories.help.intro'), body: '' },
+  { title: t('memories.help.libraryTitle'), body: t('memories.help.library') },
+  { title: t('memories.help.presetTitle'), body: t('memories.help.preset') },
+  { title: t('memories.help.scopeTitle'), body: t('memories.help.scope') },
+  { title: t('memories.help.typeTitle'), body: t('memories.help.type') },
+  { title: t('memories.help.importTitle'), body: t('memories.help.import') },
+  { title: t('memories.help.flowTitle'), body: t('memories.help.flow') },
+])
+
 function openSillyTavernImport() {
   stForm.value = { content: '', filename: '', character_id: '' }
   showSillyTavernModal.value = true
@@ -463,17 +474,7 @@ onMounted(fetchMemories)
       </template>
     </NModal>
 
-    <NModal v-model:show="helpModal" preset="card" :title="$t('memories.help.title')" style="width: 640px; background: #18181b;" :mask-closable="true">
-      <div class="help-content">
-        <p>{{ $t('memories.help.intro') }}</p>
-        <p><strong>{{ $t('memories.help.libraryTitle') }}</strong>: {{ $t('memories.help.library') }}</p>
-        <p><strong>{{ $t('memories.help.presetTitle') }}</strong>: {{ $t('memories.help.preset') }}</p>
-        <p><strong>{{ $t('memories.help.scopeTitle') }}</strong>: {{ $t('memories.help.scope') }}</p>
-        <p><strong>{{ $t('memories.help.typeTitle') }}</strong>: {{ $t('memories.help.type') }}</p>
-        <p><strong>{{ $t('memories.help.importTitle') }}</strong>: {{ $t('memories.help.import') }}</p>
-        <p><strong>{{ $t('memories.help.flowTitle') }}</strong>: {{ $t('memories.help.flow') }}</p>
-      </div>
-    </NModal>
+    <HelpModal v-model:show="helpModal" :title="$t('memories.help.title')" :sections="memoriesHelpSections" />
   </div>
 </template>
 

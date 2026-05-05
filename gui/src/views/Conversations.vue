@@ -9,6 +9,17 @@ import {
 import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
+import HelpModal from '../components/HelpModal.vue'
+
+const conversationsHelpSections = [
+  { title: '这是什么', body: '列出所有客户端连进来过的会话；可以重命名、归属角色、归档、删除、导入导出会话配置。' },
+  { title: '归档 vs 删除', bullets: [
+    '归档：仅隐藏，会话数据完整保留，随时可在「已归档」筛选项找回',
+    '删除：彻底清理聊天文件、状态板、会话记忆，无法撤销',
+  ] },
+  { title: '批量操作', body: '勾选行后，顶部出现批量条：可改归属、套用对应角色的默认策略、批量归档/恢复/删除。「套用默认策略」常用于修复仍在使用旧模板或错误记忆策略的存量会话。' },
+  { title: '导入导出', body: '导出 JSON 包含状态板模板、挂载库和状态项；导入时可指定目标会话 ID，并选择是否覆盖已有状态。' },
+]
 
 type Conversation = Record<string, any>
 type Character = Record<string, any>
@@ -551,29 +562,7 @@ onMounted(fetchAll)
       </template>
     </NModal>
 
-    <NModal v-model:show="showHelp" preset="card" title="会话管理帮助" style="width: 720px">
-      <NSpace vertical size="medium">
-        <div>
-          <b>这是什么</b>
-          <p class="hint-text">列出所有客户端连进来过的会话；可以重命名、归属角色、归档、删除、导入导出会话配置。</p>
-        </div>
-        <div>
-          <b>归档 vs 删除</b>
-          <ul class="hint-text" style="margin: 4px 0 0 18px; padding: 0;">
-            <li>归档：仅隐藏，会话数据完整保留，随时可在「已归档」筛选项找回</li>
-            <li>删除：彻底清理聊天文件、状态板、会话记忆，无法撤销</li>
-          </ul>
-        </div>
-        <div>
-          <b>批量操作</b>
-          <p class="hint-text">勾选行后，顶部出现批量条：可改归属、套用对应角色的默认策略、批量归档/恢复/删除。「套用默认策略」常用于修复仍在使用旧模板或错误记忆策略的存量会话。</p>
-        </div>
-        <div>
-          <b>导入导出</b>
-          <p class="hint-text">导出 JSON 包含状态板模板、挂载库和状态项；导入时可指定目标会话 ID，并选择是否覆盖已有状态。</p>
-        </div>
-      </NSpace>
-    </NModal>
+    <HelpModal v-model:show="showHelp" title="会话管理帮助" :sections="conversationsHelpSections" />
   </div>
 </template>
 

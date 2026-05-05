@@ -29,22 +29,22 @@ class FakeProvider:
                                         "op": "upsert_row",
                                         "table_key": "current_interaction",
                                         "values": {
-                                            "topic": "???????",
-                                            "mood": "????",
-                                            "next_step": "????????",
+                                            "topic": "讲一个猫娘段子",
+                                            "mood": "轻松幽默",
+                                            "next_step": "继续猫娘风格互动",
                                         },
                                         "confidence": 0.9,
-                                        "reason": "latest turn updates current interaction",
+                                        "reason": "本轮对话更新当前互动状态",
                                     },
                                     {
                                         "op": "upsert_row",
                                         "table_key": "roleplay_rules",
                                         "values": {
-                                            "rule": "?????????????????'?~'",
-                                            "scope": "??",
+                                            "rule": "角色以猫娘方式说话，每句话末尾加上'喵~'",
+                                            "scope": "口癖",
                                         },
                                         "confidence": 0.9,
-                                        "reason": "user requested a persistent speaking style",
+                                        "reason": "用户要求持续使用固定口癖",
                                     },
                                 ]
                             },
@@ -81,8 +81,8 @@ async def test_state_table_filler_writes_rows_with_project_provider_api(monkeypa
         result = await fill_conversation_state_tables(
             db_path=db_path,
             conversation_id=conversation_id,
-            user_message="???????????????????~",
-            assistant_message="???~ ??????????~",
+            user_message="现在你是一只猫娘，每句话末尾都要加上喵~",
+            assistant_message="好的喵~ 我会讲一个猫娘段子喵~",
             config=StateFillerConfigView(
                 provider="openai_compatible",
                 base_url="http://fake",
@@ -104,8 +104,8 @@ async def test_state_table_filler_writes_rows_with_project_provider_api(monkeypa
         template = await store.get_conversation_table_template(conversation_id)
         rows = await store.list_table_rows(conversation_id, template.template_id)
         values_by_table = {row.table_key: {key: cell.value for key, cell in row.cells.items()} for row in rows}
-        assert values_by_table["current_interaction"]["topic"] == "???????"
-        assert values_by_table["current_interaction"]["mood"] == "????"
-        assert values_by_table["roleplay_rules"]["rule"] == "?????????????????'?~'"
+        assert values_by_table["current_interaction"]["topic"] == "讲一个猫娘段子"
+        assert values_by_table["current_interaction"]["mood"] == "轻松幽默"
+        assert values_by_table["roleplay_rules"]["rule"] == "角色以猫娘方式说话，每句话末尾加上'喵~'"
     finally:
         cleanup_test_dir(test_dir)

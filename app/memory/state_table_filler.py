@@ -54,8 +54,8 @@ async def fill_conversation_state_tables(
     current_rows = await store.list_table_rows(conversation_id, template.template_id)
     prompt = _build_table_prompt(config.prompt, template, current_rows, lang=lang)
     user_content = (
-        "Convert the latest user/assistant turn into JSON operations for the state tables.\n"
-        f"User message: {user_message}\n\nAssistant message: {assistant_message}"
+        "请根据本轮用户与助手对话，输出需要写入状态表格的 JSON 操作。\n"
+        f"用户消息：{user_message}\n\n助手回复：{assistant_message}"
     )
 
     provider = create_llm_provider(
@@ -171,22 +171,21 @@ def _build_table_prompt(custom_prompt: str, template: StateTableTemplate, rows: 
         base = custom_prompt.strip()
     else:
         base = (
-            "You are KokoroMemo's conversation state-table maintainer. "
-            "Convert the latest turn into row-level table operations. "
-            "Only record information useful for roleplay continuity, plot continuity, current tasks, relationships, or persistent interaction rules. "
-            "Do not record trivial chat logs or invent facts that were not stated."
+            "你是 KokoroMemo 的会话状态表格维护器。你的任务是把本轮对话转换为表格行级操作。"
+            "只记录对后续角色扮演、剧情连续性、当前任务、关系或持续互动规则有帮助的信息；"
+            "不要记录流水账，不要臆造未出现的信息。"
         )
     lines = [
         base,
-        "Return strict JSON only. Do not use Markdown. Schema:",
+        "输出必须是严格 JSON，不要使用 Markdown。格式：",
         '{"operations":[{"op":"insert_row|update_row|upsert_row|resolve_row|delete_row","table_key":"...","match":{},"values":{},"confidence":0.8,"reason":"..."}]}',
-        "Available tables:",
+        "可用表格：",
     ]
     for table in sorted(template.tables, key=lambda item: (item.sort_order, item.name)):
         columns = ", ".join(f"{column.column_key}({column.name})" for column in table.columns)
         lines.append(f"- {table.table_key}: {table.name}; {table.description}; columns: {columns}")
     if rows:
-        lines.append("Existing rows (prefer update/upsert when matched):")
+        lines.append("当前已有行（匹配时优先 update/upsert）：")
         for row in rows[:80]:
             values = {key: cell.value for key, cell in row.cells.items() if cell.value.strip()}
             lines.append(f"- row_id={row.row_id}; table_key={row.table_key}; values={json.dumps(values, ensure_ascii=False)}")

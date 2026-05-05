@@ -89,7 +89,7 @@ async def test_non_stream_request_injects_state_board(monkeypatch):
         provider = FakeChatProvider()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
         cfg.embedding.enabled = False
-        await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv1", "test state content")
+        await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv1", "测试状态内容")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
@@ -198,7 +198,7 @@ async def test_stream_request_injects_state_board(monkeypatch):
         FakeChatProvider.captured_bodies.clear()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
         cfg.embedding.enabled = False
-        await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv_stream", "test state content")
+        await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv_stream", "测试状态内容")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
@@ -264,7 +264,7 @@ async def test_embedding_failure_allows_state_injection(monkeypatch):
             raise RuntimeError("embedding service down")
 
         monkeypatch.setattr("app.api.routes_openai.get_embedding_provider", fail_embedding)
-        await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv_emb_fail", "test state content")
+        await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv_emb_fail", "测试状态内容")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={

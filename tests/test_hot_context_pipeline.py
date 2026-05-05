@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.config import AppConfig
 from app.core.state import set_config
 from app.main import app
-from app.memory.state_schema import ConversationStateItem
+from app.memory.state_schema import ConversationStateItem, StateTableRow
 from app.storage.sqlite_state import SQLiteStateStore
 
 
@@ -58,6 +58,29 @@ def configure_app(test_dir: Path) -> AppConfig:
     return cfg
 
 
+async def seed_state_table_row(db_path: str, conversation_id: str, content: str) -> None:
+    store = SQLiteStateStore(db_path)
+    await store.ensure_conversation_config(conversation_id)
+    template = await store.get_conversation_table_template(conversation_id)
+    assert template is not None
+    table = next((item for item in template.tables if item.table_key == "current_interaction"), template.tables[0])
+    values = {}
+    if any(column.column_key == "topic" for column in table.columns):
+        values["topic"] = content
+    else:
+        values[table.columns[0].column_key] = content
+    await store.upsert_table_row(StateTableRow(
+        row_id=None,
+        conversation_id=conversation_id,
+        template_id=template.template_id or "",
+        table_id=table.table_id or "",
+        table_key=table.table_key,
+        priority=80,
+        confidence=0.9,
+        source="test",
+    ), values=values)
+
+
 @pytest.mark.asyncio
 async def test_non_stream_request_injects_state_board(monkeypatch):
     test_dir = make_test_dir()
@@ -66,13 +89,7 @@ async def test_non_stream_request_injects_state_board(monkeypatch):
         provider = FakeChatProvider()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
         cfg.embedding.enabled = False
-        await SQLiteStateStore(cfg.storage.sqlite.memory_db).upsert_item(ConversationStateItem(
-            item_id=None,
-            conversation_id="conv1",
-            category="scene",
-            item_key="current_scene",
-            content="正在车站等待联系人",
-        ))
+        await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv1", "test state content")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
@@ -181,13 +198,7 @@ async def test_stream_request_injects_state_board(monkeypatch):
         FakeChatProvider.captured_bodies.clear()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
         cfg.embedding.enabled = False
-        await SQLiteStateStore(cfg.storage.sqlite.memory_db).upsert_item(ConversationStateItem(
-            item_id=None,
-            conversation_id="conv_stream",
-            category="scene",
-            item_key="current_scene",
-            content="正在码头等待船只",
-        ))
+        await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv_stream", "test state content")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
@@ -253,13 +264,7 @@ async def test_embedding_failure_allows_state_injection(monkeypatch):
             raise RuntimeError("embedding service down")
 
         monkeypatch.setattr("app.api.routes_openai.get_embedding_provider", fail_embedding)
-        await SQLiteStateStore(cfg.storage.sqlite.memory_db).upsert_item(ConversationStateItem(
-            item_id=None,
-            conversation_id="conv_emb_fail",
-            category="scene",
-            item_key="current_scene",
-            content="在咖啡馆闲聊",
-        ))
+        await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv_emb_fail", "test state content")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
@@ -289,7 +294,7 @@ async def test_state_updater_failure_doesnt_affect_chat(monkeypatch):
             raise RuntimeError("state updater crashed")
 
         monkeypatch.setattr("app.api.routes_openai.update_conversation_state", fail_updater)
-        monkeypatch.setattr("app.api.routes_openai.fill_conversation_state", fail_updater)
+        monkeypatch.setattr("app.api.routes_openai.fill_conversation_state_tables", fail_updater)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
                 "model": "fake-model",

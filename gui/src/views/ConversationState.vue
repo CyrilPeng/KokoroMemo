@@ -94,7 +94,6 @@ const adminToken = ref(localStorage.getItem('kokoromemo.adminToken') || '')
 const conversations = ref<any[]>([])
 const template = ref<any | null>(null)
 const rows = ref<StateRow[]>([])
-const rowSource = ref('table')
 const config = ref<ConversationConfig | null>(null)
 const defaultConfig = ref<ConversationConfig | null>(null)
 const profiles = ref<any[]>([])
@@ -233,7 +232,6 @@ async function fetchBoard() {
     if (!resp.ok) throw new Error(data.detail || data.message || '加载失败')
     template.value = data.template
     rows.value = data.rows || []
-    rowSource.value = data.source || 'table'
     if (!activeTableKey.value && tables.value.length) activeTableKey.value = tables.value[0].table_key
     await fetchPreview()
     await fetchMounts()
@@ -792,9 +790,6 @@ onMounted(() => {
         <NGrid :cols="24" :x-gap="16" :y-gap="16">
           <NGridItem :span="16">
             <NCard title="状态表格">
-              <div v-if="rowSource === 'legacy_state_items'" class="hint-text" style="margin-bottom: 12px;">
-                当前显示的是从旧版状态字段映射来的视图。编辑任意一行后会保存为新的状态表格行；旧字段仍保留用于兼容。
-              </div>
               <NTabs v-if="tables.length" v-model:value="activeTableKey" type="line" animated>
                 <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">
                   <NSpace vertical size="medium">

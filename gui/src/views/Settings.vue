@@ -1708,6 +1708,12 @@ onMounted(() => {
   gap: 14px;
 }
 @media (max-width: 720px) {
+  :global(html),
+  :global(body),
+  :global(#app) {
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+  }
   :deep(.n-card) {
     --n-padding-left: 12px !important;
     --n-padding-right: 12px !important;
@@ -1722,15 +1728,23 @@ onMounted(() => {
     gap: 8px !important;
   }
   :deep(.n-form-item) {
-    grid-template-columns: minmax(72px, 88px) minmax(0, 1fr) !important;
+    display: block !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    margin-bottom: 10px !important;
   }
   :deep(.n-form-item-label) {
-    padding-right: 8px !important;
+    display: block !important;
+    width: auto !important;
+    min-height: 0 !important;
+    padding: 0 0 4px 0 !important;
     white-space: normal !important;
     line-height: 1.25 !important;
+    text-align: left !important;
   }
   :deep(.n-form-item-blank) {
+    display: block !important;
     min-width: 0 !important;
+    width: 100% !important;
   }
   :deep(.n-input),
   :deep(.n-select),
@@ -1738,6 +1752,13 @@ onMounted(() => {
   :deep(.n-dynamic-tags) {
     min-width: 0 !important;
     width: 100% !important;
+  }
+  :deep(.n-tabs-tab) {
+    padding-left: 2px !important;
+    padding-right: 10px !important;
+  }
+  :deep(.n-tabs-nav-scroll-content) {
+    gap: 2px !important;
   }
   .adv-layout {
     flex-direction: column;

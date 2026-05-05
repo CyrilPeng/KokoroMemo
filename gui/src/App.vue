@@ -115,7 +115,7 @@ async function openGitHub() {
 
 function handleMobileMenuUpdate(key: string) {
   mobileMenuOpen.value = false
-  handleMenuUpdate(key)
+  window.setTimeout(() => handleMenuUpdate(key), 0)
 }
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -176,7 +176,7 @@ const themeOverrides: GlobalThemeOverrides = {
           </div>
         </NLayoutSider>
 
-        <NLayoutContent :native-scrollbar="false" :content-style="isMobile ? 'padding: 72px 14px 20px;' : 'padding: 32px;'">
+        <NLayoutContent :native-scrollbar="isMobile" :content-style="isMobile ? 'padding: 72px 14px 20px;' : 'padding: 32px;'">
           <div v-if="isMobile" class="mobile-topbar">
             <NButton quaternary circle @click="mobileMenuOpen = true" aria-label="Open navigation">
               <template #icon><NIcon><MenuOutline /></NIcon></template>
@@ -191,8 +191,8 @@ const themeOverrides: GlobalThemeOverrides = {
         </NLayoutContent>
       </NLayout>
 
-      <div v-if="isMobile && mobileMenuOpen" class="mobile-menu-mask" @click="mobileMenuOpen = false">
-        <aside class="mobile-menu-panel" @click.stop>
+      <div v-if="isMobile && mobileMenuOpen" class="mobile-menu-mask" @click.self="mobileMenuOpen = false">
+        <aside class="mobile-menu-panel">
           <NButton class="mobile-menu-close" quaternary circle @click="mobileMenuOpen = false" aria-label="Close navigation">×</NButton>
           <div class="brand-block mobile-drawer-brand">
             <img src="./assets/logo.png" class="brand-logo" />
@@ -202,6 +202,7 @@ const themeOverrides: GlobalThemeOverrides = {
             :options="menuOptions"
             :value="route.path"
             @update:value="handleMobileMenuUpdate"
+            @click.stop
             :indent="24"
           />
           <div class="mobile-drawer-footer">
@@ -299,6 +300,7 @@ const themeOverrides: GlobalThemeOverrides = {
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
   touch-action: manipulation;
+  transform: translateZ(0);
 }
 .mobile-menu-panel {
   position: relative;
@@ -309,6 +311,8 @@ const themeOverrides: GlobalThemeOverrides = {
   box-shadow: 12px 0 32px rgba(0, 0, 0, 0.35);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  transform: translateZ(0);
 }
 .mobile-menu-close {
   position: absolute;
@@ -332,6 +336,9 @@ const themeOverrides: GlobalThemeOverrides = {
 
   :deep(.n-layout-content .n-layout-scroll-container) {
     padding: calc(72px + env(safe-area-inset-top, 0px)) 12px 16px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    transform: translateZ(0);
   }
 }
 </style>

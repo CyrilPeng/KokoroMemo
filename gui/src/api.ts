@@ -5,16 +5,30 @@ const PROBE_TIMEOUT_MS = 1200
 let _resolvedUrl: string | null = null
 let _resolvingUrl: Promise<string> | null = null
 
+function isWebMode() {
+  return !(window as any).__TAURI_INTERNALS__
+}
+
+function sameOriginUrl() {
+  return window.location.origin.replace(/\/$/, '')
+}
+
 export function getServerUrl() {
   const stored = localStorage.getItem('kokoromemo.serverUrl')
-  if (_resolvedUrl) return _resolvedUrl
   // Web 模式由后端提供前端页面，直接使用同源地址。
-  if (!(window as any).__TAURI_INTERNALS__) return window.location.origin
+  // Android 浏览器里 localStorage 可能残留 14514 以外的端口；同源访问最稳定，也能避免仪表盘误判离线。
+  if (isWebMode()) return sameOriginUrl()
+  if (_resolvedUrl) return _resolvedUrl
   if (stored) return stored
   return DEFAULT_SERVER_URL
 }
 
 export function setServerUrl(url: string) {
+  if (isWebMode()) {
+    _resolvedUrl = sameOriginUrl()
+    localStorage.removeItem('kokoromemo.serverUrl')
+    return _resolvedUrl
+  }
   const normalized = url.trim().replace(/\/$/, '') || DEFAULT_SERVER_URL
   localStorage.setItem('kokoromemo.serverUrl', normalized)
   _resolvedUrl = normalized
@@ -61,25 +75,18 @@ async function tryHealthBase(base: string): Promise<string | null> {
 }
 
 async function discoverWebBackendUrl(): Promise<string> {
-  const origin = window.location.origin
+  const origin = sameOriginUrl()
   const fromOrigin = await tryHealthBase(origin)
-  if (fromOrigin) return fromOrigin
+  if (fromOrigin) return origin
 
   const portText = await fetchTextWithTimeout(`${origin}/.port`, 600)
   const port = Number(portText.trim())
   if (port) {
     const fromPortFile = await tryHealthBase(`${window.location.protocol}//${window.location.hostname}:${port}`)
-    if (fromPortFile) return fromPortFile
+    if (fromPortFile) return `${window.location.protocol}//${window.location.hostname}:${port}`
   }
 
-  const stored = localStorage.getItem('kokoromemo.serverUrl')
-  if (stored) {
-    const fromStored = await tryHealthBase(stored)
-    if (fromStored) return fromStored
-  }
-
-  const fromDefault = await tryHealthBase(DEFAULT_SERVER_URL)
-  return fromDefault || origin
+  return origin
 }
 
 /**
@@ -108,14 +115,12 @@ async function resolveBackendUrlInner(): Promise<string> {
       console.warn('读取后端端口失败，使用默认地址:', e)
     }
   }
-  if (!(window as any).__TAURI_INTERNALS__) {
+  if (isWebMode()) {
     const url = await discoverWebBackendUrl()
     _resolvedUrl = url
     return url
   }
-  const url = !(window as any).__TAURI_INTERNALS__
-    ? await discoverWebBackendUrl()
-    : localStorage.getItem('kokoromemo.serverUrl') || DEFAULT_SERVER_URL
+  const url = localStorage.getItem('kokoromemo.serverUrl') || DEFAULT_SERVER_URL
   _resolvedUrl = url
   localStorage.setItem('kokoromemo.serverUrl', url)
   return url
@@ -149,7 +154,7 @@ export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: 
     base = await resolveBackendUrl()
     resp = await requestOnce(base)
   }
-  if (resp.status === 404 || resp.status === 0) {
+  if (!isWebMode() && (resp.status === 404 || resp.status === 0)) {
     _resolvedUrl = null
     base = await resolveBackendUrl()
     resp = await requestOnce(base)

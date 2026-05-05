@@ -1038,9 +1038,7 @@ onMounted(() => {
           <NCard style="background: #18181b; border: 1px solid #27272a;">
             <template #header>首次使用推荐配置</template>
             <NSpace vertical>
-              <NAlert type="info" :show-icon="false">
-                选择最接近的使用场景后，系统会自动调整记忆、注入、状态板和新会话默认策略。不会修改你的模型 Base URL、API Key 和端口。
-              </NAlert>
+              <div class="settings-hint">选择最接近的使用场景后，系统会自动调整记忆、注入、状态板和新会话默认策略。不会修改你的模型 Base URL、API Key 和端口。</div>
               <NForm label-placement="top" :show-feedback="false">
                 <NFormItem label="使用场景">
                   <NSelect v-model:value="onboardingScenario" :options="onboardingOptions" />
@@ -1063,7 +1061,7 @@ onMounted(() => {
           <NCard style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
             <template #header>日志诊断</template>
             <NSpace vertical>
-              <NAlert type="info" :show-icon="false">移动端或 Termux 无法访问后端时，可先在这里查看 server.log 末尾内容，确认端口、启动错误和依赖异常。</NAlert>
+              <div class="settings-hint">移动端或 Termux 无法访问后端时，可先在这里查看 server.log 末尾内容，确认端口、启动错误和依赖异常。</div>
               <NSpace align="center">
                 <NButton size="small" :loading="logLoading" @click="fetchServerLogs">读取最近日志</NButton>
                 <NButton v-if="logInfo.content" size="small" @click="copyText(logInfo.content)">复制日志</NButton>
@@ -1554,9 +1552,7 @@ onMounted(() => {
 
     <!-- 保存 -->
     <div style="margin-top: 16px;">
-      <NAlert type="info" style="background: rgba(167, 139, 250, 0.05); border-color: #27272a; margin-bottom: 12px;">
-        {{ $t('settings.saveHint') }}
-      </NAlert>
+      <div class="settings-hint" style="margin-bottom: 12px;">{{ $t('settings.saveHint') }}</div>
       <div style="text-align: right;">
         <NButton type="primary" @click="saveConfig">{{ $t('settings.saveConfig') }}</NButton>
       </div>
@@ -1683,6 +1679,12 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.settings-hint {
+  color: #a1a1aa;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .help-icon {
   display: inline-flex;
   align-items: center;

@@ -33,11 +33,16 @@ impl BackendChild {
         match self {
             #[cfg(not(all(windows, kokoromemo_embedded_backend)))]
             Self::Sidecar(child) => {
+                let pid = child.pid();
                 let _ = child.kill();
+                force_kill_process_tree(pid);
             }
             #[cfg(all(windows, kokoromemo_embedded_backend))]
             Self::Embedded(mut child) => {
+                let pid = child.id();
                 let _ = child.kill();
+                force_kill_process_tree(pid);
+                let _ = child.wait();
             }
         }
     }
@@ -116,6 +121,37 @@ fn backend_work_dir(_app: &tauri::AppHandle) -> PathBuf {
     }
 }
 
+#[cfg(windows)]
+fn force_kill_process_tree(pid: u32) {
+    if pid == 0 {
+        return;
+    }
+    let _ = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
+#[cfg(not(windows))]
+fn force_kill_process_tree(_pid: u32) {}
+
+#[cfg(all(windows, kokoromemo_embedded_backend))]
+fn kill_processes_by_executable(exe_path: &PathBuf) {
+    let path = exe_path.to_string_lossy().replace('\'', "''");
+    let script = format!(
+        "Get-CimInstance Win32_Process | Where-Object {{ $_.ExecutablePath -eq '{}' }} | ForEach-Object {{ taskkill.exe /PID $_.ProcessId /T /F | Out-Null }}",
+        path
+    );
+    let _ = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
 fn web_dist_dir(_app: &tauri::AppHandle, _work_dir: &PathBuf) -> Option<PathBuf> {
     #[cfg(debug_assertions)]
     {
@@ -189,6 +225,7 @@ fn spawn_embedded_backend(app: &tauri::AppHandle, work_dir: &PathBuf) -> std::io
 
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     let backend_path = embedded_backend_path(app)?;
+    kill_processes_by_executable(&backend_path);
     let mut command = std::process::Command::new(backend_path);
     command
         .current_dir(work_dir)
@@ -282,6 +319,14 @@ fn kill_backend(app: &tauri::AppHandle) {
     }
 }
 
+fn request_quit(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        state.quitting.store(true, Ordering::Relaxed);
+    }
+    kill_backend(app);
+    app.exit(0);
+}
+
 #[tauri::command]
 async fn restart_backend(app: tauri::AppHandle) -> Result<String, String> {
     kill_backend(&app);
@@ -351,10 +396,7 @@ fn main() {
             if event.id() == "show" {
                 show_main_window(app);
             } else if event.id() == "quit" {
-                if let Some(state) = app.try_state::<AppState>() {
-                    state.quitting.store(true, Ordering::Relaxed);
-                }
-                app.exit(0);
+                request_quit(app);
             }
         })
         .on_window_event(|window, event| {
@@ -365,6 +407,9 @@ fn main() {
                     {
                         api.prevent_close();
                         let _ = window.hide();
+                    } else {
+                        state.quitting.store(true, Ordering::Relaxed);
+                        kill_backend(window.app_handle());
                     }
                 }
             }

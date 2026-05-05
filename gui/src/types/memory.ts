@@ -44,7 +44,7 @@ export interface MemoryLibrary {
   updated_at?: string
 }
 
-export type InboxStatus = 'pending' | 'approved' | 'rejected'
+export type InboxStatus = 'pending' | 'approved' | 'rejected' | 'discarded'
 export type RiskLevel = 'low' | 'medium' | 'high'
 
 export interface InboxItem {
@@ -62,6 +62,8 @@ export interface InboxItem {
   reviewed_at?: string | null
   review_note?: string | null
   created_at?: string
+  discard_reason?: string | null
+  related_card_id?: string | null
 }
 
 export interface DiscoveredCharacter {

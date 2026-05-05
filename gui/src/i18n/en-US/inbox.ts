@@ -20,15 +20,30 @@ export default {
     actions: {
       approve: 'Approve',
       reject: 'Reject',
+      restore: 'Restore',
+      delete: 'Delete',
     },
     statusFilter: {
       pending: 'Pending',
       approved: 'Approved',
       rejected: 'Rejected',
+      discarded: 'Discarded',
     },
+    discardReason: {
+      label: 'Discard reason',
+      exact_duplicate: 'Exact duplicate',
+      semantic_duplicate: 'Semantic near-duplicate',
+      auto_rejected: 'Auto-rejected by policy',
+      user_rejected: 'User rejected',
+    },
+    relatedCard: 'Related card',
+    confirmRestore: 'Restore this item to pending?',
+    confirmDelete: 'Permanently delete this item?',
     messages: {
       approved: 'Approved',
-      rejected: 'Rejected',
+      rejected: 'Discarded',
+      restored: 'Restored to pending',
+      deleted: 'Deleted',
       loadFailed: 'Load failed: {error}',
     },
     help: {

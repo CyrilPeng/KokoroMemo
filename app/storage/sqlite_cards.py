@@ -220,6 +220,8 @@ _MEMORY_CARD_COLUMNS = {
 
 _MEMORY_INBOX_COLUMNS = {
     "library_id": "TEXT NOT NULL DEFAULT 'lib_default'",
+    "discard_reason": "TEXT",
+    "related_card_id": "TEXT",
 }
 
 _MEMORY_SUMMARY_COLUMNS = {
@@ -328,6 +330,17 @@ async def card_exists_with_content(db_path: str, user_id: str, content: str) -> 
             (user_id, content),
         )
         return (await cursor.fetchone()) is not None
+
+
+async def find_card_id_by_content(db_path: str, user_id: str, content: str) -> str | None:
+    """Return existing card_id for a duplicate content match, or None."""
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            "SELECT card_id FROM memory_cards WHERE user_id = ? AND content = ? AND status != 'deleted' LIMIT 1",
+            (user_id, content),
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else None
 
 
 # --- 记忆库与挂载 ---
@@ -738,18 +751,39 @@ async def insert_inbox_item(
     reason: str | None = None,
     status: str = "pending",
     library_id: str | None = None,
+    discard_reason: str | None = None,
+    related_card_id: str | None = None,
 ) -> None:
     library_id = library_id or DEFAULT_MEMORY_LIBRARY_ID
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """INSERT INTO memory_inbox
                (inbox_id, library_id, candidate_type, payload_json, user_id, character_id, conversation_id,
-                suggested_action, risk_level, reason, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                suggested_action, risk_level, reason, status, discard_reason, related_card_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (inbox_id, library_id, candidate_type, payload_json, user_id, character_id, conversation_id,
-             suggested_action, risk_level, reason, status),
+             suggested_action, risk_level, reason, status, discard_reason, related_card_id),
         )
         await db.commit()
+
+
+async def trim_discarded_inbox(db_path: str, keep_limit: int) -> int:
+    """保留最近 keep_limit 条 status='discarded' 的条目，删除更早的。返回删除条数。"""
+    if keep_limit <= 0:
+        return 0
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            """DELETE FROM memory_inbox
+               WHERE inbox_id IN (
+                 SELECT inbox_id FROM memory_inbox
+                 WHERE status = 'discarded'
+                 ORDER BY created_at DESC
+                 LIMIT -1 OFFSET ?
+               )""",
+            (keep_limit,),
+        )
+        await db.commit()
+        return cursor.rowcount or 0
 
 
 async def get_inbox_items(db_path: str, status: str = "pending", limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
@@ -762,6 +796,25 @@ async def get_inbox_items(db_path: str, status: str = "pending", limit: int = 50
         cursor = await db.execute(
             "SELECT * FROM memory_inbox WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (status, limit, offset),
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows], total
+
+
+async def get_inbox_items_multi(db_path: str, statuses: list[str], limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
+    if not statuses:
+        return [], 0
+    placeholders = ",".join("?" for _ in statuses)
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        count_cursor = await db.execute(
+            f"SELECT COUNT(*) FROM memory_inbox WHERE status IN ({placeholders})",
+            statuses,
+        )
+        total = (await count_cursor.fetchone())[0]
+        cursor = await db.execute(
+            f"SELECT * FROM memory_inbox WHERE status IN ({placeholders}) ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            [*statuses, limit, offset],
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows], total

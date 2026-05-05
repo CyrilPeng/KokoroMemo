@@ -72,10 +72,10 @@ async def test_reject_inbox_accepts_json_object_note():
         assert resp.json()["status"] == "ok"
         with sqlite3.connect(cfg.storage.sqlite.memory_db) as conn:
             row = conn.execute(
-                "SELECT status, review_note FROM memory_inbox WHERE inbox_id = ?",
+                "SELECT status, review_note, discard_reason FROM memory_inbox WHERE inbox_id = ?",
                 ("inbox_reject",),
             ).fetchone()
-        assert row == ("rejected", "不是长期记忆")
+        assert row == ("discarded", "不是长期记忆", "user_rejected")
     finally:
         cleanup_test_dir(test_dir)
 

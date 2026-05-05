@@ -20,15 +20,30 @@ export default {
     actions: {
       approve: '批准',
       reject: '拒绝',
+      restore: '恢复',
+      delete: '删除',
     },
     statusFilter: {
       pending: '待审核',
       approved: '已批准',
       rejected: '已拒绝',
+      discarded: '已丢弃',
     },
+    discardReason: {
+      label: '丢弃原因',
+      exact_duplicate: '内容完全重复',
+      semantic_duplicate: '语义近似重复',
+      auto_rejected: '自动审核拒绝',
+      user_rejected: '用户审核拒绝',
+    },
+    relatedCard: '关联卡片',
+    confirmRestore: '将该条目恢复为待审核？',
+    confirmDelete: '彻底删除该条目？',
     messages: {
       approved: '已批准',
-      rejected: '已拒绝',
+      rejected: '已丢弃',
+      restored: '已恢复为待审核',
+      deleted: '已删除',
       loadFailed: '加载失败：{error}',
     },
     help: {

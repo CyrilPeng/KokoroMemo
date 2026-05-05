@@ -1470,12 +1470,16 @@ async def list_inbox(
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    """List memory inbox items."""
+    """List memory inbox items. status 支持单值，或逗号分隔（如 'discarded,rejected'）。"""
     from app.core.state import get_config
-    from app.storage.sqlite_cards import get_inbox_items
+    from app.storage.sqlite_cards import get_inbox_items, get_inbox_items_multi
 
     cfg = get_config()
-    items, total = await get_inbox_items(cfg.storage.sqlite.memory_db, status=status, limit=limit, offset=offset)
+    statuses = [s.strip() for s in status.split(",") if s.strip()]
+    if len(statuses) > 1:
+        items, total = await get_inbox_items_multi(cfg.storage.sqlite.memory_db, statuses=statuses, limit=limit, offset=offset)
+    else:
+        items, total = await get_inbox_items(cfg.storage.sqlite.memory_db, status=statuses[0] if statuses else "pending", limit=limit, offset=offset)
     return {"items": items, "total": total, "status": status}
 
 
@@ -2315,7 +2319,7 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
 
 @router.post("/admin/inbox/{inbox_id}/reject")
 async def reject_inbox_item(inbox_id: str, data=Body(default="")):
-    """Reject an inbox item."""
+    """Reject an inbox item (moves it to discarded list)."""
     from app.core.state import get_config
     from app.storage.sqlite_cards import get_inbox_item, insert_review_action, transition_inbox_status
 
@@ -2334,13 +2338,97 @@ async def reject_inbox_item(inbox_id: str, data=Body(default="")):
     else:
         note = str(data)
 
-    claimed = await transition_inbox_status(db_path, inbox_id, "pending", "rejected", review_note=note)
+    claimed = await transition_inbox_status(db_path, inbox_id, "pending", "discarded", review_note=note)
     if not claimed:
         latest = await get_inbox_item(db_path, inbox_id)
         latest_status = latest["status"] if latest else "missing"
         return {"status": "error", "message": f"Item already {latest_status}"}
+    import aiosqlite
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "UPDATE memory_inbox SET discard_reason = ? WHERE inbox_id = ?",
+            ("user_rejected", inbox_id),
+        )
+        await db.commit()
     await insert_review_action(db_path, action="reject", inbox_id=inbox_id, note=note)
+    discarded_keep_limit = cfg.memory.extraction.discarded_keep_limit
+    if discarded_keep_limit > 0:
+        from app.storage.sqlite_cards import trim_discarded_inbox
+        try:
+            await trim_discarded_inbox(db_path, discarded_keep_limit)
+        except Exception:
+            pass
     return {"status": "ok"}
+
+
+@router.post("/admin/inbox/{inbox_id}/restore")
+async def restore_inbox_item(inbox_id: str):
+    """将已丢弃的候选恢复为待审核状态。"""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import get_inbox_item, insert_review_action, transition_inbox_status
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    item = await get_inbox_item(db_path, inbox_id)
+    if not item:
+        return {"status": "error", "message": "Inbox item not found"}
+    if item["status"] != "discarded":
+        return {"status": "error", "message": f"仅已丢弃条目可恢复（当前状态 {item['status']}）"}
+    claimed = await transition_inbox_status(db_path, inbox_id, "discarded", "pending", review_note="restored")
+    if not claimed:
+        latest = await get_inbox_item(db_path, inbox_id)
+        latest_status = latest["status"] if latest else "missing"
+        return {"status": "error", "message": f"Item already {latest_status}"}
+    import aiosqlite
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "UPDATE memory_inbox SET discard_reason = NULL WHERE inbox_id = ?",
+            (inbox_id,),
+        )
+        await db.commit()
+    await insert_review_action(db_path, action="restore", inbox_id=inbox_id, note="discarded->pending")
+    return {"status": "ok"}
+
+
+@router.delete("/admin/inbox/{inbox_id}")
+async def delete_inbox_item(inbox_id: str):
+    """彻底删除一条 inbox 条目（仅允许 discarded/rejected/approved）。"""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import get_inbox_item
+
+    cfg = get_config()
+    db_path = cfg.storage.sqlite.memory_db
+    item = await get_inbox_item(db_path, inbox_id)
+    if not item:
+        return {"status": "error", "message": "Inbox item not found"}
+    if item["status"] == "pending":
+        return {"status": "error", "message": "待审核条目请先丢弃后再删除"}
+    import aiosqlite
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("DELETE FROM memory_inbox WHERE inbox_id = ?", (inbox_id,))
+        await db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/admin/inbox/cleanup-discarded")
+async def cleanup_discarded_inbox(data: dict = Body(default=None)):
+    """按当前 keep_limit（或请求传入）裁剪 discarded 条目。"""
+    from app.core.state import get_config
+    from app.storage.sqlite_cards import trim_discarded_inbox
+
+    cfg = get_config()
+    payload = data if isinstance(data, dict) else {}
+    keep_limit = payload.get("keep_limit")
+    if keep_limit is None:
+        keep_limit = cfg.memory.extraction.discarded_keep_limit
+    try:
+        keep_limit = int(keep_limit)
+    except (TypeError, ValueError):
+        return {"status": "error", "message": "keep_limit 必须为整数"}
+    if keep_limit < 0:
+        return {"status": "error", "message": "keep_limit 不能为负数"}
+    removed = await trim_discarded_inbox(cfg.storage.sqlite.memory_db, keep_limit)
+    return {"status": "ok", "removed": removed, "keep_limit": keep_limit}
 
 
 # --- 状态板清空 API ---

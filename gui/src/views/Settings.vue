@@ -409,6 +409,7 @@ const config = ref({
   ext_min_confidence: 0.55,
   ext_after_each_turn: true,
   ext_fallback_rule_based: true,
+  ext_discarded_keep_limit: 200,
   // 高级：评分权重
   score_vector: 0.55,
   score_importance: 0.20,
@@ -688,6 +689,7 @@ const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform
   ['ext_min_confidence',                 'memory.extraction.min_confidence',                  0.55],
   ['ext_after_each_turn',                'memory.extraction.extract_after_each_turn',         true],
   ['ext_fallback_rule_based',            'memory.extraction.fallback_rule_based',             true],
+  ['ext_discarded_keep_limit',           'memory.extraction.discarded_keep_limit',            200],
   ['score_vector',                       'memory.scoring.vector_weight',                      0.55],
   ['score_importance',                   'memory.scoring.importance_weight',                  0.20],
   ['score_recency',                      'memory.scoring.recency_weight',                     0.10],
@@ -791,6 +793,7 @@ async function saveConfig(): Promise<boolean> {
           min_confidence: config.value.ext_min_confidence,
           extract_after_each_turn: config.value.ext_after_each_turn,
           fallback_rule_based: config.value.ext_fallback_rule_based,
+          discarded_keep_limit: config.value.ext_discarded_keep_limit,
         },
         retrieval_gate: {
           enabled: config.value.rg_enabled,
@@ -911,6 +914,24 @@ async function rebuildIndex() {
     }
   } catch (e) {
     message.error(t('common.backendConnectionFailed'))
+  }
+}
+
+async function cleanupDiscardedInbox() {
+  try {
+    const resp = await apiFetch('/admin/inbox/cleanup-discarded', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keep_limit: config.value.ext_discarded_keep_limit }),
+    })
+    const data = await resp.json()
+    if (data.status === 'ok') {
+      message.success(t('settings.adv.extDiscardedCleaned', { removed: data.removed, keep: data.keep_limit }))
+    } else {
+      message.error(data.message || t('common.failed'))
+    }
+  } catch (e: any) {
+    message.error(e.message || String(e))
   }
 }
 
@@ -1469,6 +1490,12 @@ onMounted(() => {
                   </NFormItem>
                   <NFormItem :label="$t('settings.adv.extAfterEachTurn')"><NSwitch v-model:value="config.ext_after_each_turn" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.extFallbackRules')"><NSwitch v-model:value="config.ext_fallback_rule_based" /></NFormItem>
+                  <NFormItem :label="$t('settings.adv.extDiscardedKeepLimit')">
+                    <NSpace align="center">
+                      <NInputNumber v-model:value="config.ext_discarded_keep_limit" :min="0" :max="10000" :step="50" style="width: 180px;" />
+                      <NButton size="small" @click="cleanupDiscardedInbox">{{ $t('settings.adv.extDiscardedCleanup') }}</NButton>
+                    </NSpace>
+                  </NFormItem>
                 </NForm>
               </div>
 

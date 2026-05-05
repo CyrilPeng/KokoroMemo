@@ -98,6 +98,7 @@ class ExtractionConfig:
     min_confidence: float = 0.55
     extract_after_each_turn: bool = True
     fallback_rule_based: bool = True
+    discarded_keep_limit: int = 200
 
 
 @dataclass

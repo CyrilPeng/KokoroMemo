@@ -37,7 +37,7 @@ function setProcessing(inboxId: string, processing: boolean) {
 const statusOptions = computed(() => [
   { label: t('inbox.statusFilter.pending'), value: 'pending' },
   { label: t('inbox.statusFilter.approved'), value: 'approved' },
-  { label: t('inbox.statusFilter.rejected'), value: 'rejected' },
+  { label: t('inbox.statusFilter.discarded'), value: 'discarded,rejected' },
 ])
 
 function parsePayload(row: InboxItem): Record<string, any> {
@@ -58,50 +58,90 @@ function scopeLabel(scope: string): string {
   return translated === key ? scope : translated
 }
 
+function discardReasonLabel(reason?: string | null): string {
+  if (!reason) return '—'
+  const key = `inbox.discardReason.${reason}`
+  const translated = t(key)
+  return translated === key ? reason : translated
+}
+
+function isDiscardedView() {
+  return statusFilter.value.includes('discarded') || statusFilter.value === 'rejected'
+}
+
 function riskTag(risk: string) {
   const type = risk === 'high' ? 'error' : risk === 'medium' ? 'warning' : 'success'
   return h(NTag, { size: 'small', type }, { default: () => risk || 'low' })
 }
 
-const columns = computed(() => [
-  {
-    title: t('inbox.column.content'), key: 'content', minWidth: 280, ellipsis: { tooltip: true },
-    render: (row: InboxItem) => parsePayload(row).content || '—',
-  },
-  {
-    title: t('inbox.column.type'), key: 'card_type', width: 100,
-    render: (row: InboxItem) => typeLabel(parsePayload(row).card_type),
-  },
-  {
-    title: t('inbox.column.scope'), key: 'scope', width: 90,
-    render: (row: InboxItem) => scopeLabel(parsePayload(row).scope),
-  },
-  {
-    title: t('inbox.column.risk'), key: 'risk_level', width: 90,
-    render: (row: InboxItem) => riskTag(row.risk_level),
-  },
-  {
-    title: t('inbox.column.source'), key: 'conversation_id', width: 140, ellipsis: { tooltip: true },
-    render: (row: InboxItem) => row.conversation_id || '—',
-  },
-  {
-    title: t('inbox.column.reason'), key: 'reason', minWidth: 160, ellipsis: { tooltip: true },
-    render: (row: InboxItem) => row.reason || '—',
-  },
-  { title: t('inbox.column.createdAt'), key: 'created_at', width: 150 },
-  {
-    title: t('inbox.column.actions'), key: 'actions', width: 180,
-    render: (row: InboxItem) => row.status === 'pending'
-      ? h(NSpace, { size: 4 }, { default: () => [
+const columns = computed(() => {
+  const base: any[] = [
+    {
+      title: t('inbox.column.content'), key: 'content', minWidth: 280, ellipsis: { tooltip: true },
+      render: (row: InboxItem) => parsePayload(row).content || '—',
+    },
+    {
+      title: t('inbox.column.type'), key: 'card_type', width: 100,
+      render: (row: InboxItem) => typeLabel(parsePayload(row).card_type),
+    },
+    {
+      title: t('inbox.column.scope'), key: 'scope', width: 90,
+      render: (row: InboxItem) => scopeLabel(parsePayload(row).scope),
+    },
+    {
+      title: t('inbox.column.risk'), key: 'risk_level', width: 90,
+      render: (row: InboxItem) => riskTag(row.risk_level),
+    },
+    {
+      title: t('inbox.column.source'), key: 'conversation_id', width: 140, ellipsis: { tooltip: true },
+      render: (row: InboxItem) => row.conversation_id || '—',
+    },
+  ]
+  if (isDiscardedView()) {
+    base.push({
+      title: t('inbox.discardReason.label'), key: 'discard_reason', width: 130, ellipsis: { tooltip: true },
+      render: (row: InboxItem) => h(NTag, { size: 'small', type: 'warning' }, { default: () => discardReasonLabel(row.discard_reason) }),
+    })
+    base.push({
+      title: t('inbox.relatedCard'), key: 'related_card_id', width: 130, ellipsis: { tooltip: true },
+      render: (row: InboxItem) => row.related_card_id || '—',
+    })
+  } else {
+    base.push({
+      title: t('inbox.column.reason'), key: 'reason', minWidth: 160, ellipsis: { tooltip: true },
+      render: (row: InboxItem) => row.reason || '—',
+    })
+  }
+  base.push({ title: t('inbox.column.createdAt'), key: 'created_at', width: 150 })
+  base.push({
+    title: t('inbox.column.actions'), key: 'actions', width: 200,
+    render: (row: InboxItem) => {
+      if (row.status === 'pending') {
+        return h(NSpace, { size: 4 }, { default: () => [
           h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => approveItem(row.inbox_id) }, {
             trigger: () => h(NButton, { size: 'tiny', type: 'primary', loading: isProcessing(row.inbox_id), disabled: isProcessing(row.inbox_id) }, { default: () => t('inbox.actions.approve') }),
             default: () => t('inbox.confirmApprove'),
           }),
           h(NButton, { size: 'tiny', type: 'error', quaternary: true, loading: isProcessing(row.inbox_id), disabled: isProcessing(row.inbox_id), onClick: () => openRejectModal(row.inbox_id) }, { default: () => t('inbox.actions.reject') }),
         ] })
-      : h(NTag, { size: 'small', type: row.status === 'approved' ? 'success' : 'default' }, { default: () => row.status }),
-  },
-])
+      }
+      if (row.status === 'discarded' || row.status === 'rejected') {
+        return h(NSpace, { size: 4 }, { default: () => [
+          h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => restoreItem(row.inbox_id) }, {
+            trigger: () => h(NButton, { size: 'tiny', type: 'primary', quaternary: true, loading: isProcessing(row.inbox_id), disabled: isProcessing(row.inbox_id) }, { default: () => t('inbox.actions.restore') }),
+            default: () => t('inbox.confirmRestore'),
+          }),
+          h(NPopconfirm, { positiveText: t('common.confirm'), negativeText: t('common.cancel'), onPositiveClick: () => deleteItem(row.inbox_id) }, {
+            trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true, loading: isProcessing(row.inbox_id), disabled: isProcessing(row.inbox_id) }, { default: () => t('inbox.actions.delete') }),
+            default: () => t('inbox.confirmDelete'),
+          }),
+        ] })
+      }
+      return h(NTag, { size: 'small', type: row.status === 'approved' ? 'success' : 'default' }, { default: () => row.status })
+    },
+  })
+  return base
+})
 
 async function fetchInbox() {
   loading.value = true
@@ -165,6 +205,44 @@ async function confirmReject() {
     message.error(e.message || String(e))
   } finally {
     if (rejectingId.value) setProcessing(rejectingId.value, false)
+  }
+}
+
+async function restoreItem(inboxId: string) {
+  if (isProcessing(inboxId)) return
+  setProcessing(inboxId, true)
+  try {
+    const resp = await apiFetch(`/admin/inbox/${inboxId}/restore`, { method: 'POST' })
+    const data = await resp.json()
+    if (data.status === 'ok') {
+      message.success(t('inbox.messages.restored'))
+      await fetchInbox()
+    } else {
+      message.error(data.message || t('common.failed'))
+    }
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  } finally {
+    setProcessing(inboxId, false)
+  }
+}
+
+async function deleteItem(inboxId: string) {
+  if (isProcessing(inboxId)) return
+  setProcessing(inboxId, true)
+  try {
+    const resp = await apiFetch(`/admin/inbox/${inboxId}`, { method: 'DELETE' })
+    const data = await resp.json()
+    if (data.status === 'ok') {
+      message.success(t('inbox.messages.deleted'))
+      await fetchInbox()
+    } else {
+      message.error(data.message || t('common.failed'))
+    }
+  } catch (e: any) {
+    message.error(e.message || String(e))
+  } finally {
+    setProcessing(inboxId, false)
   }
 }
 

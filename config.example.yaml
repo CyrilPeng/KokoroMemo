@@ -74,6 +74,7 @@ memory:
     min_confidence: 0.55
     extract_after_each_turn: true
     fallback_rule_based: true
+    discarded_keep_limit: 200
   judge:
     enabled: true
     provider: "openai_compatible"

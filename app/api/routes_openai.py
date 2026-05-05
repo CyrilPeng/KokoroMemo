@@ -521,6 +521,7 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
             min_confidence=cfg.memory.extraction.min_confidence,
             judge_config=judge_config,
             lang=cfg.language,
+            discarded_keep_limit=cfg.memory.extraction.discarded_keep_limit,
         )
     except Exception as e:
         logger.warning("Memory extraction failed: %s", e)

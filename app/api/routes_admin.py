@@ -677,6 +677,28 @@ async def update_character_api(character_id: str, request: Request, data: dict =
     return {"status": "ok", "character_id": character_id}
 
 
+@router.delete("/admin/characters/{character_id}")
+async def delete_character_api(
+    character_id: str,
+    request: Request,
+    clear_conversations: bool = Query(default=False),
+):
+    """删除角色档案；默认保留已有会话、记忆和状态板数据。"""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import delete_character_profile
+
+    cfg = get_config()
+    result = await delete_character_profile(
+        cfg.storage.sqlite.app_db,
+        character_id,
+        clear_conversations=clear_conversations,
+    )
+    if result.get("characters", 0) <= 0:
+        return {"status": "error", "message": "角色不存在", "sync": result}
+    return {"status": "ok", "sync": result}
+
+
 @router.post("/admin/characters/{character_id}/merge")
 async def merge_character_api(character_id: str, request: Request, data: dict = Body(...)):
     """将一个重复角色合并到当前目标角色。"""

@@ -223,6 +223,23 @@ async def merge_character_profile(db_path: str, source_character_id: str, target
         return {"conversations": conversations.rowcount, "characters": characters.rowcount, "defaults": defaults.rowcount}
 
 
+async def delete_character_profile(db_path: str, character_id: str, clear_conversations: bool = False) -> dict[str, int]:
+    """删除角色档案和默认策略；可选清空会话中的角色归属。"""
+    await init_app_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        conversations_count = 0
+        if clear_conversations:
+            conversations = await db.execute(
+                "UPDATE conversations SET character_id = NULL WHERE character_id = ?",
+                (character_id,),
+            )
+            conversations_count = conversations.rowcount
+        defaults = await db.execute("DELETE FROM character_defaults WHERE character_id = ?", (character_id,))
+        characters = await db.execute("DELETE FROM characters WHERE character_id = ?", (character_id,))
+        await db.commit()
+        return {"characters": characters.rowcount, "defaults": defaults.rowcount, "conversations": conversations_count}
+
+
 async def get_character_defaults(db_path: str, character_id: str) -> dict | None:
     """Get default template and library config for a character."""
     async with aiosqlite.connect(db_path) as db:

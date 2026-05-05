@@ -126,7 +126,13 @@ const columns = computed(() => [
     const hlt = health(row)
     return h(NTag, { type: hlt.type as any, size: 'small' }, { default: () => hlt.label })
   } },
-  { title: '操作', key: 'actions', width: 130, render: (row: Character) => h(NButton, { size: 'small', quaternary: true, onClick: () => openCharacter(row) }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }), default: () => '管理' }) },
+  { title: '操作', key: 'actions', width: 190, render: (row: Character) => h(NSpace, { size: 6 }, { default: () => [
+    h(NButton, { size: 'small', quaternary: true, onClick: () => openCharacter(row) }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }), default: () => '管理' }),
+    h(NPopconfirm, { onPositiveClick: () => deleteCharacter(row) }, {
+      trigger: () => h(NButton, { size: 'small', type: 'error', quaternary: true }, { default: () => '删除' }),
+      default: () => '删除该角色档案和默认策略？已有会话、记忆和状态板数据会保留。',
+    }),
+  ] }) },
 ])
 
 async function fetchAll() {
@@ -248,6 +254,22 @@ async function mergeIntoTarget() {
     await fetchAll()
   } catch (error: any) {
     message.error(error.message || '合并角色失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteCharacter(row: Character) {
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/characters/${encodeURIComponent(row.character_id)}`, { method: 'DELETE' })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '删除角色失败')
+    characters.value = characters.value.filter((item) => item.character_id !== row.character_id)
+    if (selected.value?.character_id === row.character_id) showDrawer.value = false
+    message.success('角色已删除')
+  } catch (error: any) {
+    message.error(error.message || '删除角色失败')
   } finally {
     saving.value = false
   }
@@ -466,6 +488,10 @@ onMounted(fetchAll)
         </NTabs>
         <template #footer>
           <NSpace justify="end">
+            <NPopconfirm v-if="selected" @positive-click="deleteCharacter(selected)">
+              <template #trigger><NButton type="error" quaternary :loading="saving">删除角色</NButton></template>
+              删除该角色档案和默认策略？已有会话、记忆和状态板数据会保留。
+            </NPopconfirm>
             <NButton @click="showDrawer = false">关闭</NButton>
             <NButton type="primary" :loading="saving" @click="saveCharacter">保存角色配置</NButton>
           </NSpace>

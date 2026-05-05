@@ -317,6 +317,8 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
         <p><strong>{{ $t('inbox.help.statusTitle') }}</strong>: {{ $t('inbox.help.status') }}</p>
         <p><strong>{{ $t('inbox.help.approveTitle') }}</strong>: {{ $t('inbox.help.approve') }}</p>
         <p><strong>{{ $t('inbox.help.rejectTitle') }}</strong>: {{ $t('inbox.help.reject') }}</p>
+        <p><strong>{{ $t('inbox.help.discardedTitle') }}</strong>: {{ $t('inbox.help.discarded') }}</p>
+        <p><strong>{{ $t('inbox.help.discardedLimitTitle') }}</strong>: {{ $t('inbox.help.discardedLimit') }}</p>
         <p><strong>{{ $t('inbox.help.riskTitle') }}</strong>: {{ $t('inbox.help.risk') }}</p>
       </div>
     </NModal>

@@ -4,7 +4,11 @@ import {
   NAlert,
   NButton,
   NCard,
+  NCollapse,
+  NCollapseItem,
   NDataTable,
+  NDrawer,
+  NDrawerContent,
   NForm,
   NFormItem,
   NGrid,
@@ -22,7 +26,7 @@ import {
   NTag,
   useMessage,
 } from 'naive-ui'
-import { AddOutline, HelpCircleOutline, RefreshOutline } from '@vicons/ionicons5'
+import { AddOutline, HelpCircleOutline, RefreshOutline, SettingsOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
 
@@ -89,6 +93,7 @@ const showEditModal = ref(false)
 const showFillModal = ref(false)
 const showHelpModal = ref(false)
 const showRenameModal = ref(false)
+const showDefaultDrawer = ref(false)
 const editingTable = ref<StateTable | null>(null)
 const editingRow = ref<StateRow | null>(null)
 const editValues = ref<Record<string, string>>({})
@@ -96,7 +101,25 @@ const editMeta = ref({ priority: 80, confidence: 0.9 })
 const fillForm = ref({ user_message: '', assistant_message: '' })
 const renameForm = ref({ title: '' })
 
-const profileOptions = computed(() => profiles.value.map((item) => ({ label: item.name, value: item.profile_id })))
+const profileDescriptions: Record<string, string> = {
+  airp_roleplay: '日常角色扮演与陪伴聊天，AI 抽取的记忆候选会进入待审核',
+  rimtalk_colony: '殖民地/模拟类游戏，仅维护状态板，避免污染长期记忆',
+  ttrpg_story: '跑团与长线剧情，状态板优先，仅稳定设定进入长期记忆',
+  memory_only: '普通助手或偏好记录，只用长期记忆，不维护状态板',
+  proxy_only: '纯透传代理，不注入、不写入、不维护任何状态',
+}
+const profileOptions = computed(() => profiles.value.map((item) => ({
+  label: item.name,
+  value: item.profile_id,
+})))
+const selectedProfileHint = computed(() => {
+  const id = config.value?.profile_id || ''
+  return profileDescriptions[id] || profiles.value.find((item) => item.profile_id === id)?.description || ''
+})
+const selectedDefaultProfileHint = computed(() => {
+  const id = defaultConfig.value?.profile_id || ''
+  return profileDescriptions[id] || profiles.value.find((item) => item.profile_id === id)?.description || ''
+})
 const boardTemplateOptions = computed(() => [
   { label: '不使用旧字段模板', value: null },
   ...boardTemplates.value.map((item) => ({ label: item.name, value: item.template_id })),
@@ -115,22 +138,22 @@ const conversationOptions = computed(() => conversations.value.map((item) => ({
 })))
 const selectedConversation = computed(() => conversations.value.find((item) => item.conversation_id === conversationId.value.trim()) || null)
 const memoryPolicyOptions = [
-  { label: '关闭长期记忆写入', value: 'disabled' },
-  { label: '生成候选待审核', value: 'candidate' },
-  { label: '仅稳定设定候选', value: 'stable_only' },
-  { label: '自动判断', value: 'auto' },
+  { label: '不写入长期记忆', value: 'disabled' },
+  { label: '抽取候选，需我审核', value: 'candidate' },
+  { label: '仅写入稳定设定（自动批准）', value: 'stable_only' },
+  { label: '自动判断写入时机', value: 'auto' },
 ]
 const statePolicyOptions = [
-  { label: '关闭状态更新', value: 'disabled' },
+  { label: '不维护状态板', value: 'disabled' },
   { label: '仅手动维护', value: 'manual' },
-  { label: '自动更新状态板', value: 'auto' },
+  { label: '每轮自动更新状态板', value: 'auto' },
 ]
 const injectionPolicyOptions = [
-  { label: '不注入', value: 'none' },
-  { label: '仅长期记忆', value: 'memory_only' },
-  { label: '仅状态板', value: 'state_only' },
-  { label: '状态板优先', value: 'state_first' },
-  { label: '混合注入', value: 'mixed' },
+  { label: '不注入任何上下文（仅做代理）', value: 'none' },
+  { label: '只注入长期记忆', value: 'memory_only' },
+  { label: '只注入状态板（适合模拟类）', value: 'state_only' },
+  { label: '状态板优先 + 长期记忆补充', value: 'state_first' },
+  { label: '混合注入：长期记忆 + 状态板', value: 'mixed' },
 ]
 
 const tables = computed<StateTable[]>(() => template.value?.tables || [])
@@ -527,7 +550,11 @@ function columnsFor(table: StateTable) {
 
 onMounted(() => {
   fetchOptions()
-  fetchConversations()
+  fetchConversations().then(() => {
+    if (!conversationId.value.trim()) {
+      showDefaultDrawer.value = true
+    }
+  })
   fetchDefaultConfig()
   if (conversationId.value.trim()) fetchBoard()
 })
@@ -538,11 +565,21 @@ onMounted(() => {
     <NSpace vertical size="large">
       <NCard>
         <template #header>
-          <NSpace align="center">
-            <span>会话状态板</span>
-            <NButton quaternary size="small" @click="showHelpModal = true">
-              <template #icon><NIcon :component="HelpCircleOutline" /></template>
-            </NButton>
+          <NSpace align="center" justify="space-between" style="width:100%">
+            <NSpace align="center">
+              <span>会话状态板</span>
+              <NTag v-if="template" size="small" type="info">模板：{{ template.name }}</NTag>
+              <NTag v-if="rows.length" size="small">{{ rows.length }} 条状态</NTag>
+            </NSpace>
+            <NSpace align="center">
+              <NButton size="small" @click="showDefaultDrawer = true">
+                <template #icon><NIcon :component="SettingsOutline" /></template>
+                新会话默认配置
+              </NButton>
+              <NButton quaternary size="small" @click="showHelpModal = true">
+                <template #icon><NIcon :component="HelpCircleOutline" /></template>
+              </NButton>
+            </NSpace>
           </NSpace>
         </template>
         <NGrid :cols="24" :x-gap="12" :y-gap="12">
@@ -584,59 +621,14 @@ onMounted(() => {
         </NGrid>
       </NCard>
 
-      <NAlert v-if="template" type="info" :show-icon="false">
-        当前模板：{{ template.name }}。状态板已改为“表格模板 + 行级状态 + 操作式更新”，新增内容写入对应表格行，注入时按优先级压缩输出。
-      </NAlert>
-
-      <NCard title="健康诊断">
-        <NSpace align="center" :wrap="true">
-          <NTag v-for="item in boardDiagnostics" :key="item.label" :type="item.type">{{ item.label }}</NTag>
-          <span style="color: #a1a1aa; font-size: 13px;">当前状态行 {{ rows.length }} 条，注入预览 {{ preview.char_count || 0 }} 字符。</span>
-        </NSpace>
-      </NCard>
-
-      <NCard v-if="defaultConfig" title="新会话默认配置">
-        <NForm label-placement="top">
-          <NGrid :cols="24" :x-gap="12" :y-gap="12">
-            <NGridItem :span="8">
-              <NFormItem label="默认会话方案">
-                <NSelect v-model:value="defaultConfig.profile_id" :options="profileOptions" @update:value="applyProfileToDefault" />
-              </NFormItem>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="默认表格模板">
-                <NSelect v-model:value="defaultConfig.table_template_id" filterable :options="tableTemplateOptions" />
-              </NFormItem>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="默认挂载组合预设">
-                <NSelect v-model:value="defaultConfig.mount_preset_id" filterable :options="mountPresetOptions" />
-              </NFormItem>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="默认长期记忆写入">
-                <NSelect v-model:value="defaultConfig.memory_write_policy" :options="memoryPolicyOptions" />
-              </NFormItem>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="默认状态板更新">
-                <NSelect v-model:value="defaultConfig.state_update_policy" :options="statePolicyOptions" />
-              </NFormItem>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="默认注入策略">
-                <NSelect v-model:value="defaultConfig.injection_policy" :options="injectionPolicyOptions" />
-              </NFormItem>
-            </NGridItem>
-          </NGrid>
-          <NSpace justify="space-between" align="center">
-            <NAlert type="info" :show-icon="false" style="flex: 1">
-              仅影响之后第一次出现的新 conversation_id；已有会话不会被自动覆盖。
-            </NAlert>
-            <NButton type="primary" :loading="saving" @click="saveDefaultConfig">保存新会话默认配置</NButton>
+      <NCollapse>
+        <NCollapseItem title="健康诊断" name="diag">
+          <NSpace align="center" :wrap="true">
+            <NTag v-for="item in boardDiagnostics" :key="item.label" :type="item.type">{{ item.label }}</NTag>
+            <span style="color: #a1a1aa; font-size: 13px;">当前状态行 {{ rows.length }} 条，注入预览 {{ preview.char_count || 0 }} 字符。</span>
           </NSpace>
-        </NForm>
-      </NCard>
+        </NCollapseItem>
+      </NCollapse>
 
       <NCard v-if="config" title="当前会话策略">
         <NForm label-placement="top">
@@ -645,15 +637,11 @@ onMounted(() => {
               <NFormItem label="会话方案">
                 <NSelect v-model:value="config.profile_id" :options="profileOptions" @update:value="applyProfileToConfig" />
               </NFormItem>
+              <div v-if="selectedProfileHint" class="hint-text">{{ selectedProfileHint }}</div>
             </NGridItem>
             <NGridItem :span="8">
               <NFormItem label="状态板表格模板">
                 <NSelect v-model:value="config.table_template_id" filterable :options="tableTemplateOptions" />
-              </NFormItem>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="旧字段模板（兼容兜底）">
-                <NSelect v-model:value="config.template_id" filterable :options="boardTemplateOptions" />
               </NFormItem>
             </NGridItem>
             <NGridItem :span="8">
@@ -676,12 +664,14 @@ onMounted(() => {
                 <NSelect v-model:value="config.injection_policy" :options="injectionPolicyOptions" />
               </NFormItem>
             </NGridItem>
-            <NGridItem :span="16">
-              <NFormItem label="说明">
-                <NAlert type="default" :show-icon="false">
-                  该配置即使当前会话没有任何状态数据也会保存。RimTalk / 殖民地模拟建议使用“仅状态板”并关闭长期记忆写入。
-                </NAlert>
-              </NFormItem>
+            <NGridItem :span="24">
+              <NCollapse>
+                <NCollapseItem title="高级：旧字段模板（兼容兜底）" name="advanced">
+                  <NFormItem label="旧字段模板">
+                    <NSelect v-model:value="config.template_id" filterable :options="boardTemplateOptions" />
+                  </NFormItem>
+                </NCollapseItem>
+              </NCollapse>
             </NGridItem>
           </NGrid>
           <NSpace justify="end">
@@ -695,16 +685,10 @@ onMounted(() => {
         <NGrid :cols="24" :x-gap="16" :y-gap="16">
           <NGridItem :span="16">
             <NCard title="状态表格">
-              <NAlert v-if="template && rows.length === 0" type="info" style="margin-bottom: 12px">
-                当前会话暂无状态行，但已可配置模板、挂载预设和记忆策略。下一轮对话或手动新增后会按当前策略写入状态表格。
-              </NAlert>
-              <NAlert v-else-if="rowSource === 'legacy_state_items'" type="warning" style="margin-bottom: 12px">
-                当前显示的是旧状态字段的兼容视图。编辑后会保存为新的状态表格行，旧字段仍会保留用于历史兼容。
-              </NAlert>
               <NTabs v-if="tables.length" v-model:value="activeTableKey" type="line" animated>
                 <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">
                   <NSpace vertical size="medium">
-                    <NAlert type="default" :show-icon="false">{{ table.description || '无说明' }}</NAlert>
+                    <div v-if="table.description" class="hint-text">{{ table.description }}</div>
                     <NSpace>
                       <NButton type="primary" size="small" @click="openCreate(table)">
                         <template #icon><NIcon :component="AddOutline" /></template>
@@ -744,6 +728,41 @@ onMounted(() => {
         </NGrid>
       </NSpin>
     </NSpace>
+
+    <NDrawer v-model:show="showDefaultDrawer" :width="560" placement="right">
+      <NDrawerContent title="新会话默认配置" closable>
+        <p class="hint-text" style="margin-bottom: 16px;">
+          这里设置的是<b>未来新出现的会话</b>使用的初始配置（识别到新的 conversation_id 时自动应用）。已有会话不会被覆盖；要修改当前会话请使用页面上的"当前会话策略"。
+        </p>
+        <NForm v-if="defaultConfig" label-placement="top">
+          <NFormItem label="默认会话方案">
+            <NSelect v-model:value="defaultConfig.profile_id" :options="profileOptions" @update:value="applyProfileToDefault" />
+          </NFormItem>
+          <div v-if="selectedDefaultProfileHint" class="hint-text" style="margin-bottom: 12px;">{{ selectedDefaultProfileHint }}</div>
+          <NFormItem label="默认表格模板">
+            <NSelect v-model:value="defaultConfig.table_template_id" filterable :options="tableTemplateOptions" />
+          </NFormItem>
+          <NFormItem label="默认挂载组合预设">
+            <NSelect v-model:value="defaultConfig.mount_preset_id" filterable :options="mountPresetOptions" />
+          </NFormItem>
+          <NFormItem label="默认长期记忆写入">
+            <NSelect v-model:value="defaultConfig.memory_write_policy" :options="memoryPolicyOptions" />
+          </NFormItem>
+          <NFormItem label="默认状态板更新">
+            <NSelect v-model:value="defaultConfig.state_update_policy" :options="statePolicyOptions" />
+          </NFormItem>
+          <NFormItem label="默认注入策略">
+            <NSelect v-model:value="defaultConfig.injection_policy" :options="injectionPolicyOptions" />
+          </NFormItem>
+        </NForm>
+        <template #footer>
+          <NSpace justify="end">
+            <NButton @click="showDefaultDrawer = false">关闭</NButton>
+            <NButton type="primary" :loading="saving" @click="saveDefaultConfig">保存</NButton>
+          </NSpace>
+        </template>
+      </NDrawerContent>
+    </NDrawer>
 
     <NModal v-model:show="showRenameModal" preset="card" title="重命名会话" style="width: min(520px, 96vw)">
       <NSpace vertical>
@@ -786,15 +805,31 @@ onMounted(() => {
     </NModal>
 
     <NModal v-model:show="showHelpModal" preset="card" style="width: 760px" title="会话状态板帮助">
-      <NSpace vertical>
-        <NAlert type="success" :show-icon="false">本模块已从“模板字段填空”重构为“表格化状态板”，更接近 st-memory-enhancement 的行级状态维护方式。</NAlert>
-        <p><b>状态表格</b>：每个标签是一张表，例如当前场景、角色状态、关系状态、扮演规则、承诺任务、重要事件、重要物品。</p>
-        <p><b>状态行</b>：每行是一条可被插入、更新或删除的状态。AI 填充器会尽量更新既有行，避免把所有内容堆到一个大文本框。</p>
-        <p><b>会话策略</b>：决定当前会话是否写入长期记忆、是否自动更新状态板，以及请求时注入长期记忆还是状态板。没有状态数据时也可以先保存策略。</p>
-        <p><b>RimTalk / 殖民地模拟</b>：建议套用对应方案，长期记忆写入选择“关闭”，注入策略选择“仅状态板”，避免把资源、小人状态、临时事件写入长期记忆。</p>
-        <p><b>新会话默认配置</b>：决定第一次出现的新 conversation_id 使用什么模板和策略。请在开始 RimTalk 或跑团前先选好默认方案，第一轮对话就会使用正确状态板。</p>
-        <p><b>注入预览</b>：展示真正注入模型的压缩文本，超过字符预算时按表格优先级截断。</p>
-        <p><b>AI 填充调试</b>：粘贴一轮用户消息和助手回复，观察表格操作结果。只应记录影响后续连续性的内容，避免流水账。</p>
+      <NSpace vertical size="medium">
+        <div>
+          <b>这是什么</b>
+          <p class="hint-text">状态板用于追踪当前会话的"热信息"——场景、角色情绪、规则、关系等会随对话演变的内容。它会和长期记忆一起注入到 AI 的 system prompt，帮助 AI 维持连续性。</p>
+        </div>
+        <div>
+          <b>会话方案与策略</b>
+          <p class="hint-text">「会话方案」是一组预设组合，选中后会自动套用对应的模板/写入/注入策略。也可以单独调整每一项。改完记得点「保存会话策略」。</p>
+        </div>
+        <div>
+          <b>新会话默认配置（右上⚙）</b>
+          <p class="hint-text">仅影响之后第一次出现的新 conversation_id；已有会话不会被自动覆盖。建议在开始 RimTalk、跑团或新角色之前先设好默认方案。</p>
+        </div>
+        <div>
+          <b>状态行与 AI 填充</b>
+          <p class="hint-text">每一行是一条独立状态。AI 会尽量更新已有行而非堆砌新行。若注入预览显示空，说明当前还没有任何状态行。</p>
+        </div>
+        <div>
+          <b>常见误解</b>
+          <ul class="hint-text" style="margin: 4px 0 0 18px; padding: 0;">
+            <li>RimTalk / 殖民地模拟：建议「不写入长期记忆」+「只注入状态板」，避免资源/小人状态污染长期记忆</li>
+            <li>普通助手：用「长期记忆助手」方案，不维护状态板</li>
+            <li>注入预览有内容但状态表格为空：可能是旧版字段兼容兜底，编辑后会迁移到新表格</li>
+          </ul>
+        </div>
       </NSpace>
     </NModal>
   </div>
@@ -803,6 +838,13 @@ onMounted(() => {
 <style scoped>
 .state-page {
   padding: 20px;
+}
+
+.hint-text {
+  color: #a1a1aa;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 4px 0 0 0;
 }
 
 @media (max-width: 768px) {

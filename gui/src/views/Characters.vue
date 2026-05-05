@@ -368,7 +368,6 @@ onMounted(fetchAll)
           </NSpace>
         </template>
         <NSpace vertical>
-          <NAlert type="info" :show-icon="false">角色中心用于管理角色档案、默认会话策略、记忆库绑定和该角色已有会话。RimTalk / 殖民地角色建议使用“仅状态板”并关闭长期记忆写入。</NAlert>
           <NGrid cols="1 m:24" item-responsive responsive="screen" :x-gap="12" :y-gap="12">
             <NGridItem span="1 m:10"><NInput v-model:value="keyword" placeholder="搜索角色 ID、名称或别名" clearable /></NGridItem>
             <NGridItem span="1 m:6"><NSelect v-model:value="profileFilter" :options="filterProfileOptions" /></NGridItem>
@@ -417,7 +416,7 @@ onMounted(fetchAll)
                 <NGridItem><NFormItem label="注入策略"><NSelect v-model:value="form.injection_policy" :options="injectionPolicyOptions" /></NFormItem></NGridItem>
                 <NGridItem><NFormItem label="挂载组合预设"><NSelect v-model:value="form.mount_preset_id" filterable :options="mountPresetOptions" /></NFormItem></NGridItem>
               </NGrid>
-              <NAlert type="warning" :show-icon="false">该配置影响该角色之后的新会话；如需修改已有会话，请保存后使用“应用到已有会话”。</NAlert>
+              <div class="hint-text">该配置影响该角色之后的新会话；如需修改已有会话，请保存后使用「应用到已有会话」。</div>
             </NForm>
           </NTabPane>
 
@@ -425,13 +424,13 @@ onMounted(fetchAll)
             <NForm label-placement="top">
               <NFormItem label="默认挂载记忆库"><NSelect v-model:value="form.library_ids" multiple filterable :options="libraryOptions" /></NFormItem>
               <NFormItem label="默认写入库"><NSelect v-model:value="form.write_library_id" :options="writeLibraryOptions" /></NFormItem>
-              <NAlert type="default" :show-icon="false">新记忆会写入默认写入库；召回时会从挂载库中检索。RimTalk 状态变化建议不要写入长期记忆。</NAlert>
+              <div class="hint-text">新记忆写入「默认写入库」，召回时从所有挂载库中检索。模拟类角色（RimTalk 等）建议关闭长期记忆写入。</div>
             </NForm>
           </NTabPane>
 
           <NTabPane name="conversations" tab="相关会话">
             <NSpace vertical>
-              <NAlert type="default" :show-icon="false">共 {{ conversations.length }} 个会话。可批量套用当前角色默认策略，修复仍在使用旧模板或错误记忆策略的会话。</NAlert>
+              <div class="hint-text">共 {{ conversations.length }} 个会话。可批量套用当前角色默认策略，修复仍在使用旧模板或错误记忆策略的会话。</div>
               <NDataTable :data="conversations" :pagination="{ pageSize: 8 }" :columns="[
                 { title: '会话', key: 'title', minWidth: 240, ellipsis: { tooltip: true }, render: (row: any) => conversationDisplayName(row) },
                 { title: '原始 ID', key: 'conversation_id', minWidth: 180, ellipsis: { tooltip: true } },
@@ -448,8 +447,7 @@ onMounted(fetchAll)
 
           <NTabPane name="diagnosis" tab="诊断与工具">
             <NSpace vertical>
-              <NAlert :type="health({ ...selected, ...form }).type as any" :show-icon="false">当前诊断：{{ health({ ...selected, ...form }).label }}</NAlert>
-              <p>RimTalk / 殖民地模拟角色建议：默认方案为 RimTalk，长期记忆写入关闭，注入策略为仅状态板。</p>
+              <NTag :type="health({ ...selected, ...form }).type as any" size="small">{{ health({ ...selected, ...form }).label }}</NTag>
               <NButton type="warning" @click="applyToConversations">应用当前默认策略到已有会话</NButton>
               <NCard size="small" title="记忆污染排查">
                 <NSpace vertical>
@@ -457,7 +455,7 @@ onMounted(fetchAll)
                     <NButton :loading="diagnosticLoading" @click="fetchMemoryDiagnostics()">查看该角色记忆</NButton>
                     <NSelect :options="conversations.map((item) => ({ label: conversationDisplayName(item), value: item.conversation_id }))" filterable clearable placeholder="按会话筛选记忆" style="width: min(360px, 82vw)" @update:value="(value) => value && fetchMemoryDiagnostics(value)" />
                   </NSpace>
-                  <NAlert type="default" :show-icon="false">已批准记忆 {{ diagnosticCards.length }} 条，待审核候选 {{ diagnosticInbox.length }} 条。发现串角或污染内容时，可直接删除记忆或拒绝候选。</NAlert>
+                  <div class="hint-text">已批准记忆 {{ diagnosticCards.length }} 条，待审核候选 {{ diagnosticInbox.length }} 条。发现串角或污染内容时，可直接删除记忆或拒绝候选。</div>
                   <NDataTable :data="diagnosticCards" :pagination="{ pageSize: 5 }" :columns="[
                     { title: '内容', key: 'content', minWidth: 260, ellipsis: { tooltip: true }, render: (row: any) => memoryContent(row) },
                     { title: '类型', key: 'card_type', width: 100 },
@@ -500,11 +498,28 @@ onMounted(fetchAll)
     </NDrawer>
 
     <NModal v-model:show="showHelp" preset="card" title="角色中心帮助" style="width: 720px">
-      <NSpace vertical>
-        <p><b>角色档案</b>：为 character_id 添加显示名称、别名和备注，方便识别。</p>
-        <p><b>默认策略</b>：决定该角色新会话默认使用什么状态板模板、是否写长期记忆、注入什么上下文。</p>
-        <p><b>记忆库绑定</b>：决定该角色默认从哪些记忆库召回，以及新记忆写入哪个库。</p>
-        <p><b>相关会话</b>：查看该角色已有会话，并可批量套用当前默认策略。</p>
+      <NSpace vertical size="medium">
+        <div>
+          <b>这是什么</b>
+          <p class="hint-text">为每个 character_id 维护档案、默认会话策略与记忆库绑定。新会话出现时若该角色已配置，会自动套用对应策略与挂载。</p>
+        </div>
+        <div>
+          <b>四个标签页</b>
+          <ul class="hint-text" style="margin: 4px 0 0 18px; padding: 0;">
+            <li>基础档案：显示名 / 别名 / 备注，仅影响界面显示</li>
+            <li>默认策略：决定该角色新会话使用哪个状态板模板、是否写长期记忆、注入什么上下文</li>
+            <li>记忆库绑定：默认挂载哪些记忆库、新记忆写入哪个库</li>
+            <li>诊断与工具：查看记忆污染、批量应用策略、合并重复角色</li>
+          </ul>
+        </div>
+        <div>
+          <b>常见误解</b>
+          <ul class="hint-text" style="margin: 4px 0 0 18px; padding: 0;">
+            <li>修改默认策略不会自动覆盖已有会话，需手动点「应用到已有会话」</li>
+            <li>RimTalk / 殖民地角色：建议使用「RimTalk / 殖民地模拟」方案，写入关闭，仅注入状态板</li>
+            <li>合并角色不可撤销，会迁移所有会话/记忆/状态板引用并删除被合并方</li>
+          </ul>
+        </div>
       </NSpace>
     </NModal>
 
@@ -534,6 +549,13 @@ onMounted(fetchAll)
 <style scoped>
 .characters-page {
   padding: 20px;
+}
+
+.hint-text {
+  color: #a1a1aa;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 4px 0 0 0;
 }
 
 .conversation-preview-list {

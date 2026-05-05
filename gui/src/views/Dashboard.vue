@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic, NIcon } from 'naive-ui'
-import { HelpCircleOutline } from '@vicons/ionicons5'
+import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { apiFetch, getServerUrl, setServerUrl } from '../api'
 import HelpModal from '../components/HelpModal.vue'
+import PageHeader from '../components/PageHeader.vue'
 const router = useRouter()
 const { t } = useI18n()
 function typeLabel(type: string): string {
@@ -92,16 +92,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 
 <template>
   <div>
-    <div style="margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start;">
-      <div>
-        <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('dashboard.title') }}</h1>
-        <p style="color: #71717a; font-size: 14px; margin: 0;">{{ $t('dashboard.subtitle') }}</p>
-      </div>
-      <NButton quaternary @click="helpModal = true">
-        <template #icon><NIcon><HelpCircleOutline /></NIcon></template>
-        {{ $t('common.help') }}
-      </NButton>
-    </div>
+    <PageHeader :title="$t('dashboard.title')" :subtitle="$t('dashboard.subtitle')" show-help @help="helpModal = true" />
 
     <NSpin :show="loading">
       <div v-if="health">

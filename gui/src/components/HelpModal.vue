@@ -20,12 +20,15 @@ const internalShow = computed({
   get: () => props.show,
   set: (value) => emit('update:show', value),
 })
-const modalWidth = computed(() => props.width || '720px')
+const modalWidth = computed(() => {
+  const base = props.width || '720px'
+  return base.startsWith('min(') || base.endsWith('vw') ? base : `min(${base}, 96vw)`
+})
 </script>
 
 <template>
-  <NModal v-model:show="internalShow" preset="card" :title="title" :style="{ width: modalWidth }">
-    <NSpace vertical size="medium">
+  <NModal v-model:show="internalShow" preset="card" :title="title" :style="{ width: modalWidth }" class="help-modal">
+    <NSpace vertical size="medium" class="help-modal__body">
       <div v-for="(section, index) in sections" :key="index">
         <b>{{ section.title }}</b>
         <p v-if="section.body" class="help-body">{{ section.body }}</p>
@@ -38,6 +41,11 @@ const modalWidth = computed(() => props.width || '720px')
 </template>
 
 <style scoped>
+.help-modal__body {
+  max-height: calc(80vh - 80px);
+  overflow-y: auto;
+}
+
 .help-body {
   color: #a1a1aa;
   font-size: 13px;

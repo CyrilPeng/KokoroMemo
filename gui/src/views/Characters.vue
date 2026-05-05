@@ -6,9 +6,10 @@ import {
   NGridItem, NIcon, NInput, NModal, NPopconfirm, NSelect, NSpace, NSpin, NSwitch, NTabPane,
   NTabs, NTag, useDialog, useMessage,
 } from 'naive-ui'
-import { CreateOutline, HelpCircleOutline, OpenOutline, RefreshOutline } from '@vicons/ionicons5'
+import { CreateOutline, OpenOutline, RefreshOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import HelpModal from '../components/HelpModal.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 const characterHelpSections = [
   { title: '这是什么', body: '为每个 character_id 维护档案、默认会话策略与记忆库绑定。新会话出现时若该角色已配置，会自动套用对应策略与挂载。' },
@@ -64,22 +65,22 @@ const mergeTargetOptions = computed(() => characters.value
   .filter((item) => item.character_id !== selected.value?.character_id)
   .map((item) => ({ label: item.display_name ? `${item.display_name}（${item.character_id}）` : item.character_id, value: item.character_id })))
 const memoryPolicyOptions = [
-  { label: '关闭长期记忆写入', value: 'disabled' },
-  { label: '生成候选待审核', value: 'candidate' },
-  { label: '仅稳定设定候选', value: 'stable_only' },
-  { label: '自动判断', value: 'auto' },
+  { label: '不写入长期记忆', value: 'disabled' },
+  { label: '抽取候选，需我审核', value: 'candidate' },
+  { label: '仅稳定设定自动入库（需配置记忆判断模型）', value: 'stable_only' },
+  { label: '由判断模型自动决定（需配置记忆判断模型）', value: 'auto' },
 ]
 const statePolicyOptions = [
-  { label: '关闭状态更新', value: 'disabled' },
+  { label: '不维护状态板', value: 'disabled' },
   { label: '仅手动维护', value: 'manual' },
-  { label: '自动更新状态板', value: 'auto' },
+  { label: '每轮自动更新状态板', value: 'auto' },
 ]
 const injectionPolicyOptions = [
-  { label: '不注入', value: 'none' },
-  { label: '仅长期记忆', value: 'memory_only' },
-  { label: '仅状态板', value: 'state_only' },
-  { label: '状态板优先', value: 'state_first' },
-  { label: '混合注入', value: 'mixed' },
+  { label: '不注入任何上下文（仅做代理）', value: 'none' },
+  { label: '只注入长期记忆', value: 'memory_only' },
+  { label: '只注入状态板（适合模拟类）', value: 'state_only' },
+  { label: '状态板优先 + 长期记忆补充', value: 'state_first' },
+  { label: '混合注入：长期记忆 + 状态板', value: 'mixed' },
 ]
 
 const form = ref({
@@ -375,14 +376,10 @@ onMounted(fetchAll)
 
 <template>
   <div class="characters-page">
+    <PageHeader title="角色中心" subtitle="为每个角色配置默认会话策略、记忆库绑定与档案信息" show-help @help="showHelp = true" />
     <NSpace vertical size="large">
       <NCard>
-        <template #header>
-          <NSpace align="center">
-            <span>角色中心</span>
-            <NButton quaternary size="small" @click="showHelp = true"><template #icon><NIcon :component="HelpCircleOutline" /></template></NButton>
-          </NSpace>
-        </template>
+        <template #header>角色列表</template>
         <NSpace vertical>
           <NGrid cols="1 m:24" item-responsive responsive="screen" :x-gap="12" :y-gap="12">
             <NGridItem span="1 m:10"><NInput v-model:value="keyword" placeholder="搜索角色 ID、名称或别名" clearable /></NGridItem>

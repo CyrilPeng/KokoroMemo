@@ -5,9 +5,10 @@ import {
   NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { HelpCircleOutline, RefreshOutline } from '@vicons/ionicons5'
+import { RefreshOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import HelpModal from '../components/HelpModal.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -190,16 +191,7 @@ watch([selectedLibraryId, limit], () => fetchGraph())
 
 <template>
   <div>
-    <div style="margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start;">
-      <div>
-        <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('graph.title') }}</h1>
-        <p style="color: #71717a; font-size: 14px; margin: 0;">{{ $t('graph.subtitle') }}</p>
-      </div>
-      <NButton quaternary @click="helpModal = true">
-        <template #icon><NIcon><HelpCircleOutline /></NIcon></template>
-        {{ $t('graph.helpButton') }}
-      </NButton>
-    </div>
+    <PageHeader :title="$t('graph.title')" :subtitle="$t('graph.subtitle')" show-help @help="helpModal = true" />
 
     <NCard style="background: #18181b; border: 1px solid #27272a;">
       <NSpace align="center" justify="space-between" style="margin-bottom: 12px;" wrap>

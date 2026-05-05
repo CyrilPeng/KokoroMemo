@@ -2,15 +2,15 @@
 import { computed, h, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NIcon, NInput, NInputNumber, NModal,
+  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NInputNumber, NModal,
   NPagination, NPopconfirm, NSelect, NSlider, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
 import type { MemoryCard } from '../types/memory'
 import HelpModal from '../components/HelpModal.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -371,16 +371,7 @@ onMounted(fetchMemories)
 
 <template>
   <div>
-    <div style="margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start;">
-      <div>
-        <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('memories.title') }}</h1>
-        <p style="color: #71717a; font-size: 14px; margin: 0;">{{ $t('memories.subtitle') }}</p>
-      </div>
-      <NButton quaternary @click="helpModal = true">
-        <template #icon><NIcon><HelpCircleOutline /></NIcon></template>
-        {{ $t('common.help') }}
-      </NButton>
-    </div>
+    <PageHeader :title="$t('memories.title')" :subtitle="$t('memories.subtitle')" show-help @help="helpModal = true" />
 
     <NCard style="background: #18181b; border: 1px solid #27272a;">
       <NSpace justify="space-between" align="center" style="margin-bottom: 16px; width: 100%;" wrap>
@@ -412,7 +403,7 @@ onMounted(fetchMemories)
       </div>
     </NCard>
 
-    <NModal v-model:show="showEditModal" preset="card" :title="editingCard ? $t('memories.editMemory') : $t('memories.createMemory')" style="width: 560px; background: #18181b;">
+    <NModal v-model:show="showEditModal" preset="card" :title="editingCard ? $t('memories.editMemory') : $t('memories.createMemory')" style="width: min(560px, 96vw); background: #18181b;">
       <NForm label-placement="top" :show-feedback="false" style="gap: 16px; display: flex; flex-direction: column;">
         <NFormItem :label="$t('memories.library')"><NSelect v-model:value="editForm.library_id" :options="libraryEditOptions" /></NFormItem>
         <NFormItem :label="$t('memories.memoryContent')"><NInput v-model:value="editForm.content" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('memories.inputContent')" /></NFormItem>
@@ -425,17 +416,17 @@ onMounted(fetchMemories)
       <template #action><NSpace justify="end"><NButton @click="showEditModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="saveEdit">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
-    <NModal v-model:show="showLibraryModal" preset="card" :title="editingLibrary ? $t('memories.editLibraryTitle') : $t('memories.createLibraryTitle')" style="width: 520px; background: #18181b;">
+    <NModal v-model:show="showLibraryModal" preset="card" :title="editingLibrary ? $t('memories.editLibraryTitle') : $t('memories.createLibraryTitle')" style="width: min(520px, 96vw); background: #18181b;">
       <NForm label-placement="top"><NFormItem :label="$t('memories.libraryName')"><NInput v-model:value="libraryForm.name" /></NFormItem><NFormItem :label="$t('memories.description')"><NInput v-model:value="libraryForm.description" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" /></NFormItem></NForm>
       <template #action><NSpace justify="end"><NButton @click="showLibraryModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="saveLibrary">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
-    <NModal v-model:show="showPresetModal" preset="card" :title="$t('memories.saveAsPresetTitle')" style="width: 560px; background: #18181b;">
+    <NModal v-model:show="showPresetModal" preset="card" :title="$t('memories.saveAsPresetTitle')" style="width: min(560px, 96vw); background: #18181b;">
       <NForm label-placement="top"><NFormItem :label="$t('memories.presetName')"><NInput v-model:value="presetForm.name" /></NFormItem><NFormItem :label="$t('memories.sourceLibraries')"><NSelect v-model:value="presetForm.source_library_ids" multiple :options="libraryEditOptions" /></NFormItem><NFormItem :label="$t('memories.description')"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" /></NFormItem></NForm>
       <template #action><NSpace justify="end"><NButton @click="showPresetModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" @click="savePreset">{{ $t('memories.saveAs') }}</NButton></NSpace></template>
     </NModal>
 
-    <NModal v-model:show="showSillyTavernModal" preset="card" :title="$t('memories.importSillyTavern')" style="width: 560px; background: #18181b;">
+    <NModal v-model:show="showSillyTavernModal" preset="card" :title="$t('memories.importSillyTavern')" style="width: min(560px, 96vw); background: #18181b;">
       <NForm label-placement="top">
         <NFormItem :label="$t('memories.stFile')">
           <NSpace :wrap="false">
@@ -457,7 +448,7 @@ onMounted(fetchMemories)
       </template>
     </NModal>
 
-    <NModal v-model:show="showExtractModal" preset="card" :title="$t('memories.stExtractTitle')" style="width: 480px; background: #18181b;">
+    <NModal v-model:show="showExtractModal" preset="card" :title="$t('memories.stExtractTitle')" style="width: min(480px, 96vw); background: #18181b;">
       <p style="color: #d4d4d8; font-size: 14px; margin-top: 0;">
         {{ $t('memories.stExtractDesc', { count: extractForm.turns_imported }) }}
       </p>

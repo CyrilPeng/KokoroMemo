@@ -26,10 +26,11 @@ import {
   NTag,
   useMessage,
 } from 'naive-ui'
-import { AddOutline, HelpCircleOutline, RefreshOutline, SettingsOutline } from '@vicons/ionicons5'
+import { AddOutline, RefreshOutline, SettingsOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
 import HelpModal from '../components/HelpModal.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 const stateHelpSections = [
   { title: '这是什么', body: '状态板用于追踪当前会话的"热信息"——场景、角色情绪、规则、关系等会随对话演变的内容。它会和长期记忆一起注入到 AI 的 system prompt，帮助 AI 维持连续性。' },
@@ -164,8 +165,8 @@ const selectedConversation = computed(() => conversations.value.find((item) => i
 const memoryPolicyOptions = [
   { label: '不写入长期记忆', value: 'disabled' },
   { label: '抽取候选，需我审核', value: 'candidate' },
-  { label: '仅写入稳定设定（自动批准）', value: 'stable_only' },
-  { label: '自动判断写入时机', value: 'auto' },
+  { label: '仅稳定设定自动入库（需配置记忆判断模型）', value: 'stable_only' },
+  { label: '由判断模型自动决定（需配置记忆判断模型）', value: 'auto' },
 ]
 const statePolicyOptions = [
   { label: '不维护状态板', value: 'disabled' },
@@ -646,12 +647,13 @@ onMounted(() => {
 
 <template>
   <div class="state-page">
+    <PageHeader :title="$t('state.title')" :subtitle="$t('state.subtitle')" show-help @help="showHelpModal = true" />
     <NSpace vertical size="large">
       <NCard>
         <template #header>
           <NSpace align="center" justify="space-between" style="width:100%">
             <NSpace align="center">
-              <span>会话状态板</span>
+              <span>当前会话</span>
               <NTag v-if="template" size="small" type="info">模板：{{ template.name }}</NTag>
               <NTag v-if="rows.length" size="small">{{ rows.length }} 条状态</NTag>
             </NSpace>
@@ -659,9 +661,6 @@ onMounted(() => {
               <NButton size="small" @click="showDefaultDrawer = true">
                 <template #icon><NIcon :component="SettingsOutline" /></template>
                 新会话默认配置
-              </NButton>
-              <NButton quaternary size="small" @click="showHelpModal = true">
-                <template #icon><NIcon :component="HelpCircleOutline" /></template>
               </NButton>
             </NSpace>
           </NSpace>
@@ -837,7 +836,7 @@ onMounted(() => {
       </NSpin>
     </NSpace>
 
-    <NDrawer v-model:show="showDefaultDrawer" :width="560" placement="right">
+    <NDrawer v-model:show="showDefaultDrawer" width="min(560px, 96vw)" placement="right">
       <NDrawerContent title="新会话默认配置" closable>
         <p class="hint-text" style="margin-bottom: 16px;">
           这里设置的是<b>未来新出现的会话</b>使用的初始配置（识别到新的 conversation_id 时自动应用）。已有会话不会被覆盖；要修改当前会话请使用页面上的"当前会话策略"。
@@ -894,7 +893,7 @@ onMounted(() => {
       </template>
     </NModal>
 
-    <NModal v-model:show="showEditModal" preset="card" style="width: 720px" :title="editingRow ? '编辑状态行' : '新增状态行'">
+    <NModal v-model:show="showEditModal" preset="card" style="width: min(720px, 96vw)" :title="editingRow ? '编辑状态行' : '新增状态行'">
       <NForm v-if="editingTable" label-placement="top">
         <NFormItem v-for="column in editingTable.columns" :key="column.column_key" :label="`${column.name}${column.required ? ' *' : ''}`">
           <NInput v-model:value="editValues[column.column_key]" type="textarea" :maxlength="column.max_chars || undefined" show-count :placeholder="column.description || column.name" :autosize="{ minRows: 2, maxRows: 5 }" />

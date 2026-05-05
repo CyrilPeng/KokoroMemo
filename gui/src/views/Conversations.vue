@@ -3,13 +3,13 @@ import { computed, h, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NAlert, NButton, NCard, NDataTable, NDescriptions, NDescriptionsItem,
-  NEmpty, NForm, NFormItem, NGrid, NGridItem, NIcon, NInput, NModal, NPopconfirm,
+  NEmpty, NForm, NFormItem, NGrid, NGridItem, NInput, NModal, NPopconfirm,
   NSelect, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
-import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
 import HelpModal from '../components/HelpModal.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 const conversationsHelpSections = [
   { title: '这是什么', body: '列出所有客户端连进来过的会话；可以重命名、归属角色、归档、删除、导入导出会话配置。' },
@@ -443,14 +443,10 @@ onMounted(fetchAll)
 
 <template>
   <div class="conversations-page">
+    <PageHeader title="会话管理" subtitle="管理所有会话：重命名、归属角色、归档、删除、导入导出会话配置" show-help @help="showHelp = true" />
     <NSpace vertical size="large">
       <NCard>
-        <template #header>
-          <NSpace align="center" justify="space-between" style="width:100%">
-            <span>会话管理</span>
-            <NButton quaternary size="small" @click="showHelp = true"><template #icon><NIcon :component="HelpCircleOutline" /></template></NButton>
-          </NSpace>
-        </template>
+        <template #header>会话列表</template>
         <NSpace vertical>
           <NGrid cols="1 m:24" item-responsive responsive="screen" :x-gap="12" :y-gap="12">
             <NGridItem span="1 m:7"><NInput v-model:value="keyword" placeholder="搜索名称、ID、角色、客户端、最近消息或诊断" clearable /></NGridItem>

@@ -564,6 +564,30 @@ const onboardingPresets = [
 const onboardingOptions = computed(() => onboardingPresets.map((item) => ({ label: item.name, value: item.key })))
 const selectedOnboardingPreset = computed(() => onboardingPresets.find((item) => item.key === onboardingScenario.value) || onboardingPresets[0])
 
+const PROFILE_LABELS: Record<string, string> = {
+  airp_roleplay: '普通角色扮演',
+  rimtalk_colony: 'RimTalk / 殖民地模拟',
+  ttrpg_story: '跑团 / 剧情模拟',
+  memory_only: '长期记忆助手',
+  proxy_only: '纯代理',
+}
+const MEMORY_WRITE_LABELS: Record<string, string> = {
+  disabled: '不写入长期记忆',
+  candidate: '抽取候选，需我审核',
+  stable_only: '仅稳定设定自动入库（需配置记忆判断模型）',
+  auto: '由判断模型自动决定（需配置记忆判断模型）',
+}
+const INJECTION_LABELS: Record<string, string> = {
+  none: '不注入',
+  memory_only: '只注入长期记忆',
+  state_only: '只注入状态板',
+  state_first: '状态板优先 + 长期记忆补充',
+  mixed: '混合注入',
+}
+function profileLabel(id: string) { return PROFILE_LABELS[id] || id }
+function memoryWriteLabel(id: string) { return MEMORY_WRITE_LABELS[id] || id }
+function injectionLabel(id: string) { return INJECTION_LABELS[id] || id }
+
 const providerUrlPlaceholder = computed(() => {
   const map: Record<string, string> = {
     openai_compatible: 'https://api.openai.com/v1',
@@ -1047,9 +1071,9 @@ onMounted(() => {
               <NCard size="small" :title="selectedOnboardingPreset.name">
                 <p style="color: #d4d4d8; line-height: 1.8; margin-top: 0;">{{ selectedOnboardingPreset.desc }}</p>
                 <NSpace>
-                  <NTag>方案：{{ selectedOnboardingPreset.defaults.profile_id }}</NTag>
-                  <NTag>记忆写入：{{ selectedOnboardingPreset.defaults.memory_write_policy }}</NTag>
-                  <NTag>注入策略：{{ selectedOnboardingPreset.defaults.injection_policy }}</NTag>
+                  <NTag>方案：{{ profileLabel(selectedOnboardingPreset.defaults.profile_id) }}</NTag>
+                  <NTag>记忆写入：{{ memoryWriteLabel(selectedOnboardingPreset.defaults.memory_write_policy) }}</NTag>
+                  <NTag>注入策略：{{ injectionLabel(selectedOnboardingPreset.defaults.injection_policy) }}</NTag>
                 </NSpace>
               </NCard>
               <NSpace>
@@ -1558,7 +1582,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <NModal v-model:show="showPortModal" preset="card" :title="$t('settings.modifyPortTitle')" style="width: 520px; background: #18181b;">
+    <NModal v-model:show="showPortModal" preset="card" :title="$t('settings.modifyPortTitle')" style="width: min(520px, 96vw); background: #18181b;">
       <NSpace vertical :size="12">
         <NAlert type="warning" :show-icon="false">
           {{ $t('settings.modifyPortConfirm', { current: effectiveListeningPort }) }}
@@ -1578,7 +1602,7 @@ onMounted(() => {
     </NModal>
 
     <!-- 帮助弹窗 -->
-    <NModal :show="!!helpModal" preset="card" :title="$t('settings.helpTitle')" style="width: 600px; background: #18181b;" :mask-closable="true" @update:show="(v: boolean) => { if (!v) helpModal = '' }">
+    <NModal :show="!!helpModal" preset="card" :title="$t('settings.helpTitle')" style="width: min(600px, 96vw); background: #18181b;" :mask-closable="true" @update:show="(v: boolean) => { if (!v) helpModal = '' }">
       <div v-if="helpModal === 'llm'" class="help-content">
         <p><strong>{{ $t('settings.forwardMode') }}</strong>: {{ $t('settings.forwardModeHelp') }}</p>
         <p><strong>{{ $t('settings.provider') }}</strong>: {{ $t('settings.providerHelp') }}</p>

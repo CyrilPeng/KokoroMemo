@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
-  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NIcon, NInput, NModal,
+  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NModal,
   NPagination, NPopconfirm, NSelect, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { HelpCircleOutline } from '@vicons/ionicons5'
 import { apiFetch } from '../api'
 import type { InboxItem } from '../types/memory'
 import HelpModal from '../components/HelpModal.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 const message = useMessage()
 const { t } = useI18n()
@@ -278,16 +278,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 
 <template>
   <div>
-    <div style="margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-start;">
-      <div>
-        <h1 style="font-size: 24px; font-weight: 600; color: #e4e4e7; margin-bottom: 4px;">{{ $t('inbox.title') }}</h1>
-        <p style="color: #71717a; font-size: 14px; margin: 0;">{{ $t('inbox.subtitle') }}</p>
-      </div>
-      <NButton quaternary @click="helpModal = true">
-        <template #icon><NIcon><HelpCircleOutline /></NIcon></template>
-        {{ $t('common.help') }}
-      </NButton>
-    </div>
+    <PageHeader :title="$t('inbox.title')" :subtitle="$t('inbox.subtitle')" show-help @help="helpModal = true" />
 
     <NCard style="background: #18181b; border: 1px solid #27272a;">
       <NSpace justify="space-between" align="center" style="margin-bottom: 16px; width: 100%;" wrap>
@@ -308,7 +299,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
       </div>
     </NCard>
 
-    <NModal v-model:show="showRejectModal" preset="card" :title="$t('inbox.actions.reject')" style="width: 480px; background: #18181b;">
+    <NModal v-model:show="showRejectModal" preset="card" :title="$t('inbox.actions.reject')" style="width: min(480px, 96vw); background: #18181b;">
       <NForm label-placement="top">
         <NFormItem :label="$t('inbox.rejectNote')">
           <NInput v-model:value="rejectNote" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" :placeholder="$t('inbox.rejectNotePlaceholder')" />

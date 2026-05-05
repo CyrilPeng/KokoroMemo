@@ -766,7 +766,7 @@ async def preview_conversation_api(
     from app.storage.sqlite_conversation import get_conversation_message_summary, get_recent_messages
 
     cfg = get_config()
-    conversations, _ = await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0)
+    conversations, _ = await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0, status="all")
     conversation = next((item for item in conversations if item.get("conversation_id") == conversation_id), None)
     if not conversation:
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -1004,6 +1004,7 @@ async def list_conversations_api(
     request: Request,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    status: str = Query(default="active"),
 ):
     """按最近活跃时间列出会话，并补充摘要与诊断信息。"""
     _require_admin(request)
@@ -1014,7 +1015,9 @@ async def list_conversations_api(
     from app.storage.sqlite_state import SQLiteStateStore
 
     cfg = get_config()
-    items, total = await list_conversations(cfg.storage.sqlite.app_db, limit=limit, offset=offset)
+    if status not in {"active", "archived", "all"}:
+        raise HTTPException(status_code=400, detail="会话状态只能是 active、archived 或 all")
+    items, total = await list_conversations(cfg.storage.sqlite.app_db, limit=limit, offset=offset, status=status)
     store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
     for item in items:
         conversation_id = item.get("conversation_id")
@@ -1050,12 +1053,13 @@ async def update_conversation_profile_api(conversation_id: str, request: Request
     from app.storage.sqlite_app import update_conversation_profile
 
     cfg = get_config()
-    old_item = next((item for item in (await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0))[0] if item.get("conversation_id") == conversation_id), None)
+    old_item = next((item for item in (await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0, status="all"))[0] if item.get("conversation_id") == conversation_id), None)
     item = await update_conversation_profile(
         cfg.storage.sqlite.app_db,
         conversation_id,
         title=data.get("title") if "title" in data else None,
         character_id=data.get("character_id") if "character_id" in data else None,
+        status=data.get("status") if "status" in data else None,
     )
     if not item:
         return {"status": "error", "message": "会话不存在或没有可更新字段"}
@@ -1078,14 +1082,62 @@ async def update_conversation_profile_api(conversation_id: str, request: Request
 
 @router.delete("/admin/conversations/{conversation_id}")
 async def delete_conversation_api(conversation_id: str, request: Request):
-    """Delete a conversation record."""
+    """真正删除会话索引、聊天记录和关联状态/记忆数据。"""
     _require_admin(request)
+    import shutil
+    from pathlib import Path
     from app.core.state import get_config
     from app.storage.sqlite_app import delete_conversation
+    from app.storage.sqlite_cards import delete_conversation_memory_data
+    from app.storage.sqlite_conversation import delete_chat_db_records
+    from app.storage.sqlite_state import delete_conversation_state_data
 
     cfg = get_config()
-    ok = await delete_conversation(cfg.storage.sqlite.app_db, conversation_id)
-    return {"status": "ok" if ok else "error", "message": None if ok else "会话不存在"}
+    conversations_dir = Path(cfg.storage.root_dir, "conversations").resolve()
+    chat_dir = (conversations_dir / conversation_id).resolve()
+    if chat_dir != conversations_dir and conversations_dir not in chat_dir.parents:
+        raise HTTPException(status_code=400, detail="会话 ID 对应的目录不在会话存储目录内")
+    chat_db_path = str(chat_dir / "chat.sqlite")
+    cleanup = {
+        "app": await delete_conversation(cfg.storage.sqlite.app_db, conversation_id),
+        "chat": await delete_chat_db_records(chat_db_path, conversation_id),
+        "memory": await delete_conversation_memory_data(cfg.storage.sqlite.memory_db, conversation_id),
+        "state": await delete_conversation_state_data(cfg.storage.sqlite.memory_db, conversation_id),
+        "chat_dir_removed": False,
+    }
+    if chat_dir.exists() and chat_dir.is_dir():
+        shutil.rmtree(chat_dir)
+        cleanup["chat_dir_removed"] = True
+    ok = bool(cleanup["app"] or cleanup["chat_dir_removed"])
+    return {"status": "ok" if ok else "error", "message": None if ok else "会话不存在", "cleanup": cleanup}
+
+
+@router.post("/admin/conversations/{conversation_id}/archive")
+async def archive_conversation_api(conversation_id: str, request: Request):
+    """归档会话，让它默认不再出现在会话管理和状态板选择中。"""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import update_conversation_profile
+
+    cfg = get_config()
+    item = await update_conversation_profile(cfg.storage.sqlite.app_db, conversation_id, status="archived")
+    if not item:
+        return {"status": "error", "message": "会话不存在"}
+    return {"status": "ok", "item": item}
+
+
+@router.post("/admin/conversations/{conversation_id}/restore")
+async def restore_conversation_api(conversation_id: str, request: Request):
+    """从归档中恢复会话。"""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import update_conversation_profile
+
+    cfg = get_config()
+    item = await update_conversation_profile(cfg.storage.sqlite.app_db, conversation_id, status="active")
+    if not item:
+        return {"status": "error", "message": "会话不存在"}
+    return {"status": "ok", "item": item}
 
 
 @router.get("/admin/conversations/{conversation_id}/memory-mounts")

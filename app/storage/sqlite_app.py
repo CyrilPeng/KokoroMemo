@@ -83,6 +83,7 @@ _CHARACTER_DEFAULT_COLUMNS = {
 
 _CONVERSATION_COLUMNS = {
     "title": "TEXT",
+    "status": "TEXT NOT NULL DEFAULT 'active'",
 }
 
 
@@ -113,14 +114,15 @@ async def upsert_conversation(
     client_name: str | None,
     conv_path: str,
 ) -> None:
-    """Register or update a conversation in app.sqlite."""
+    """注册或刷新会话索引；归档会话重新收到消息时恢复为活跃。"""
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """
-            INSERT INTO conversations (conversation_id, user_id, character_id, client_name, path, first_seen_at, last_seen_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+            INSERT INTO conversations (conversation_id, user_id, character_id, client_name, path, first_seen_at, last_seen_at, status)
+            VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'), 'active')
             ON CONFLICT(conversation_id) DO UPDATE SET
               last_seen_at = datetime('now', 'localtime'),
+              status = 'active',
               character_id = COALESCE(excluded.character_id, conversations.character_id),
               client_name = COALESCE(excluded.client_name, conversations.client_name)
             """,
@@ -446,24 +448,36 @@ async def discover_characters(db_path: str) -> list[dict]:
         ]
 
 
-async def list_conversations(db_path: str, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
-    """List recent conversations ordered by last_seen_at descending."""
+async def list_conversations(
+    db_path: str,
+    limit: int = 50,
+    offset: int = 0,
+    status: str = "active",
+) -> tuple[list[dict], int]:
+    """按状态列出会话，默认隐藏已归档会话。"""
     await init_app_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT COUNT(*) FROM conversations")
+        where = ""
+        params: list[str | int] = []
+        if status != "all":
+            where = "WHERE conv.status = ?"
+            params.append(status)
+        count_sql = "SELECT COUNT(*) FROM conversations" + (" WHERE status = ?" if status != "all" else "")
+        cursor = await db.execute(count_sql, params)
         total = (await cursor.fetchone())[0]
         cursor = await db.execute(
-            """
+            f"""
             SELECT
               conv.conversation_id, conv.user_id, conv.character_id, conv.client_name,
-              conv.title, conv.last_seen_at, conv.first_seen_at,
+              conv.title, conv.status, conv.last_seen_at, conv.first_seen_at,
               ch.display_name AS character_display_name
             FROM conversations conv
             LEFT JOIN characters ch ON conv.character_id = ch.character_id
+            {where}
             ORDER BY conv.last_seen_at DESC LIMIT ? OFFSET ?
             """,
-            (limit, offset),
+            [*params, limit, offset],
         )
         rows = await cursor.fetchall()
         items = [
@@ -474,6 +488,7 @@ async def list_conversations(db_path: str, limit: int = 50, offset: int = 0) -> 
                 "character_display_name": row["character_display_name"],
                 "client_name": row["client_name"],
                 "title": row["title"],
+                "status": row["status"],
                 "last_seen_at": row["last_seen_at"],
                 "first_seen_at": row["first_seen_at"],
             }
@@ -501,8 +516,9 @@ async def update_conversation_profile(
     conversation_id: str,
     title: str | None = None,
     character_id: str | None = None,
+    status: str | None = None,
 ) -> dict | None:
-    """Update user-facing conversation fields without changing the original ID."""
+    """更新会话展示字段或管理状态，不改变原始会话 ID。"""
     await init_app_db(db_path)
     updates: list[str] = []
     params: list[str | None] = []
@@ -513,6 +529,12 @@ async def update_conversation_profile(
     if character_id is not None:
         updates.append("character_id = ?")
         params.append(character_id.strip() or None)
+    if status is not None:
+        normalized_status = status.strip()
+        if normalized_status not in {"active", "archived"}:
+            return None
+        updates.append("status = ?")
+        params.append(normalized_status)
     if not updates:
         return None
     params.append(conversation_id)
@@ -527,7 +549,7 @@ async def update_conversation_profile(
             return None
         await db.commit()
         row_cursor = await db.execute(
-            "SELECT conversation_id, user_id, character_id, client_name, title, first_seen_at, last_seen_at FROM conversations WHERE conversation_id = ?",
+            "SELECT conversation_id, user_id, character_id, client_name, title, status, first_seen_at, last_seen_at FROM conversations WHERE conversation_id = ?",
             (conversation_id,),
         )
         row = await row_cursor.fetchone()
@@ -535,7 +557,8 @@ async def update_conversation_profile(
 
 
 async def delete_conversation(db_path: str, conversation_id: str) -> bool:
-    """Delete a conversation record from app.sqlite."""
+    """从应用索引中真正删除会话记录。"""
+    await init_app_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         cursor = await db.execute(
             "DELETE FROM conversations WHERE conversation_id = ?",

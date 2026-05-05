@@ -384,6 +384,39 @@ async def init_state_db(db_path: str) -> None:
         await db.commit()
 
 
+async def delete_conversation_state_data(db_path: str, conversation_id: str) -> dict[str, int]:
+    """删除指定会话关联的状态板、表格状态、诊断记录和策略配置。"""
+    await init_state_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        row_cursor = await db.execute(
+            "SELECT row_id FROM state_table_rows WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        row_ids = [row[0] for row in await row_cursor.fetchall()]
+        table_cells = 0
+        if row_ids:
+            placeholders = ",".join("?" for _ in row_ids)
+            cursor = await db.execute(f"DELETE FROM state_table_cells WHERE row_id IN ({placeholders})", row_ids)
+            table_cells = cursor.rowcount
+        deletes = []
+        for table in [
+            "conversation_state_events",
+            "conversation_state_items",
+            "conversation_state_boards",
+            "conversation_configs",
+            "retrieval_decisions",
+            "state_table_events",
+            "state_table_debug_runs",
+            "state_table_rows",
+        ]:
+            cursor = await db.execute(f"DELETE FROM {table} WHERE conversation_id = ?", (conversation_id,))
+            deletes.append((table, cursor.rowcount))
+        await db.commit()
+        result = {table: count for table, count in deletes}
+        result["state_table_cells"] = table_cells
+        return result
+
+
 async def _ensure_columns(db: aiosqlite.Connection, table: str, columns: dict[str, str]) -> None:
     cursor = await db.execute(f"PRAGMA table_info({table})")
     existing = {row[1] for row in await cursor.fetchall()}

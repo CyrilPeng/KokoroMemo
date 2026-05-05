@@ -72,6 +72,19 @@ async def init_chat_db(db_path: str) -> None:
         await db.commit()
 
 
+async def delete_chat_db_records(db_path: str, conversation_id: str) -> dict[str, int]:
+    """删除会话聊天库中的请求、回复、注入日志、消息和轮次。"""
+    if not Path(db_path).exists():
+        return {"raw_responses": 0, "raw_requests": 0, "injected_memory_logs": 0, "messages": 0, "turns": 0}
+    async with aiosqlite.connect(db_path) as db:
+        result: dict[str, int] = {}
+        for table in ["raw_responses", "raw_requests", "injected_memory_logs", "messages", "turns"]:
+            cursor = await db.execute(f"DELETE FROM {table} WHERE conversation_id = ?", (conversation_id,))
+            result[table] = cursor.rowcount
+        await db.commit()
+        return result
+
+
 async def save_raw_request(
     db_path: str, request_id: str, conversation_id: str, body_json: str, headers_json: str | None = None
 ) -> None:

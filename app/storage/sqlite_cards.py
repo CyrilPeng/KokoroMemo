@@ -240,6 +240,51 @@ async def init_cards_db(db_path: str) -> None:
         await db.commit()
 
 
+async def delete_conversation_memory_data(db_path: str, conversation_id: str) -> dict[str, int]:
+    """删除指定会话关联的长期记忆、候选、摘要和挂载关系。"""
+    await init_cards_db(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        card_cursor = await db.execute(
+            "SELECT card_id FROM memory_cards WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        card_ids = [row[0] for row in await card_cursor.fetchall()]
+        cards = 0
+        versions = 0
+        events = 0
+        tags = 0
+        edges = 0
+        if card_ids:
+            placeholders = ",".join("?" for _ in card_ids)
+            cursor = await db.execute(f"DELETE FROM memory_card_versions WHERE card_id IN ({placeholders})", card_ids)
+            versions = cursor.rowcount
+            cursor = await db.execute(f"DELETE FROM memory_card_events WHERE card_id IN ({placeholders})", card_ids)
+            events = cursor.rowcount
+            cursor = await db.execute(f"DELETE FROM memory_card_tags WHERE card_id IN ({placeholders})", card_ids)
+            tags = cursor.rowcount
+            cursor = await db.execute(
+                f"DELETE FROM memory_edges WHERE source_card_id IN ({placeholders}) OR target_card_id IN ({placeholders})",
+                [*card_ids, *card_ids],
+            )
+            edges = cursor.rowcount
+            cursor = await db.execute(f"DELETE FROM memory_cards WHERE card_id IN ({placeholders})", card_ids)
+            cards = cursor.rowcount
+        inbox_cursor = await db.execute("DELETE FROM memory_inbox WHERE conversation_id = ?", (conversation_id,))
+        summary_cursor = await db.execute("DELETE FROM memory_summaries WHERE conversation_id = ?", (conversation_id,))
+        mount_cursor = await db.execute("DELETE FROM conversation_memory_mounts WHERE conversation_id = ?", (conversation_id,))
+        await db.commit()
+        return {
+            "cards": cards,
+            "card_versions": versions,
+            "card_events": events,
+            "card_tags": tags,
+            "card_edges": edges,
+            "inbox": inbox_cursor.rowcount,
+            "summaries": summary_cursor.rowcount,
+            "mounts": mount_cursor.rowcount,
+        }
+
+
 async def _ensure_columns(db: aiosqlite.Connection, table: str, columns: dict[str, str]) -> None:
     cursor = await db.execute(f"PRAGMA table_info({table})")
     existing = {row[1] for row in await cursor.fetchall()}

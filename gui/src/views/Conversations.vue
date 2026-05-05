@@ -22,6 +22,7 @@ const characters = ref<Character[]>([])
 const keyword = ref('')
 const characterFilter = ref<string | null>(null)
 const clientFilter = ref<string | null>(null)
+const statusFilter = ref<'active' | 'archived' | 'all'>('active')
 const checkedConversationIds = ref<string[]>([])
 const batchCharacterId = ref<string | null>(null)
 const showEditModal = ref(false)
@@ -67,6 +68,12 @@ const clientFilterOptions = computed(() => {
   return [{ label: '全部客户端', value: null }, ...clients.map((client) => ({ label: client, value: client }))]
 })
 
+const statusFilterOptions = [
+  { label: '活跃会话', value: 'active' },
+  { label: '已归档', value: 'archived' },
+  { label: '全部会话', value: 'all' },
+]
+
 const filteredConversations = computed(() => conversations.value.filter((item) => {
   const query = keyword.value.trim().toLowerCase()
   const diagnostics = (item.diagnostics || []).map((diag: any) => diag.label).join(' ')
@@ -107,15 +114,18 @@ const columns = computed(() => [
     },
   },
   {
-    title: '操作', key: 'actions', width: 300, render: (row: Conversation) => h(NSpace, { size: 6 }, {
+    title: '操作', key: 'actions', width: 360, render: (row: Conversation) => h(NSpace, { size: 6 }, {
       default: () => [
         h(NButton, { size: 'tiny', quaternary: true, onClick: () => openPreview(row) }, { default: () => '预览' }),
         h(NButton, { size: 'tiny', quaternary: true, onClick: () => openEdit(row) }, { default: () => '编辑' }),
         h(NButton, { size: 'tiny', quaternary: true, onClick: () => openState(row) }, { default: () => '状态板' }),
         h(NButton, { size: 'tiny', quaternary: true, onClick: () => exportConversation(row) }, { default: () => '导出' }),
+        row.status === 'archived'
+          ? h(NButton, { size: 'tiny', quaternary: true, onClick: () => restoreConversation(row) }, { default: () => '恢复' })
+          : h(NButton, { size: 'tiny', quaternary: true, onClick: () => archiveConversation(row) }, { default: () => '归档' }),
         h(NPopconfirm, { onPositiveClick: () => deleteConversation(row) }, {
           trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => '删除' }),
-          default: () => '删除该会话记录？不会删除磁盘聊天文件。',
+          default: () => '真正删除该会话？会清理聊天文件、状态板和会话记忆，无法撤销。',
         }),
       ],
     }),
@@ -130,7 +140,7 @@ async function fetchAll() {
   loading.value = true
   try {
     const [convResp, charResp] = await Promise.all([
-      apiFetch('/admin/conversations?limit=200', { timeoutMs: 8000 }),
+      apiFetch(`/admin/conversations?limit=200&status=${encodeURIComponent(statusFilter.value)}`, { timeoutMs: 8000 }),
       apiFetch('/admin/characters', { timeoutMs: 8000 }),
     ])
     const convData = await convResp.json()
@@ -203,9 +213,43 @@ async function deleteConversation(row: Conversation) {
     const data = await resp.json()
     if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '删除会话失败')
     conversations.value = conversations.value.filter((item) => item.conversation_id !== row.conversation_id)
-    message.success('会话已删除')
+    message.success('会话已彻底删除')
   } catch (error: any) {
     message.error(error.message || '删除会话失败')
+  }
+}
+
+async function archiveConversation(row: Conversation) {
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(row.conversation_id)}/archive`, { method: 'POST' })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '归档会话失败')
+    if (statusFilter.value === 'active') {
+      conversations.value = conversations.value.filter((item) => item.conversation_id !== row.conversation_id)
+    } else {
+      const index = conversations.value.findIndex((item) => item.conversation_id === row.conversation_id)
+      if (index >= 0) conversations.value[index] = { ...conversations.value[index], ...data.item }
+    }
+    message.success('会话已归档')
+  } catch (error: any) {
+    message.error(error.message || '归档会话失败')
+  }
+}
+
+async function restoreConversation(row: Conversation) {
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(row.conversation_id)}/restore`, { method: 'POST' })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '恢复会话失败')
+    if (statusFilter.value === 'archived') {
+      conversations.value = conversations.value.filter((item) => item.conversation_id !== row.conversation_id)
+    } else {
+      const index = conversations.value.findIndex((item) => item.conversation_id === row.conversation_id)
+      if (index >= 0) conversations.value[index] = { ...conversations.value[index], ...data.item }
+    }
+    message.success('会话已恢复')
+  } catch (error: any) {
+    message.error(error.message || '恢复会话失败')
   }
 }
 
@@ -326,10 +370,56 @@ async function batchDeleteConversations() {
       if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || `删除会话 ${conversationId} 失败`)
     }
     conversations.value = conversations.value.filter((item) => !checkedConversationIds.value.includes(item.conversation_id))
-    message.success(`已删除 ${checkedConversationIds.value.length} 个会话记录`)
+    message.success(`已彻底删除 ${checkedConversationIds.value.length} 个会话`)
     checkedConversationIds.value = []
   } catch (error: any) {
     message.error(error.message || '批量删除会话失败')
+  } finally {
+    batchSaving.value = false
+  }
+}
+
+async function batchArchiveConversations() {
+  if (!checkedConversationIds.value.length) return
+  batchSaving.value = true
+  try {
+    for (const conversationId of checkedConversationIds.value) {
+      const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId)}/archive`, { method: 'POST' })
+      const data = await resp.json()
+      if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || `归档会话 ${conversationId} 失败`)
+    }
+    if (statusFilter.value === 'active') {
+      conversations.value = conversations.value.filter((item) => !checkedConversationIds.value.includes(item.conversation_id))
+    } else {
+      await fetchAll()
+    }
+    message.success(`已归档 ${checkedConversationIds.value.length} 个会话`)
+    checkedConversationIds.value = []
+  } catch (error: any) {
+    message.error(error.message || '批量归档会话失败')
+  } finally {
+    batchSaving.value = false
+  }
+}
+
+async function batchRestoreConversations() {
+  if (!checkedConversationIds.value.length) return
+  batchSaving.value = true
+  try {
+    for (const conversationId of checkedConversationIds.value) {
+      const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId)}/restore`, { method: 'POST' })
+      const data = await resp.json()
+      if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || `恢复会话 ${conversationId} 失败`)
+    }
+    if (statusFilter.value === 'archived') {
+      conversations.value = conversations.value.filter((item) => !checkedConversationIds.value.includes(item.conversation_id))
+    } else {
+      await fetchAll()
+    }
+    message.success(`已恢复 ${checkedConversationIds.value.length} 个会话`)
+    checkedConversationIds.value = []
+  } catch (error: any) {
+    message.error(error.message || '批量恢复会话失败')
   } finally {
     batchSaving.value = false
   }
@@ -345,12 +435,13 @@ onMounted(fetchAll)
         <template #header>会话管理</template>
         <NSpace vertical>
           <NAlert type="info" :show-icon="false">
-            会话名称只是便于辨认的别名，后端仍使用原始 conversation_id 识别会话。
+            会话名称只是便于辨认的别名。归档会隐藏暂时不用的会话；删除会彻底清理聊天文件、状态板和会话记忆。
           </NAlert>
           <NGrid cols="1 m:24" item-responsive responsive="screen" :x-gap="12" :y-gap="12">
-            <NGridItem span="1 m:9"><NInput v-model:value="keyword" placeholder="搜索名称、ID、角色、客户端、最近消息或诊断" clearable /></NGridItem>
+            <NGridItem span="1 m:7"><NInput v-model:value="keyword" placeholder="搜索名称、ID、角色、客户端、最近消息或诊断" clearable /></NGridItem>
             <NGridItem span="1 m:6"><NSelect v-model:value="characterFilter" :options="characterFilterOptions" filterable /></NGridItem>
-            <NGridItem span="1 m:5"><NSelect v-model:value="clientFilter" :options="clientFilterOptions" /></NGridItem>
+            <NGridItem span="1 m:4"><NSelect v-model:value="clientFilter" :options="clientFilterOptions" /></NGridItem>
+            <NGridItem span="1 m:3"><NSelect v-model:value="statusFilter" :options="statusFilterOptions" @update:value="fetchAll" /></NGridItem>
             <NGridItem span="1 m:4"><NSpace justify="end"><NButton @click="openImportModal">导入</NButton><NButton :loading="loading" @click="fetchAll">刷新</NButton></NSpace></NGridItem>
           </NGrid>
           <NAlert v-if="checkedConversationIds.length" type="info" :show-icon="false">
@@ -359,9 +450,11 @@ onMounted(fetchAll)
               <NSelect v-model:value="batchCharacterId" :options="characterOptions" filterable clearable placeholder="批量改归属到角色" style="width: min(320px, 80vw)" />
               <NButton size="small" type="primary" :loading="batchSaving" :disabled="!batchCharacterId" @click="batchAssignCharacter">改归属</NButton>
               <NButton size="small" :loading="batchSaving" @click="batchApplyDefaults">套用默认策略</NButton>
+              <NButton v-if="statusFilter !== 'archived'" size="small" :loading="batchSaving" @click="batchArchiveConversations">批量归档</NButton>
+              <NButton v-if="statusFilter !== 'active'" size="small" :loading="batchSaving" @click="batchRestoreConversations">批量恢复</NButton>
               <NPopconfirm @positive-click="batchDeleteConversations">
                 <template #trigger><NButton size="small" type="error" :loading="batchSaving">批量删除</NButton></template>
-                删除选中的会话记录？不会删除磁盘聊天文件。
+                真正删除选中的会话？会清理聊天文件、状态板和会话记忆，无法撤销。
               </NPopconfirm>
               <NButton size="small" quaternary @click="checkedConversationIds = []">清空选择</NButton>
             </NSpace>
@@ -378,7 +471,7 @@ onMounted(fetchAll)
             :data="filteredConversations"
             :row-key="conversationRowKey"
             :pagination="{ pageSize: 12 }"
-            :scroll-x="1420"
+            :scroll-x="1500"
           />
           <NEmpty v-else description="暂无会话或没有匹配结果" />
         </NCard>

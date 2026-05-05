@@ -87,6 +87,9 @@ const profiles = ref<any[]>([])
 const boardTemplates = ref<any[]>([])
 const tableTemplates = ref<any[]>([])
 const mountPresets = ref<any[]>([])
+const memoryLibraries = ref<any[]>([])
+const mountedLibraryIds = ref<string[]>([])
+const writeLibraryId = ref<string | null>(null)
 const activeTableKey = ref('')
 const preview = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0 })
 const showEditModal = ref(false)
@@ -132,6 +135,14 @@ const mountPresetOptions = computed(() => [
   { label: '不套用挂载预设', value: null },
   ...mountPresets.value.map((item) => ({ label: item.name, value: item.preset_id })),
 ])
+const memoryLibraryOptions = computed(() => memoryLibraries.value.map((item) => ({
+  label: item.name + (item.card_count != null ? ` (${item.card_count})` : ''),
+  value: item.library_id,
+})))
+const writeLibraryOptions = computed(() => mountedLibraryIds.value.map((id) => {
+  const lib = memoryLibraries.value.find((item) => item.library_id === id)
+  return { label: lib?.name || id, value: id }
+}))
 const conversationOptions = computed(() => conversations.value.map((item) => ({
   label: `${conversationDisplayName(item)} · ${item.character_display_name || item.character_id || '未知角色'} · ${item.last_seen_at || item.conversation_id}`,
   value: item.conversation_id,
@@ -211,6 +222,7 @@ async function fetchBoard() {
     rowSource.value = data.source || 'table'
     if (!activeTableKey.value && tables.value.length) activeTableKey.value = tables.value[0].table_key
     await fetchPreview()
+    await fetchMounts()
   } catch (error: any) {
     message.error(error.message || '加载失败')
   } finally {
@@ -230,18 +242,77 @@ async function fetchConfig() {
 
 async function fetchOptions() {
   try {
-    const [profilesResp, boardResp, tableResp, presetResp] = await Promise.all([
+    const [profilesResp, boardResp, tableResp, presetResp, libResp] = await Promise.all([
       apiFetch('/admin/conversation-profiles', { headers: authHeaders() }),
       apiFetch('/admin/state/templates', { headers: authHeaders() }),
       apiFetch('/admin/state/table-templates', { headers: authHeaders() }),
       apiFetch('/admin/memory-mount-presets', { headers: authHeaders() }),
+      apiFetch('/admin/memory-libraries', { headers: authHeaders() }),
     ])
     if (profilesResp.ok) profiles.value = (await profilesResp.json()).items || []
     if (boardResp.ok) boardTemplates.value = (await boardResp.json()).items || []
     if (tableResp.ok) tableTemplates.value = (await tableResp.json()).items || []
     if (presetResp.ok) mountPresets.value = (await presetResp.json()).items || []
+    if (libResp.ok) memoryLibraries.value = (await libResp.json()).items || []
   } catch (error) {
     console.warn('加载状态板配置选项失败', error)
+  }
+}
+
+async function fetchMounts() {
+  if (!conversationId.value.trim()) {
+    mountedLibraryIds.value = []
+    writeLibraryId.value = null
+    return
+  }
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/memory-mounts`, {
+      headers: authHeaders(),
+    })
+    if (!resp.ok) return
+    const data = await resp.json()
+    const items = data.items || []
+    mountedLibraryIds.value = items.map((item: any) => item.library_id)
+    const writeItem = items.find((item: any) => item.is_write_target) || items[0]
+    writeLibraryId.value = writeItem?.library_id || null
+  } catch (error) {
+    console.warn('加载挂载库失败', error)
+  }
+}
+
+async function saveMounts() {
+  if (!conversationId.value.trim()) return
+  if (!mountedLibraryIds.value.length) {
+    message.warning('请至少挂载一个长期记忆库')
+    return
+  }
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/memory-mounts`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({
+        library_ids: mountedLibraryIds.value,
+        write_library_id: writeLibraryId.value || mountedLibraryIds.value[0],
+      }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存挂载失败')
+    message.success('挂载已保存')
+    await fetchMounts()
+  } catch (error: any) {
+    message.error(error.message || '保存挂载失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+function onMountedLibrariesChange(ids: string[]) {
+  mountedLibraryIds.value = ids
+  if (writeLibraryId.value && !ids.includes(writeLibraryId.value)) {
+    writeLibraryId.value = ids[0] || null
+  } else if (!writeLibraryId.value && ids.length) {
+    writeLibraryId.value = ids[0]
   }
 }
 
@@ -648,6 +719,30 @@ onMounted(() => {
               <NFormItem label="挂载组合预设">
                 <NSelect v-model:value="config.mount_preset_id" filterable :options="mountPresetOptions" />
               </NFormItem>
+            </NGridItem>
+            <NGridItem :span="16">
+              <NFormItem label="挂载的长期记忆库">
+                <NSelect
+                  multiple
+                  filterable
+                  :value="mountedLibraryIds"
+                  :options="memoryLibraryOptions"
+                  placeholder="选择一个或多个记忆库"
+                  @update:value="onMountedLibrariesChange"
+                />
+              </NFormItem>
+              <div class="hint-text">挂载库决定本会话能召回哪些长期记忆，可用于隔离不同角色或世界观。</div>
+            </NGridItem>
+            <NGridItem :span="8">
+              <NFormItem label="新记忆写入到">
+                <NSelect
+                  v-model:value="writeLibraryId"
+                  :options="writeLibraryOptions"
+                  :disabled="!mountedLibraryIds.length"
+                  placeholder="必须是已挂载的库"
+                />
+              </NFormItem>
+              <NButton size="tiny" :loading="saving" :disabled="!mountedLibraryIds.length" @click="saveMounts">保存挂载</NButton>
             </NGridItem>
             <NGridItem :span="8">
               <NFormItem label="长期记忆写入">

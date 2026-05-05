@@ -1734,26 +1734,39 @@ def _legacy_items_to_table_rows(conversation_id: str, template, items: list) -> 
     from app.memory.state_schema import StateTableCell, StateTableRow
 
     rows = []
+    tables_by_key = {table.table_key: table for table in template.tables}
+    consumed_item_ids: set[str] = set()
     for table in template.tables:
         cells = {}
         matched_items = []
         columns_by_key = {column.column_key: column for column in table.columns}
+        ordered_columns = sorted(table.columns, key=lambda item: (item.sort_order, item.name))
+        primary_column = ordered_columns[0] if ordered_columns else None
         for item in items:
+            if item.item_id and item.item_id in consumed_item_ids:
+                continue
             candidates = [item.field_key, item.item_key, item.category]
             column_key = next((key for key in candidates if key and key in columns_by_key), None)
-            if not column_key or column_key in cells:
+            target_column = columns_by_key.get(column_key) if column_key else None
+            if not target_column:
+                table_match = next((key for key in candidates if key and key in tables_by_key), None)
+                if table_match == table.table_key and primary_column and primary_column.column_key not in cells:
+                    target_column = primary_column
+                    column_key = primary_column.column_key
+            if not target_column or column_key in cells:
                 continue
-            column = columns_by_key[column_key]
             cells[column_key] = StateTableCell(
                 cell_id=None,
                 row_id="",
-                column_id=column.column_id,
+                column_id=target_column.column_id,
                 column_key=column_key,
                 value=item.content or "",
                 confidence=item.confidence,
                 updated_at=item.updated_at,
             )
             matched_items.append(item)
+            if item.item_id:
+                consumed_item_ids.add(item.item_id)
         if not cells:
             continue
         priority = max((item.priority for item in matched_items), default=table.prompt_priority)

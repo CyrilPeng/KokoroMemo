@@ -228,6 +228,16 @@ async function fetchConversations() {
     const data = await resp.json()
     if (!resp.ok) throw new Error(data.detail || data.message || '加载会话列表失败')
     conversations.value = data.items || []
+    const currentId = conversationId.value.trim()
+    const exists = conversations.value.some((item) => item.conversation_id === currentId)
+    if (currentId && !exists) {
+      conversationId.value = ''
+      template.value = null
+      rows.value = []
+      config.value = null
+      preview.value = { preview: '', char_count: 0, max_chars: 0, item_count: 0 }
+      persistInputs()
+    }
     if (!conversationId.value.trim() && conversations.value.length) {
       conversationId.value = conversations.value[0].conversation_id
       persistInputs()
@@ -541,9 +551,9 @@ onMounted(() => {
               v-model:value="conversationId"
               filterable
               clearable
-              tag
               :options="conversationOptions"
-              placeholder="选择会话"
+              :placeholder="conversationOptions.length ? '选择会话' : '无数据'"
+              :disabled="!conversationOptions.length"
               @update:value="persistInputs"
             />
           </NGridItem>

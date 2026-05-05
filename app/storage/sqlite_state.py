@@ -1405,7 +1405,7 @@ class SQLiteStateStore:
             return template
 
     async def get_default_table_template(self) -> StateTableTemplate | None:
-        return await self.get_table_template("tpl_rimtalk_roleplay_tables")
+        return await self.get_table_template("tpl_roleplay_light_tables")
 
     async def get_conversation_table_template(self, conversation_id: str) -> StateTableTemplate | None:
         config = await self.ensure_conversation_config(conversation_id)

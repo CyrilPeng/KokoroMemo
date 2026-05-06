@@ -7,6 +7,7 @@ import inspect
 import json
 import logging
 
+from app.core.services import ServiceRegistry, get_service_registry
 from app.providers.embedding_base import EmbeddingProvider
 
 logger = logging.getLogger("kokoromemo.vector_sync")
@@ -22,8 +23,9 @@ from app.storage.sqlite_cards import (
 class VectorSyncWorker:
     """Periodically drains pending card vector sync jobs."""
 
-    def __init__(self, cfg, *, interval_seconds: float = 30.0, batch_limit: int = 50) -> None:
+    def __init__(self, cfg, *, service_registry: ServiceRegistry | None = None, interval_seconds: float = 30.0, batch_limit: int = 50) -> None:
         self._cfg = cfg
+        self._services = service_registry or get_service_registry()
         self._interval_seconds = interval_seconds
         self._batch_limit = batch_limit
         self._stop_event = asyncio.Event()
@@ -49,10 +51,8 @@ class VectorSyncWorker:
                 await self.run_once()
 
     async def run_once(self) -> dict:
-        from app.core.services import get_embedding_provider, get_lancedb_store
-
-        ep = get_embedding_provider(self._cfg)
-        store = get_lancedb_store(self._cfg)
+        ep = self._services.get_embedding_provider(self._cfg)
+        store = self._services.get_lancedb_store(self._cfg)
         if not ep or not store:
             return {"status": "skipped", "message": "Embedding or vector store not configured"}
         try:

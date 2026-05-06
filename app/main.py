@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
     runner = BackgroundRunner(max_concurrency=8)
     set_background_runner(runner)
 
-    vector_sync_worker = VectorSyncWorker(cfg)
+    vector_sync_worker = VectorSyncWorker(cfg, service_registry=registry)
     vector_sync_worker.start()
     app.state.vector_sync_worker = vector_sync_worker
 

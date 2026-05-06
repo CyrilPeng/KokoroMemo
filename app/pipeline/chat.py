@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.core.background import spawn_background
 from app.core.conversation_locks import get_conversation_lock, wait_for_conversation_idle
 from app.core.ids import generate_id
-from app.core.services import get_embedding_provider, get_lancedb_store
+from app.core.services import ServiceRegistry, get_service_registry
 from app.core.state import get_config
 from app.memory.card_injector import inject_cards
 from app.memory.query_builder import build_retrieval_query
@@ -54,6 +54,9 @@ def _extra_trigger_keywords(cfg) -> list[str]:
 
 class ChatPipeline:
     """Coordinates request persistence, memory injection, forwarding and post-processing."""
+
+    def __init__(self, services: ServiceRegistry | None = None) -> None:
+        self.services = services or get_service_registry()
 
     async def handle(self, request: Request):
         prepared = await self.prepare(request)
@@ -163,8 +166,8 @@ class ChatPipeline:
             if not should_retrieve:
                 return
 
-            ep = get_embedding_provider(cfg)
-            store = get_lancedb_store(cfg)
+            ep = self.services.get_embedding_provider(cfg)
+            store = self.services.get_lancedb_store(cfg)
             if not ep or not store:
                 return
 
@@ -236,10 +239,10 @@ class ChatPipeline:
         )
         if raw_body.get("stream", False):
             return StreamingResponse(
-                _stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared["ctx"], cfg, prepared["messages"]),
+                _stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared["ctx"], cfg, prepared["messages"], self.services),
                 media_type="text/event-stream",
             )
-        return await _non_stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared["ctx"], cfg, prepared["messages"])
+        return await _non_stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared["ctx"], cfg, prepared["messages"], self.services)
 
     async def _record_retrieval_decision(self, prepared: dict[str, Any], query, decision, turn_index: int) -> None:
         try:
@@ -392,6 +395,7 @@ async def _persist_response_turn(
 async def _schedule_post_process_turn(
     ctx: RequestContext,
     cfg,
+    services: ServiceRegistry,
     original_messages: list[dict],
     assistant_text: str,
     turn_id: str | None,
@@ -406,6 +410,7 @@ async def _schedule_post_process_turn(
             lock,
             ctx,
             cfg,
+            services,
             original_messages,
             assistant_text,
             turn_id,
@@ -421,6 +426,7 @@ async def _post_process_turn_with_acquired_lock(
     lock,
     ctx: RequestContext,
     cfg,
+    services: ServiceRegistry,
     original_messages: list[dict],
     assistant_text: str,
     turn_id: str | None,
@@ -430,6 +436,7 @@ async def _post_process_turn_with_acquired_lock(
         await _update_state_and_extract_memories(
             ctx,
             cfg,
+            services,
             original_messages,
             assistant_text,
             turn_id,
@@ -442,6 +449,7 @@ async def _post_process_turn_with_acquired_lock(
 async def _update_state_and_extract_memories(
     ctx: RequestContext,
     cfg,
+    services: ServiceRegistry,
     original_messages: list[dict],
     assistant_text: str,
     turn_id: str | None,
@@ -504,8 +512,8 @@ async def _update_state_and_extract_memories(
         from app.memory.card_extractor import extract_and_route
         from app.memory.judge import MemoryJudgeConfigView
 
-        ep = get_embedding_provider(cfg)
-        store = get_lancedb_store(cfg)
+        ep = services.get_embedding_provider(cfg)
+        store = services.get_lancedb_store(cfg)
         judge_config = None
         if cfg.memory.judge.enabled:
             user_rules = cfg.memory.judge.user_rules
@@ -560,7 +568,7 @@ def _should_run_state_updater(cfg, turn_index: int | None) -> bool:
     return turn_index % every_n == 0
 
 
-async def _non_stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext, cfg, original_messages: list[dict]) -> JSONResponse:
+async def _non_stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext, cfg, original_messages: list[dict], services: ServiceRegistry) -> JSONResponse:
     try:
         resp_data = await provider.chat(body, timeout)
 
@@ -573,7 +581,7 @@ async def _non_stream_proxy(provider, body: dict, timeout: int, ctx: RequestCont
             ctx, original_messages, assistant_text, json.dumps(resp_data, ensure_ascii=False), None
         )
         await _schedule_post_process_turn(
-            ctx, cfg, original_messages, assistant_text, turn_id, turn_index,
+            ctx, cfg, services, original_messages, assistant_text, turn_id, turn_index,
             name=f"post_process_turn:{ctx.request_id}",
         )
 
@@ -585,7 +593,7 @@ async def _non_stream_proxy(provider, body: dict, timeout: int, ctx: RequestCont
         return JSONResponse(status_code=502, content={"error": {"message": f"Upstream LLM request failed: {e}", "type": "proxy_error", "param": None, "code": "upstream_error"}})
 
 
-async def _stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext, cfg, original_messages: list[dict]):
+async def _stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext, cfg, original_messages: list[dict], services: ServiceRegistry):
     collected_text: list[str] = []
     try:
         async for line in provider.stream_chat(body, timeout):
@@ -612,7 +620,7 @@ async def _stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext,
         ctx, original_messages, full_text, None, full_text
     )
     await _schedule_post_process_turn(
-        ctx, cfg, original_messages, full_text, turn_id, turn_index,
+        ctx, cfg, services, original_messages, full_text, turn_id, turn_index,
         name=f"post_process_turn_stream:{ctx.request_id}",
     )
 

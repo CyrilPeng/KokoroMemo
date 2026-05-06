@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.conversation_locks import wait_for_conversation_idle
+from app.core.services import ServiceRegistry
 from app.pipeline import chat
 
 
@@ -24,6 +25,7 @@ async def test_scheduled_post_process_holds_conversation_lock(monkeypatch):
     await chat._schedule_post_process_turn(
         ctx,
         SimpleNamespace(),
+        ServiceRegistry(),
         [],
         "assistant",
         "turn_1",

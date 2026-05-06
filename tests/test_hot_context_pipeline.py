@@ -119,10 +119,10 @@ async def test_state_only_policy_skips_memory_retrieval(monkeypatch):
         await store.set_default_conversation_config({"profile_id": "rimtalk_colony"})
         await store.ensure_conversation_config("conv_state_only")
 
-        def fail_embedding(_cfg):
+        def fail_embedding(_self, _cfg):
             raise AssertionError("memory retrieval should be skipped by state_only policy")
 
-        monkeypatch.setattr("app.pipeline.chat.get_embedding_provider", fail_embedding)
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_embedding_provider", fail_embedding)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
                 "model": "fake-model",
@@ -142,10 +142,10 @@ async def test_short_text_skips_vector_retrieval(monkeypatch):
         provider = FakeChatProvider()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
-        def fail_embedding(_cfg):
+        def fail_embedding(_self, _cfg):
             raise AssertionError("embedding should be skipped")
 
-        monkeypatch.setattr("app.pipeline.chat.get_embedding_provider", fail_embedding)
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_embedding_provider", fail_embedding)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
                 "model": "fake-model",
@@ -166,7 +166,7 @@ async def test_keyword_triggers_vector_retrieval(monkeypatch):
         provider = FakeChatProvider()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
-        def fake_embedding(_cfg):
+        def fake_embedding(_self, _cfg):
             called["embedding"] = True
             return object()
 
@@ -174,8 +174,8 @@ async def test_keyword_triggers_vector_retrieval(monkeypatch):
             called["retrieve"] = True
             return []
 
-        monkeypatch.setattr("app.pipeline.chat.get_embedding_provider", fake_embedding)
-        monkeypatch.setattr("app.pipeline.chat.get_lancedb_store", lambda _cfg: object())
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_embedding_provider", fake_embedding)
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_lancedb_store", lambda _self, _cfg: object())
         monkeypatch.setattr("app.memory.card_retriever.retrieve_cards", fake_retrieve_cards)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
@@ -228,7 +228,7 @@ async def test_new_session_triggers_retrieval(monkeypatch):
         FakeChatProvider.captured_bodies.clear()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
-        def fake_embedding(_cfg):
+        def fake_embedding(_self, _cfg):
             called["embedding"] = True
             return object()
 
@@ -236,8 +236,8 @@ async def test_new_session_triggers_retrieval(monkeypatch):
             called["retrieve"] = True
             return []
 
-        monkeypatch.setattr("app.pipeline.chat.get_embedding_provider", fake_embedding)
-        monkeypatch.setattr("app.pipeline.chat.get_lancedb_store", lambda _cfg: object())
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_embedding_provider", fake_embedding)
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_lancedb_store", lambda _self, _cfg: object())
         monkeypatch.setattr("app.memory.card_retriever.retrieve_cards", fake_retrieve_cards)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={
@@ -260,10 +260,10 @@ async def test_embedding_failure_allows_state_injection(monkeypatch):
         FakeChatProvider.captured_bodies.clear()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
-        def fail_embedding(_cfg):
+        def fail_embedding(_self, _cfg):
             raise RuntimeError("embedding service down")
 
-        monkeypatch.setattr("app.pipeline.chat.get_embedding_provider", fail_embedding)
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_embedding_provider", fail_embedding)
         await seed_state_table_row(cfg.storage.sqlite.memory_db, "conv_emb_fail", "测试状态内容")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

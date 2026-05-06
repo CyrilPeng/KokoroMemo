@@ -72,7 +72,7 @@ const UPDATE_MANIFEST_URLS = [
   { name: 'GitHub', url: 'https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json' },
   { name: 'GitHub Proxy', url: 'https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json' },
 ]
-const GITEE_LATEST_RELEASE_API = 'https://gitee.com/api/v5/repos/Cyril_P/KokoroMemo/releases/latest'
+const GITEE_LATEST_RELEASE_API = 'https://gitee.com/api/v5/repos/CyrilPeng/KokoroMemo/releases/latest'
 const CURRENT_VERSION_FALLBACK = '0.8.0'
 
 const currentBackendUrl = computed(() => backendUrl.value || getServerUrl())
@@ -150,7 +150,7 @@ async function fetchGiteeUpdateManifest() {
     || manifestAsset?.download_url
     || manifestAsset?.url
     || manifestAsset?.html_url
-    || (tag ? `https://gitee.com/Cyril_P/KokoroMemo/releases/download/${tag}/latest.json` : '')
+    || (tag ? `https://gitee.com/CyrilPeng/KokoroMemo/releases/download/${tag}/latest.json` : '')
   if (!manifestUrl) throw new Error('missing latest manifest')
   return await fetchJsonWithTimeout(manifestUrl)
 }

@@ -9,7 +9,7 @@
 在 Termux 中推荐使用 Gitee 地址执行：
 
 ```bash
-curl -fsSL https://gitee.com/Cyril_P/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
+curl -fsSL https://gitee.com/CyrilPeng/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
 ```
 
 如果你可以稳定访问 GitHub，也可以使用 GitHub 地址：

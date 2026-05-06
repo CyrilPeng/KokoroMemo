@@ -7,7 +7,7 @@ TMP_DIR="$ROOT_DIR/.update-tmp"
 BACKUP_DIR="$ROOT_DIR/backups"
 
 REPO="${KOKOROMEMO_UPDATE_REPO:-CyrilPeng/KokoroMemo}"
-GITEE_REPO="${KOKOROMEMO_UPDATE_GITEE_REPO:-Cyril_P/KokoroMemo}"
+GITEE_REPO="${KOKOROMEMO_UPDATE_GITEE_REPO:-CyrilPeng/KokoroMemo}"
 MANIFEST_URLS=(
   "https://github.com/$REPO/releases/latest/download/latest.json"
   "https://gh-proxy.org/https://github.com/$REPO/releases/latest/download/latest.json"

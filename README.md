@@ -66,7 +66,7 @@ Android 用户建议下载 Release 中的单包压缩包，包内已包含后端
 **Termux 用户推荐直接使用 Gitee 一键安装：**
 
 ```bash
-curl -fsSL https://gitee.com/Cyril_P/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
+curl -fsSL https://gitee.com/CyrilPeng/KokoroMemo/raw/main/scripts/termux-setup.sh | bash
 ```
 
 如果你可以稳定访问 GitHub，也可以使用 GitHub 地址：

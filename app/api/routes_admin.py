@@ -16,7 +16,7 @@ _UPDATE_MANIFEST_SOURCES = [
     ("GitHub", "https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json"),
     ("GitHub Proxy", "https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json"),
 ]
-_GITEE_LATEST_RELEASE_API = "https://gitee.com/api/v5/repos/Cyril_P/KokoroMemo/releases/latest"
+_GITEE_LATEST_RELEASE_API = "https://gitee.com/api/v5/repos/CyrilPeng/KokoroMemo/releases/latest"
 
 
 async def _fetch_update_json(client: httpx.AsyncClient, url: str) -> dict:
@@ -46,7 +46,7 @@ async def _fetch_gitee_update_manifest(client: httpx.AsyncClient) -> dict:
             or ""
         )
     if not manifest_url and tag:
-        manifest_url = f"https://gitee.com/Cyril_P/KokoroMemo/releases/download/{tag}/latest.json"
+        manifest_url = f"https://gitee.com/CyrilPeng/KokoroMemo/releases/download/{tag}/latest.json"
     if not manifest_url:
         raise RuntimeError("未找到 latest.json")
     return await _fetch_update_json(client, manifest_url)

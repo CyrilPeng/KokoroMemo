@@ -638,7 +638,7 @@ Release 发布时会额外生成：
 
 1. GitHub 直连：`https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json`
 2. GitHub 代理：`https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json`
-3. Gitee 镜像：通过 `https://gitee.com/api/v5/repos/Cyril_P/KokoroMemo/releases/latest` 获取最新 tag，再读取该 tag 下的 `latest.json`
+3. Gitee 镜像：通过 `https://gitee.com/api/v5/repos/CyrilPeng/KokoroMemo/releases/latest` 获取最新 tag，再读取该 tag 下的 `latest.json`
 
 `latest.json` 中每个 asset 包含 GitHub、GitHub 代理和 Gitee Release 资产下载镜像。这样 PC GUI 和 Android `update.sh` 不需要解析 GitHub 页面，只依赖机器可读清单；Gitee 仅通过 Release API 解析最新 tag，不再使用不存在的 `raw/main/latest.json`。
 

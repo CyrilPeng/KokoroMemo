@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO="${KOKOROMEMO_UPDATE_REPO:-CyrilPeng/KokoroMemo}"
-GITEE_REPO="${KOKOROMEMO_UPDATE_GITEE_REPO:-Cyril_P/KokoroMemo}"
+GITEE_REPO="${KOKOROMEMO_UPDATE_GITEE_REPO:-CyrilPeng/KokoroMemo}"
 INSTALL_DIR="${KOKOROMEMO_INSTALL_DIR:-$HOME/kokoromemo}"
 TMP_BASE="${TMPDIR:-${PREFIX:-/tmp}/tmp}"
 TMP_DIR="$TMP_BASE/kokoromemo-install"

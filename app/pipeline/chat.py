@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -52,6 +53,22 @@ def _extra_trigger_keywords(cfg) -> list[str]:
     return extra
 
 
+@dataclass
+class ChatPipelineContext:
+    request: Request
+    cfg: Any
+    ctx: RequestContext
+    raw_body: dict[str, Any]
+    messages: list[dict]
+    injected_messages: list[dict]
+    state_store: SQLiteStateStore | None
+    conversation_config: Any | None
+    should_inject_state: bool
+    should_inject_memory: bool
+    state_row_count: int = 0
+    avg_state_confidence: float | None = None
+
+
 class ChatPipeline:
     """Coordinates request persistence, memory injection, forwarding and post-processing."""
 
@@ -64,7 +81,7 @@ class ChatPipeline:
         await self.inject_memory(prepared)
         return await self.forward(prepared)
 
-    async def prepare(self, request: Request) -> dict[str, Any]:
+    async def prepare(self, request: Request) -> ChatPipelineContext:
         cfg = get_config()
         raw_body: dict[str, Any] = await request.json()
         ctx = await resolve_context(request, raw_body, cfg.storage.root_dir, cfg)
@@ -84,59 +101,57 @@ class ChatPipeline:
                 logger.warning("Conversation policy loading failed (degraded): %s", exc)
 
         injection_policy = conversation_config.injection_policy if conversation_config else "mixed"
-        return {
-            "request": request,
-            "cfg": cfg,
-            "ctx": ctx,
-            "raw_body": raw_body,
-            "messages": messages,
-            "injected_messages": messages,
-            "state_store": state_store,
-            "conversation_config": conversation_config,
-            "should_inject_state": injection_policy in {"state_only", "state_first", "mixed"},
-            "should_inject_memory": injection_policy in {"memory_only", "state_first", "mixed"},
-            "state_row_count": 0,
-            "avg_state_confidence": None,
-        }
+        return ChatPipelineContext(
+            request=request,
+            cfg=cfg,
+            ctx=ctx,
+            raw_body=raw_body,
+            messages=messages,
+            injected_messages=messages,
+            state_store=state_store,
+            conversation_config=conversation_config,
+            should_inject_state=injection_policy in {"state_only", "state_first", "mixed"},
+            should_inject_memory=injection_policy in {"memory_only", "state_first", "mixed"},
+        )
 
-    async def inject_state(self, prepared: dict[str, Any]) -> None:
-        cfg = prepared["cfg"]
-        if not (cfg.memory.enabled and cfg.memory.hot_context.enabled and prepared["should_inject_state"]):
+    async def inject_state(self, prepared: ChatPipelineContext) -> None:
+        cfg = prepared.cfg
+        if not (cfg.memory.enabled and cfg.memory.hot_context.enabled and prepared.should_inject_state):
             return
         try:
-            state_store = prepared["state_store"] or SQLiteStateStore(cfg.storage.sqlite.memory_db)
-            prepared["state_store"] = state_store
-            ctx = prepared["ctx"]
+            state_store = prepared.state_store or SQLiteStateStore(cfg.storage.sqlite.memory_db)
+            prepared.state_store = state_store
+            ctx = prepared.ctx
             table_template = await state_store.get_conversation_table_template(ctx.conversation_id)
             table_rows = await state_store.list_table_rows(
                 ctx.conversation_id,
                 table_template.template_id if table_template else None,
             )
             active_rows = [row for row in table_rows if row.status == "active"]
-            prepared["state_row_count"] = len(active_rows)
+            prepared.state_row_count = len(active_rows)
             if active_rows:
-                prepared["avg_state_confidence"] = sum(row.confidence for row in active_rows) / len(active_rows)
+                prepared.avg_state_confidence = sum(row.confidence for row in active_rows) / len(active_rows)
 
             render_options = StateRenderOptions(max_chars=cfg.memory.hot_context.max_chars)
             state_text = render_state_tables(table_template, table_rows, render_options, lang=cfg.language)
             if state_text:
-                prepared["injected_messages"] = inject_state_board(prepared["injected_messages"], state_text)
+                prepared.injected_messages = inject_state_board(prepared.injected_messages, state_text)
         except Exception as exc:
             logger.warning("Hot context injection failed (degraded): %s", exc)
 
-    async def inject_memory(self, prepared: dict[str, Any]) -> None:
-        cfg = prepared["cfg"]
+    async def inject_memory(self, prepared: ChatPipelineContext) -> None:
+        cfg = prepared.cfg
         if not (
             cfg.memory.enabled
             and cfg.memory.inject_enabled
             and cfg.embedding.enabled
-            and prepared["should_inject_memory"]
+            and prepared.should_inject_memory
         ):
             return
         try:
-            ctx = prepared["ctx"]
+            ctx = prepared.ctx
             query = build_retrieval_query(
-                prepared["messages"],
+                prepared.messages,
                 ctx.user_id,
                 ctx.character_id,
                 ctx.conversation_id,
@@ -148,8 +163,8 @@ class ChatPipeline:
                 decision = decide_retrieval(
                     RetrievalGateInput(
                         query=query,
-                        state_row_count=prepared["state_row_count"],
-                        avg_state_confidence=prepared["avg_state_confidence"],
+                        state_row_count=prepared.state_row_count,
+                        avg_state_confidence=prepared.avg_state_confidence,
                         turn_index=turn_index,
                         mode=cfg.memory.retrieval_gate.mode,
                         vector_search_on_new_session=cfg.memory.retrieval_gate.vector_search_on_new_session,
@@ -190,8 +205,8 @@ class ChatPipeline:
                 allowed_scopes=allowed_scopes,
             )
             if candidates:
-                prepared["injected_messages"] = inject_cards(
-                    prepared["injected_messages"],
+                prepared.injected_messages = inject_cards(
+                    prepared.injected_messages,
                     candidates,
                     max_chars=cfg.memory.max_injected_chars,
                     max_count=cfg.memory.final_top_k,
@@ -200,17 +215,17 @@ class ChatPipeline:
                     model_name=cfg.llm.model,
                     conversation_id=ctx.conversation_id,
                 )
-                await _persist_injection(ctx, prepared["injected_messages"], candidates)
+                await _persist_injection(ctx, prepared.injected_messages, candidates)
                 logger.info("Injected %d memories for conv=%s", len(candidates), ctx.conversation_id)
         except Exception as exc:
             logger.warning("Memory retrieval failed (degraded): %s", exc)
 
-    async def forward(self, prepared: dict[str, Any]):
-        cfg = prepared["cfg"]
-        raw_body = prepared["raw_body"]
-        request = prepared["request"]
+    async def forward(self, prepared: ChatPipelineContext):
+        cfg = prepared.cfg
+        raw_body = prepared.raw_body
+        request = prepared.request
         forward_body = deepcopy(raw_body)
-        forward_body["messages"] = prepared["injected_messages"]
+        forward_body["messages"] = prepared.injected_messages
 
         from app.proxy.llm_providers import create_llm_provider
 
@@ -239,17 +254,17 @@ class ChatPipeline:
         )
         if raw_body.get("stream", False):
             return StreamingResponse(
-                _stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared["ctx"], cfg, prepared["messages"], self.services),
+                _stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared.ctx, cfg, prepared.messages, self.services),
                 media_type="text/event-stream",
             )
-        return await _non_stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared["ctx"], cfg, prepared["messages"], self.services)
+        return await _non_stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared.ctx, cfg, prepared.messages, self.services)
 
-    async def _record_retrieval_decision(self, prepared: dict[str, Any], query, decision, turn_index: int) -> None:
+    async def _record_retrieval_decision(self, prepared: ChatPipelineContext, query, decision, turn_index: int) -> None:
         try:
-            cfg = prepared["cfg"]
-            ctx = prepared["ctx"]
-            state_store = prepared["state_store"] or SQLiteStateStore(cfg.storage.sqlite.memory_db)
-            prepared["state_store"] = state_store
+            cfg = prepared.cfg
+            ctx = prepared.ctx
+            state_store = prepared.state_store or SQLiteStateStore(cfg.storage.sqlite.memory_db)
+            prepared.state_store = state_store
             await state_store.record_retrieval_decision(
                 request_id=ctx.request_id,
                 conversation_id=ctx.conversation_id,

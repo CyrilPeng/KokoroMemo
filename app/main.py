@@ -47,6 +47,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
 
+from app.core.background import BackgroundRunner, set_background_runner
 from app.core.config import load_config, resolve_config_path
 from app.core.logging import setup_logging
 from app.core.state import set_config
@@ -67,6 +68,9 @@ async def lifespan(app: FastAPI):
     Path(cfg.storage.root_dir, "memory").mkdir(parents=True, exist_ok=True)
     Path(cfg.storage.root_dir, "vector_indexes").mkdir(parents=True, exist_ok=True)
 
+    runner = BackgroundRunner(max_concurrency=8)
+    set_background_runner(runner)
+
     import logging
     logger = logging.getLogger("kokoromemo")
     logger.info("KokoroMemo started on %s:%d", cfg.server.host, cfg.server.port)
@@ -84,6 +88,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("KokoroMemo shutting down")
+    await runner.drain(timeout=30.0)
+    set_background_runner(None)
 
 
 app = FastAPI(title="KokoroMemo", version=_read_version(), lifespan=lifespan)

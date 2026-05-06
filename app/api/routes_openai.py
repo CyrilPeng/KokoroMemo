@@ -11,6 +11,7 @@ import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from app.core.background import spawn_background
 from app.core.ids import generate_id
 from app.core.services import get_embedding_provider, get_lancedb_store
 from app.core.state import get_config
@@ -498,9 +499,9 @@ async def _non_stream_proxy(provider, body: dict, timeout: int, ctx: RequestCont
         if choices:
             assistant_text = choices[0].get("message", {}).get("content", "")
 
-        import asyncio
-        asyncio.get_event_loop().create_task(
-            _persist_and_extract(ctx, cfg, original_messages, assistant_text, json.dumps(resp_data, ensure_ascii=False), None)
+        spawn_background(
+            _persist_and_extract(ctx, cfg, original_messages, assistant_text, json.dumps(resp_data, ensure_ascii=False), None),
+            name=f"persist_and_extract:{ctx.request_id}",
         )
 
         return JSONResponse(content=resp_data, status_code=200)
@@ -534,7 +535,7 @@ async def _stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext,
         return
 
     full_text = "".join(collected_text)
-    import asyncio
-    asyncio.get_event_loop().create_task(
-        _persist_and_extract(ctx, cfg, original_messages, full_text, None, full_text)
+    spawn_background(
+        _persist_and_extract(ctx, cfg, original_messages, full_text, None, full_text),
+        name=f"persist_and_extract_stream:{ctx.request_id}",
     )

@@ -53,6 +53,7 @@ from app.core.logging import setup_logging
 from app.core.state import set_config
 from app.core.time_util import set_configured_timezone
 from app.storage.migrations import apply_startup_migrations
+from app.storage.vector_sync import VectorSyncWorker
 
 
 @asynccontextmanager
@@ -73,6 +74,10 @@ async def lifespan(app: FastAPI):
     runner = BackgroundRunner(max_concurrency=8)
     set_background_runner(runner)
 
+    vector_sync_worker = VectorSyncWorker(cfg)
+    vector_sync_worker.start()
+    app.state.vector_sync_worker = vector_sync_worker
+
     import logging
     logger = logging.getLogger("kokoromemo")
     logger.info("KokoroMemo started on %s:%d", cfg.server.host, cfg.server.port)
@@ -90,6 +95,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("KokoroMemo shutting down")
+    await vector_sync_worker.stop()
     await runner.drain(timeout=30.0)
     set_background_runner(None)
 

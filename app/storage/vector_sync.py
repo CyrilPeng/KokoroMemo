@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
+import logging
 
 from app.providers.embedding_base import EmbeddingProvider
+
+logger = logging.getLogger("kokoromemo.vector_sync")
 from app.storage.sqlite_cards import (
     enqueue_job,
     get_cards_by_ids,
@@ -12,6 +17,62 @@ from app.storage.sqlite_cards import (
     mark_card_vector_synced,
     update_job_status,
 )
+
+
+class VectorSyncWorker:
+    """Periodically drains pending card vector sync jobs."""
+
+    def __init__(self, cfg, *, interval_seconds: float = 30.0, batch_limit: int = 50) -> None:
+        self._cfg = cfg
+        self._interval_seconds = interval_seconds
+        self._batch_limit = batch_limit
+        self._stop_event = asyncio.Event()
+        self._task: asyncio.Task | None = None
+
+    def start(self) -> asyncio.Task:
+        if self._task and not self._task.done():
+            return self._task
+        self._task = asyncio.create_task(self.run(), name="vector_sync_worker")
+        return self._task
+
+    async def stop(self) -> None:
+        self._stop_event.set()
+        if self._task and not self._task.done():
+            await self._task
+
+    async def run(self) -> None:
+        await self.run_once()
+        while not self._stop_event.is_set():
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_seconds)
+            except asyncio.TimeoutError:
+                await self.run_once()
+
+    async def run_once(self) -> dict:
+        from app.core.services import get_embedding_provider, get_lancedb_store
+
+        ep = get_embedding_provider(self._cfg)
+        store = get_lancedb_store(self._cfg)
+        if not ep or not store:
+            return {"status": "skipped", "message": "Embedding or vector store not configured"}
+        try:
+            result = await retry_card_vector_sync_jobs(
+                self._cfg.storage.sqlite.memory_db,
+                ep,
+                store,
+                limit=self._batch_limit,
+            )
+            if result.get("total"):
+                logger.info(
+                    "Vector sync worker drained %d job(s): success=%d failed=%d",
+                    result.get("total", 0),
+                    result.get("success", 0),
+                    result.get("failed", 0),
+                )
+            return result
+        except Exception as exc:
+            logger.warning("Vector sync worker run failed: %s", exc)
+            return {"status": "error", "message": str(exc)}
 
 
 async def sync_card_vector(
@@ -26,7 +87,7 @@ async def sync_card_vector(
         return
 
     vec = await embedding_provider.embed_text(card["content"])
-    lancedb_store.upsert([{
+    upsert_result = lancedb_store.upsert([{
         "memory_id": card["card_id"],
         "library_id": card.get("library_id") or "lib_default",
         "user_id": card["user_id"],
@@ -45,6 +106,8 @@ async def sync_card_vector(
         "embedding_model": embedding_provider.model,
         "vector": vec,
     }])
+    if inspect.isawaitable(upsert_result):
+        await upsert_result
     await mark_card_vector_synced(db_path, card_id, embedding_provider.model, embedding_provider.dimension)
 
 

@@ -122,7 +122,6 @@ class StateUpdaterConfig:
     update_every_n_turns: int = 1
     min_confidence: float = 0.55
     auto_expire_resolved_items: bool = True
-    max_state_items_per_conversation: int = 200
     provider: str = "openai_compatible"
     base_url: str = ""
     api_key: str = ""

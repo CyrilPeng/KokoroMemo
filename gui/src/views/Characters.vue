@@ -35,7 +35,6 @@ const loading = ref(false)
 const saving = ref(false)
 const characters = ref<Character[]>([])
 const profiles = ref<any[]>([])
-const boardTemplates = ref<any[]>([])
 const tableTemplates = ref<any[]>([])
 const libraries = ref<any[]>([])
 const mountPresets = ref<any[]>([])
@@ -57,7 +56,6 @@ const mergeTargetId = ref<string | null>(null)
 const profileOptions = computed(() => profiles.value.map((item) => ({ label: item.name, value: item.profile_id })))
 const filterProfileOptions = computed(() => [{ label: '全部方案', value: null }, ...profileOptions.value])
 const tableTemplateOptions = computed(() => [{ label: '不使用表格模板', value: null }, ...tableTemplates.value.map((item) => ({ label: item.name, value: item.template_id }))])
-const boardTemplateOptions = computed(() => [{ label: '不使用旧字段模板', value: null }, ...boardTemplates.value.map((item) => ({ label: item.name, value: item.template_id }))])
 const libraryOptions = computed(() => libraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
 const writeLibraryOptions = computed(() => libraryOptions.value.filter((item) => form.value.library_ids.includes(item.value)))
 const mountPresetOptions = computed(() => [{ label: '不套用挂载预设', value: null }, ...mountPresets.value.map((item) => ({ label: item.name, value: item.preset_id }))])
@@ -89,7 +87,6 @@ const form = ref({
   notes: '',
   source: '',
   profile_id: 'airp_roleplay',
-  template_id: null as string | null,
   table_template_id: null as string | null,
   mount_preset_id: null as string | null,
   memory_write_policy: 'candidate',
@@ -165,14 +162,12 @@ async function fetchAll() {
 
   const results = await Promise.allSettled([
     apiFetch('/admin/conversation-profiles', { timeoutMs: 5000 }),
-    apiFetch('/admin/state/templates', { timeoutMs: 5000 }),
     apiFetch('/admin/state/table-templates', { timeoutMs: 5000 }),
     apiFetch('/admin/memory-libraries', { timeoutMs: 5000 }),
     apiFetch('/admin/memory-mount-presets', { timeoutMs: 5000 }),
   ])
-  const [profilesResp, boardResp, tableResp, libResp, presetResp] = results.map((item) => item.status === 'fulfilled' ? item.value : null)
+  const [profilesResp, tableResp, libResp, presetResp] = results.map((item) => item.status === 'fulfilled' ? item.value : null)
   if (profilesResp?.ok) profiles.value = (await profilesResp.json()).items || []
-  if (boardResp?.ok) boardTemplates.value = (await boardResp.json()).items || []
   if (tableResp?.ok) tableTemplates.value = (await tableResp.json()).items || []
   if (libResp?.ok) libraries.value = (await libResp.json()).items || []
   if (presetResp?.ok) mountPresets.value = (await presetResp.json()).items || []
@@ -183,7 +178,7 @@ async function openCharacter(row: Character) {
   mergeTargetId.value = null
   form.value = {
     display_name: row.display_name || '', aliases: [...(row.aliases || [])], notes: row.notes || '', source: row.source || '',
-    profile_id: row.profile_id || 'airp_roleplay', template_id: row.template_id ?? null, table_template_id: row.table_template_id ?? null,
+    profile_id: row.profile_id || 'airp_roleplay', table_template_id: row.table_template_id ?? null,
     mount_preset_id: row.mount_preset_id ?? null, memory_write_policy: row.memory_write_policy || 'candidate',
     state_update_policy: row.state_update_policy || 'auto', injection_policy: row.injection_policy || 'mixed',
     library_ids: row.library_ids?.length ? [...row.library_ids] : ['lib_default'], write_library_id: row.write_library_id || 'lib_default',
@@ -316,7 +311,6 @@ function applyProfile(profileId: string) {
   form.value = {
     ...form.value,
     profile_id: profile.profile_id,
-    template_id: profile.template_id,
     table_template_id: profile.table_template_id,
     mount_preset_id: profile.mount_preset_id,
     memory_write_policy: profile.memory_write_policy,
@@ -423,7 +417,6 @@ onMounted(fetchAll)
                 <NGridItem><NFormItem label="默认会话方案"><NSelect v-model:value="form.profile_id" :options="profileOptions" @update:value="applyProfile" /></NFormItem></NGridItem>
                 <NGridItem><NFormItem label="自动应用到新会话"><NSwitch v-model:value="form.auto_apply" /></NFormItem></NGridItem>
                 <NGridItem><NFormItem label="表格状态板模板"><NSelect v-model:value="form.table_template_id" filterable :options="tableTemplateOptions" /></NFormItem></NGridItem>
-                <NGridItem><NFormItem label="旧字段模板（兼容）"><NSelect v-model:value="form.template_id" filterable :options="boardTemplateOptions" /></NFormItem></NGridItem>
                 <NGridItem><NFormItem label="长期记忆写入"><NSelect v-model:value="form.memory_write_policy" :options="memoryPolicyOptions" /></NFormItem></NGridItem>
                 <NGridItem><NFormItem label="状态板更新"><NSelect v-model:value="form.state_update_policy" :options="statePolicyOptions" /></NFormItem></NGridItem>
                 <NGridItem><NFormItem label="注入策略"><NSelect v-model:value="form.injection_policy" :options="injectionPolicyOptions" /></NFormItem></NGridItem>

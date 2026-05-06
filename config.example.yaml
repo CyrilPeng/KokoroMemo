@@ -97,7 +97,6 @@ memory:
     update_every_n_turns: 1
     min_confidence: 0.55
     auto_expire_resolved_items: true
-    max_state_items_per_conversation: 200
     provider: "openai_compatible"
     base_url: ""
     api_key: ""

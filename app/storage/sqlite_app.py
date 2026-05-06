@@ -285,7 +285,6 @@ async def set_character_defaults(
     """Save default template and library config for a character."""
     profile = get_profile(profile_id)
     profile_id = profile_id or profile.profile_id
-    template_id = template_id if template_id is not None else profile.template_id
     table_template_id = table_template_id if table_template_id is not None else profile.table_template_id
     mount_preset_id = mount_preset_id if mount_preset_id is not None else profile.mount_preset_id
     memory_write_policy = memory_write_policy or profile.memory_write_policy

@@ -113,7 +113,6 @@ GitHub Actions 中 `build-android-packages` job 会在 CI 构建 `gui/dist`，�
 角色默认策略可批量应用到已有会话，后端会同步：
 
 - `conversation_configs`
-- `conversation_state_boards` 旧模板绑定
 - `conversation_memory_mounts`
 
 ### API
@@ -138,7 +137,7 @@ KokoroMemo 的核心设计决策是**分层记忆**，避免每轮都做昂贵�
 ### 热记忆（Hot State）— 会话状态板
 
 - **职责**：维护当前会话的实时上下文状态（场景、心情、任务、关系等）
-- **存储**：v2 主路径使用 `state_table_rows` + `state_table_cells`；旧字段式 `conversation_state_items` 保留为兼容兜底
+- **存储**：使用 `state_table_rows` + `state_table_cells`，由 v2 表格状态板独占维护
 - **注入时机**：每轮请求前，渲染为文本注入系统提示词
 - **更新时机**：每轮对话后，由 State Filler 模型自动更新
 - **数据结构**：表格模板 → 表结构 → 行 → 单元格；旧结构为模板 → 标签页 → 字段
@@ -320,12 +319,8 @@ GUI 入口：记忆库页"导入 SillyTavern"按钮，导入完成后弹窗确�
 
 | 表 | 用途 |
 |---|---|
-| `conversation_state_items` | 旧字段式状态项，兼容旧数据与旧渲染兜底 |
-| `state_board_templates` / `state_board_tabs` / `state_board_fields` | 旧字段式状态板模板 |
-| `conversation_state_boards` | 旧模板与会话绑定 |
-| `conversation_configs` | 会话级方案、模板、挂载预设、长期记忆写入策略、状态更新策略和注入策略 |
+| `conversation_configs` | 会话级方案、表格模板、挂载预设、长期记忆写入策略、状态更新策略和注入策略 |
 | `conversation_default_config` | 新 conversation_id 首次出现时套用的默认会话策略 |
-| `conversation_state_events` | 旧状态项事件 |
 | `state_table_templates` | v2 表格模板，例如 `tpl_rimtalk_roleplay_tables` |
 | `state_table_schemas` | v2 表定义、注入优先级、最大注入行数 |
 | `state_table_columns` | v2 表列定义、是否注入、最大字符数 |
@@ -422,7 +417,6 @@ StateTableRow
 - 将“场景、角色、关系、规则、任务、事件、物品”拆成多张表，避免全部混在一个大文本字段。
 - 以行作为最小更新单位，支持插入、更新、完成/删除和审计。
 - 注入时按表优先级和每表最大行数压缩，控制上下文预算。
-- 保留旧 `conversation_state_items`，便于读取历史数据和作为 v2 为空时的兜底。
 
 ### 会话策略与默认方案
 
@@ -580,23 +574,6 @@ GUI `/state` 是表格工作台：
 
 `PUT/POST` 保存时同时接受 `library_ids` 与 `mounted_library_ids`，并根据 `write_library_id` 更新会话挂载，保证 v0.7 之后的新策略字段与旧挂载字段可以在同一个入口内保存。
 
-### 旧字段式状态板兼容
-
-旧结构仍存在：
-
-```text
-StateBoardTemplate
-  ├─ StateBoardTab[]
-  └─ StateBoardField[]
-conversation_state_items
-```
-
-保留原因：
-
-- 不破坏 v0.5.x 以前已有会话状态。
-- 支持旧投影逻辑（`state_projector`）。
-- 后续可做显式迁移工具，而不是启动时自动破坏性迁移。
-
 ## 9. 检索门控（Retrieval Gate）
 
 Retrieval Gate 是 v0.2.0 引入的优化机制，避免每轮都执行昂贵的向量检索。
@@ -712,7 +689,7 @@ KokoroMemo 强调"任何记忆系统失败都不影响聊天主链路"。下表�
 - 表结构层：`state_table_schemas` 与 `state_table_columns` 定义每张表的列、优先级、注入开关和最大注入行数。
 - 数据层：`state_table_rows` 与 `state_table_cells` 保存会话级行状态，支持按行新增、更新、完成/删除。
 - 审计层：`state_table_events` 记录手动编辑和模型操作，`state_table_debug_runs` 预留调试运行记录。
-- 注入层：优先渲染表格状态；若表格为空，回退旧 `conversation_state_items` 渲染，保证兼容旧数据。
+- 注入层：渲染 `state_table_rows` 中 active 行；表格为空时直接跳过状态注入，不再保留旧字段式回退。
 
 默认 `tpl_rimtalk_roleplay_tables` 包含当前场景、角色状态、关系状态、扮演规则、承诺与任务、重要事件、重要物品。State Filler v2 要求模型返回 JSON 操作列表，而不是自然语言总结或单字段大段文本，便于校验、合并和回滚。
 

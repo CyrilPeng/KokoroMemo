@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.config import AppConfig
 from app.core.state import set_config
 from app.main import app
-from app.memory.state_schema import ConversationStateItem, StateTableRow
+from app.memory.state_schema import StateTableRow
 from app.storage.sqlite_state import SQLiteStateStore
 
 
@@ -316,14 +316,21 @@ async def test_resolved_state_item_not_injected(monkeypatch):
         cfg.embedding.enabled = False
 
         store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
-        item_id = await store.upsert_item(ConversationStateItem(
-            item_id=None,
+        template = await store.get_default_table_template()
+        assert template is not None
+        table = template.tables[0]
+        row = StateTableRow(
+            row_id=None,
             conversation_id="conv_resolve",
-            category="scene",
-            item_key="current_scene",
-            content="秘密基地",
-        ))
-        await store.resolve_item(item_id, "场景结束")
+            template_id=template.template_id or "",
+            table_id=table.table_id or "",
+            table_key=table.table_key,
+            status="active",
+            confidence=0.9,
+        )
+        first_col = next(col for col in table.columns if col.include_in_prompt)
+        row_id = await store.upsert_table_row(row, {first_col.column_key: "秘密基地"})
+        await store.update_table_row_status(row_id, "resolved", "场景结束")
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={

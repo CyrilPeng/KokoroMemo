@@ -76,7 +76,6 @@ type StateRow = {
 type ConversationConfig = {
   conversation_id: string
   profile_id: string
-  template_id?: string | null
   table_template_id?: string | null
   mount_preset_id?: string | null
   memory_write_policy: string
@@ -97,7 +96,6 @@ const rows = ref<StateRow[]>([])
 const config = ref<ConversationConfig | null>(null)
 const defaultConfig = ref<ConversationConfig | null>(null)
 const profiles = ref<any[]>([])
-const boardTemplates = ref<any[]>([])
 const tableTemplates = ref<any[]>([])
 const mountPresets = ref<any[]>([])
 const memoryLibraries = ref<any[]>([])
@@ -136,10 +134,6 @@ const selectedDefaultProfileHint = computed(() => {
   const id = defaultConfig.value?.profile_id || ''
   return profileDescriptions[id] || profiles.value.find((item) => item.profile_id === id)?.description || ''
 })
-const boardTemplateOptions = computed(() => [
-  { label: '不使用旧字段模板', value: null },
-  ...boardTemplates.value.map((item) => ({ label: item.name, value: item.template_id })),
-])
 const tableTemplateOptions = computed(() => [
   { label: '不使用表格模板', value: null },
   ...tableTemplates.value.map((item) => ({ label: item.name, value: item.template_id })),
@@ -193,7 +187,7 @@ const boardDiagnostics = computed(() => {
   const issues: { label: string, type: 'default' | 'info' | 'success' | 'warning' | 'error' }[] = []
   if (!conversationId.value.trim()) issues.push({ label: '未选择会话', type: 'warning' })
   if (!config.value) issues.push({ label: '未加载策略', type: 'warning' })
-  if (config.value && !config.value.table_template_id && !config.value.template_id) issues.push({ label: '未绑定模板', type: 'error' })
+  if (config.value && !config.value.table_template_id) issues.push({ label: '未绑定表格模板', type: 'error' })
   if (config.value?.injection_policy === 'state_only' && rows.value.length === 0) issues.push({ label: '仅状态板但暂无状态行', type: 'warning' })
   if (config.value?.memory_write_policy !== 'disabled' && config.value?.profile_id === 'rimtalk_colony') issues.push({ label: 'RimTalk 建议关闭长期记忆写入', type: 'error' })
   if (template.value && rows.value.length === 0) issues.push({ label: '模板已就绪但暂无状态', type: 'info' })
@@ -254,15 +248,13 @@ async function fetchConfig() {
 
 async function fetchOptions() {
   try {
-    const [profilesResp, boardResp, tableResp, presetResp, libResp] = await Promise.all([
+    const [profilesResp, tableResp, presetResp, libResp] = await Promise.all([
       apiFetch('/admin/conversation-profiles', { headers: authHeaders() }),
-      apiFetch('/admin/state/templates', { headers: authHeaders() }),
       apiFetch('/admin/state/table-templates', { headers: authHeaders() }),
       apiFetch('/admin/memory-mount-presets', { headers: authHeaders() }),
       apiFetch('/admin/memory-libraries', { headers: authHeaders() }),
     ])
     if (profilesResp.ok) profiles.value = (await profilesResp.json()).items || []
-    if (boardResp.ok) boardTemplates.value = (await boardResp.json()).items || []
     if (tableResp.ok) tableTemplates.value = (await tableResp.json()).items || []
     if (presetResp.ok) mountPresets.value = (await presetResp.json()).items || []
     if (libResp.ok) memoryLibraries.value = (await libResp.json()).items || []
@@ -434,7 +426,6 @@ function applyProfileToConfig(profileId: string) {
   config.value = {
     ...config.value,
     profile_id: profile.profile_id,
-    template_id: profile.template_id,
     table_template_id: profile.table_template_id,
     mount_preset_id: profile.mount_preset_id,
     memory_write_policy: profile.memory_write_policy,
@@ -450,7 +441,6 @@ function applyProfileToDefault(profileId: string) {
   defaultConfig.value = {
     ...defaultConfig.value,
     profile_id: profile.profile_id,
-    template_id: profile.template_id,
     table_template_id: profile.table_template_id,
     mount_preset_id: profile.mount_preset_id,
     memory_write_policy: profile.memory_write_policy,
@@ -768,15 +758,6 @@ onMounted(() => {
               <NFormItem label="注入策略">
                 <NSelect v-model:value="config.injection_policy" :options="injectionPolicyOptions" />
               </NFormItem>
-            </NGridItem>
-            <NGridItem :span="24">
-              <NCollapse>
-                <NCollapseItem title="高级：旧字段模板（兼容兜底）" name="advanced">
-                  <NFormItem label="旧字段模板">
-                    <NSelect v-model:value="config.template_id" filterable :options="boardTemplateOptions" />
-                  </NFormItem>
-                </NCollapseItem>
-              </NCollapse>
             </NGridItem>
           </NGrid>
           <NSpace justify="end">

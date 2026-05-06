@@ -14,7 +14,6 @@ from app.core.state import set_config
 from app.main import app
 from app.storage.sqlite_cards import init_cards_db, insert_card
 from app.storage.sqlite_state import SQLiteStateStore
-from app.memory.state_schema import ConversationStateItem
 
 
 class FakeChatProvider:

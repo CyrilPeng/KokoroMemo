@@ -36,20 +36,18 @@ async def test_admin_state_api_requires_token_when_configured():
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            unauthorized = await client.get("/admin/conversations/conv1/state")
+            unauthorized = await client.get("/admin/conversations/conv1/state/tables")
             assert unauthorized.status_code == 401
 
-            created = await client.post(
-                "/admin/conversations/conv1/state",
+            authorized = await client.get(
+                "/admin/conversations/conv1/state/tables",
                 headers={"Authorization": "Bearer secret"},
-                json={"category": "scene", "item_key": "current_scene", "item_value": "正在车站", "priority": 80},
             )
-            assert created.status_code == 200
-            assert created.json()["status"] == "ok"
-
-            listed = await client.get("/admin/conversations/conv1/state", headers={"Authorization": "Bearer secret"})
-            assert listed.status_code == 200
-            assert listed.json()["items"][0]["item_key"] == "current_scene"
+            assert authorized.status_code == 200
+            data = authorized.json()
+            assert data["conversation_id"] == "conv1"
+            assert data["source"] == "table"
+            assert "rows" in data
     finally:
         cleanup_test_dir(test_dir)
 
@@ -160,36 +158,33 @@ async def test_conversation_config_summary_api():
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            # GET config for a new conversation (should auto-create default mounts)
             resp = await client.get("/admin/conversations/conv_test/config")
             assert resp.status_code == 200
             data = resp.json()
             assert data["conversation_id"] == "conv_test"
             assert "lib_default" in data["mounted_library_ids"]
             assert data["write_library_id"] == "lib_default"
-            assert data["template_id"] is not None
-            assert data["state_item_count"] == 0
+            assert data["table_template_id"] is not None
+            assert data["state_row_count"] == 0
             assert data["is_new_session"] is True
 
-            # POST config to set mounts and template
             resp = await client.post("/admin/conversations/conv_test/config", json={
                 "library_ids": ["lib_default"],
                 "write_library_id": "lib_default",
-                "template_id": "tpl_trpg_story",
+                "table_template_id": "tpl_ttrpg_story_tables",
             })
             assert resp.status_code == 200
             assert resp.json()["status"] == "ok"
 
-            # Verify template changed
             resp = await client.get("/admin/conversations/conv_test/config")
             data = resp.json()
-            assert data["template_id"] == "tpl_trpg_story"
+            assert data["table_template_id"] == "tpl_ttrpg_story_tables"
     finally:
         cleanup_test_dir(test_dir)
 
 
 @pytest.mark.asyncio
-async def test_state_clear_api():
+async def test_state_table_row_crud_api():
     test_dir = make_test_dir()
     try:
         cfg = AppConfig()
@@ -200,26 +195,28 @@ async def test_state_clear_api():
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            # Create some state items
-            await client.post("/admin/conversations/conv_clear/state", json={
-                "category": "scene", "item_key": "scene1", "item_value": "场景一",
-            })
-            await client.post("/admin/conversations/conv_clear/state", json={
-                "category": "scene", "item_key": "scene2", "item_value": "场景二",
-            })
+            await client.get("/admin/conversations/conv_rows/config")
 
-            # Verify items exist
-            resp = await client.get("/admin/conversations/conv_clear/state?status=active")
-            assert resp.json()["total"] == 2
-
-            # Clear state
-            resp = await client.post("/admin/conversations/conv_clear/state/clear")
+            resp = await client.get("/admin/conversations/conv_rows/state/tables")
             assert resp.status_code == 200
-            assert resp.json()["cleared"] == 2
+            template = resp.json()["template"]
+            table_key = template["tables"][0]["table_key"]
+            first_col = next(c["column_key"] for c in template["tables"][0]["columns"] if c["include_in_prompt"])
 
-            # Verify active items are gone (soft-deleted)
-            resp = await client.get("/admin/conversations/conv_clear/state?status=active")
-            assert resp.json()["total"] == 0
+            resp = await client.post(
+                f"/admin/conversations/conv_rows/state/tables/{table_key}/rows",
+                json={"values": {first_col: "测试场景"}},
+            )
+            assert resp.status_code == 200
+            row_id = resp.json()["row_id"]
+
+            resp = await client.get("/admin/conversations/conv_rows/state/tables")
+            rows = resp.json()["rows"]
+            assert any(r["row_id"] == row_id for r in rows)
+
+            resp = await client.delete(f"/admin/state/table-rows/{row_id}")
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "ok"
     finally:
         cleanup_test_dir(test_dir)
 

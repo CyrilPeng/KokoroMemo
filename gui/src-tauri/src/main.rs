@@ -426,8 +426,8 @@ async fn get_backend_port(app: tauri::AppHandle) -> Result<u16, String> {
     let work_dir = backend_work_dir(&app);
     let config_dir = config_dir(&app);
     let port_files = [config_dir.join(".port"), work_dir.join(".port")];
-    // 轮询端口文件，后端可能仍在启动中。
-    for _ in 0..30 {
+    // ?????????????????release ????????????
+    for _ in 0..150 {
         for port_file in &port_files {
             if let Ok(content) = fs::read_to_string(port_file) {
                 if let Ok(port) = content.trim().parse::<u16>() {
@@ -443,7 +443,7 @@ async fn get_backend_port(app: tauri::AppHandle) -> Result<u16, String> {
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
-    Err("6 秒内未找到后端端口文件，或端口尚未开始监听".to_string())
+    Err("30 ?????????????????????".to_string())
 }
 
 fn main() {

@@ -235,11 +235,15 @@ def _describe_port_unavailable(error: OSError | None) -> str:
 
 
 def _write_port_file(port: int) -> None:
-    """将实际端口写入 .port，供 Tauri 侧发现后端。"""
+    """????????? .port?? Tauri ??????"""
     try:
         config_path = resolve_config_path(for_write=True)
         base_dir = config_path.parent if config_path else Path.cwd()
-        (base_dir / ".port").write_text(str(port), encoding="utf-8")
+        base_dir.mkdir(parents=True, exist_ok=True)
+        port_file = base_dir / ".port"
+        tmp_file = base_dir / ".port.tmp"
+        tmp_file.write_text(str(port), encoding="utf-8")
+        tmp_file.replace(port_file)
     except Exception:
         pass
 

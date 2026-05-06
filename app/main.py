@@ -50,6 +50,7 @@ from starlette.responses import Response
 from app.core.background import BackgroundRunner, set_background_runner
 from app.core.config import load_config, resolve_config_path
 from app.core.logging import setup_logging
+from app.core.services import ServiceRegistry, set_service_registry
 from app.core.state import set_config
 from app.core.time_util import set_configured_timezone
 from app.storage.migrations import apply_startup_migrations
@@ -70,6 +71,10 @@ async def lifespan(app: FastAPI):
     Path(cfg.storage.root_dir, "memory").mkdir(parents=True, exist_ok=True)
     Path(cfg.storage.root_dir, "vector_indexes").mkdir(parents=True, exist_ok=True)
     await apply_startup_migrations(cfg)
+
+    registry = ServiceRegistry()
+    set_service_registry(registry)
+    app.state.service_registry = registry
 
     runner = BackgroundRunner(max_concurrency=8)
     set_background_runner(runner)

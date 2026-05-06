@@ -47,15 +47,11 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
 
-from app.core.background import BackgroundRunner, set_background_runner
 from app.core.config import load_config, resolve_config_path
+from app.core.lifecycle import AppLifecycle
 from app.core.logging import setup_logging
-from app.core.services import ServiceRegistry, set_service_registry
 from app.core.state import set_config
 from app.core.time_util import set_configured_timezone
-from app.proxy.llm_providers import close_llm_http_client
-from app.storage.migrations import apply_startup_migrations
-from app.storage.vector_sync import VectorSyncWorker
 
 
 @asynccontextmanager
@@ -101,10 +97,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("KokoroMemo shutting down")
-    await vector_sync_worker.stop()
-    await runner.drain(timeout=30.0)
-    await close_llm_http_client()
-    set_background_runner(None)
+    await lifecycle.stop()
 
 
 app = FastAPI(title="KokoroMemo", version=_read_version(), lifespan=lifespan)

@@ -235,7 +235,7 @@ def _describe_port_unavailable(error: OSError | None) -> str:
 
 
 def _write_port_file(port: int) -> None:
-    """????????? .port?? Tauri ??????"""
+    """将实际端口原子写入 .port，供 Tauri 侧发现后端。"""
     try:
         config_path = resolve_config_path(for_write=True)
         base_dir = config_path.parent if config_path else Path.cwd()

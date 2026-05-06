@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.json_utils import parse_json_object, safe_float
 from app.memory.state_filler import StateFillerConfigView
 from app.memory.state_schema import StateTableOperation, StateTableRow, StateTableSchema, StateTableTemplate
 from app.proxy.llm_providers import create_llm_provider
@@ -81,7 +81,7 @@ async def fill_conversation_state_tables(
         return result
 
     text = _extract_response_text(response)
-    payload = _parse_json(text)
+    payload = parse_json_object(text, fallback={"operations": []})
     operations = _parse_operations(payload)
     if not operations:
         result.notes.append("no_operations")
@@ -209,22 +209,6 @@ def _extract_response_text(response: Any) -> str:
     return content if isinstance(content, str) else ""
 
 
-def _parse_json(text: str) -> dict[str, Any]:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text).strip()
-        text = re.sub(r"```$", "", text).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start:end + 1]
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        return {"operations": []}
-    return payload if isinstance(payload, dict) else {"operations": []}
-
-
 def _parse_operations(payload: dict[str, Any]) -> list[StateTableOperation]:
     operations: list[StateTableOperation] = []
     for raw in payload.get("operations") or []:
@@ -240,7 +224,7 @@ def _parse_operations(payload: dict[str, Any]) -> list[StateTableOperation]:
             values=raw.get("values") if isinstance(raw.get("values"), dict) else {},
             match=raw.get("match") if isinstance(raw.get("match"), dict) else {},
             row_id=str(raw.get("row_id") or "").strip() or None,
-            confidence=_safe_float(raw.get("confidence"), 0.7),
+            confidence=safe_float(raw.get("confidence"), 0.7),
             reason=str(raw.get("reason") or ""),
         ))
     return operations
@@ -278,10 +262,3 @@ def _normalize_values(table: StateTableSchema, values: dict[str, Any]) -> dict[s
         if text:
             result[column.column_key] = text
     return result
-
-
-def _safe_float(value: Any, fallback: float) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return fallback

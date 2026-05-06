@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass
 
+from app.core.json_utils import parse_json_object
 from app.core.prompts import (
     JUDGE_USER_PREFIX,
     JUDGE_USER_RULES_SUFFIX,
@@ -71,7 +70,7 @@ async def judge_memories_with_llm(
         config.timeout_seconds,
     )
     content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-    payload = _parse_json(content)
+    payload = parse_json_object(content, fallback={"memories": []})
     memories: list[ExtractedMemory] = []
     for item in payload.get("memories") or payload.get("items") or []:
         if not isinstance(item, dict):
@@ -102,22 +101,6 @@ async def judge_memories_with_llm(
             tags=[str(tag) for tag in tags],
         ))
     return memories
-
-
-def _parse_json(text: str) -> dict:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text).strip()
-        text = re.sub(r"```$", "", text).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start:end + 1]
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        return {"memories": []}
-    return payload if isinstance(payload, dict) else {"memories": []}
 
 
 def _build_prompt(config: MemoryJudgeConfigView, lang: str = "zh") -> str:

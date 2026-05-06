@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { h, ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   NCard, NForm, NFormItem, NInput, NSwitch, NInputNumber,
   NButton, NSpace, NDivider, NAlert, NSelect,
   NTabs, NTabPane, NModal,
   NDynamicTags, NSlider, NProgress, NTag, NPopconfirm,
-  NMenu, NDataTable,
+  NMenu,
   useMessage,
 } from 'naive-ui'
 import { apiFetch, getServerUrl, setServerUrl, resolveBackendUrl } from '../api'

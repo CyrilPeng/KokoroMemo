@@ -9,6 +9,87 @@ use std::{
     },
 };
 
+#[cfg(windows)]
+mod job_object {
+    //! Windows Job Object：把后端 PID 绑定到一个带 KILL_ON_JOB_CLOSE 标志的 Job 中。
+    //! 当 Tauri 进程退出（正常退出 / 崩溃 / 被任务管理器结束 / 调试器中断），
+    //! 内核会自动终止 Job 中的所有进程，杜绝 kokoromemo-server.exe 残留。
+
+    use std::sync::OnceLock;
+
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject,
+        JobObjectExtendedLimitInformation, JOBOBJECT_BASIC_LIMIT_INFORMATION,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+    };
+    use windows::Win32::System::Threading::{
+        OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
+    };
+
+    struct JobHandle(HANDLE);
+    // Job 句柄在进程退出时由内核回收，多线程访问通过 Win32 自身保证安全。
+    unsafe impl Send for JobHandle {}
+    unsafe impl Sync for JobHandle {}
+
+    static JOB: OnceLock<JobHandle> = OnceLock::new();
+
+    fn ensure_job() -> Option<HANDLE> {
+        let handle = JOB.get_or_init(|| unsafe {
+            let job = CreateJobObjectW(None, None).unwrap_or(HANDLE::default());
+            if job.is_invalid() {
+                return JobHandle(HANDLE::default());
+            }
+            let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            info.BasicLimitInformation = JOBOBJECT_BASIC_LIMIT_INFORMATION {
+                LimitFlags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                    | JOB_OBJECT_LIMIT_BREAKAWAY_OK
+                    | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+                ..Default::default()
+            };
+            let info_ptr = &info as *const _ as *const _;
+            let info_size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
+            let _ = SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                info_ptr,
+                info_size,
+            );
+            JobHandle(job)
+        });
+        if handle.0.is_invalid() {
+            None
+        } else {
+            Some(handle.0)
+        }
+    }
+
+    pub fn assign(pid: u32) {
+        if pid == 0 {
+            return;
+        }
+        let Some(job) = ensure_job() else {
+            return;
+        };
+        unsafe {
+            if let Ok(process) =
+                OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA, false, pid)
+            {
+                if !process.is_invalid() {
+                    let _ = AssignProcessToJobObject(job, process);
+                    let _ = windows::Win32::Foundation::CloseHandle(process);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod job_object {
+    pub fn assign(_pid: u32) {}
+}
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -250,7 +331,9 @@ fn spawn_backend(app: tauri::AppHandle) {
         {
             match spawn_embedded_backend(&app, &work_dir) {
                 Ok(child) => {
-                    eprintln!("KokoroMemo 内置后端已启动，PID={}", child.id());
+                    let pid = child.id();
+                    eprintln!("KokoroMemo 内置后端已启动，PID={}", pid);
+                    job_object::assign(pid);
                     if let Some(state) = app.try_state::<AppState>() {
                         *state.backend_child.lock().expect("后端进程锁已损坏") =
                             Some(BackendChild::Embedded(child));
@@ -288,7 +371,9 @@ fn spawn_backend(app: tauri::AppHandle) {
 
             match command.spawn() {
                 Ok((mut rx, child)) => {
-                    eprintln!("KokoroMemo 后端已启动，PID={}", child.pid());
+                    let pid = child.pid();
+                    eprintln!("KokoroMemo 后端已启动，PID={}", pid);
+                    job_object::assign(pid);
                     if let Some(state) = app.try_state::<AppState>() {
                         *state.backend_child.lock().expect("后端进程锁已损坏") =
                             Some(BackendChild::Sidecar(child));
@@ -410,6 +495,7 @@ fn main() {
                     } else {
                         state.quitting.store(true, Ordering::Relaxed);
                         kill_backend(window.app_handle());
+                        window.app_handle().exit(0);
                     }
                 }
             }

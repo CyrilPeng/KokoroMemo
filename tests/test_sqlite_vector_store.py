@@ -1,7 +1,8 @@
 """Tests for SqliteVectorStore — the numpy-based fallback for LanceDB."""
 
-import os
-import tempfile
+import shutil
+import uuid
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -11,14 +12,18 @@ from app.storage.sqlite_vector_store import SqliteVectorStore
 
 @pytest.fixture
 def store():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = os.path.join(tmpdir, "test_vectors.sqlite")
-        s = SqliteVectorStore(db_path=db_path, table_name="memories", dimension=4)
+    test_dir = Path(".test_sqlite_vector_store") / uuid.uuid4().hex
+    test_dir.mkdir(parents=True, exist_ok=True)
+    db_path = test_dir / "test_vectors.sqlite"
+    s = SqliteVectorStore(db_path=str(db_path), table_name="memories", dimension=4)
+    try:
         s.connect()
         yield s
+    finally:
         if s._conn:
             s._conn.close()
             s._conn = None
+        shutil.rmtree(test_dir, ignore_errors=True)
 
 
 def _make_row(memory_id: str, vec: list[float], **kwargs) -> dict:

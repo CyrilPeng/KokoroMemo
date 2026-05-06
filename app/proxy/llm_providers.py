@@ -17,6 +17,22 @@ import httpx
 
 logger = logging.getLogger("kokoromemo.llm_providers")
 
+_shared_http_client: httpx.AsyncClient | None = None
+
+
+def get_llm_http_client() -> httpx.AsyncClient:
+    global _shared_http_client
+    if _shared_http_client is None or _shared_http_client.is_closed:
+        _shared_http_client = httpx.AsyncClient()
+    return _shared_http_client
+
+
+async def close_llm_http_client() -> None:
+    global _shared_http_client
+    if _shared_http_client is not None and not _shared_http_client.is_closed:
+        await _shared_http_client.aclose()
+    _shared_http_client = None
+
 
 class LLMProvider(ABC):
     """Base class for LLM providers."""
@@ -87,17 +103,17 @@ class OpenAICompatibleProvider(LLMProvider):
     async def chat(self, body: dict, timeout: int) -> dict:
         url = f"{self.base_url}/chat/completions"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=body, headers=headers)
-            resp.raise_for_status()
-            return resp.json()
+        client = get_llm_http_client()
+        resp = await client.post(url, json=body, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
 
     async def stream_chat(self, body: dict, timeout: int) -> AsyncIterator[str]:
         url = f"{self.base_url}/chat/completions"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         body["stream"] = True
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream("POST", url, json=body, headers=headers) as resp:
+        client = get_llm_http_client()
+        async with client.stream("POST", url, json=body, headers=headers, timeout=timeout) as resp:
                 async for line in resp.aiter_lines():
                     if line:
                         yield line
@@ -147,10 +163,10 @@ class OpenAIResponsesProvider(LLMProvider):
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         payload = self._convert_to_responses_format(body)
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+        client = get_llm_http_client()
+        resp = await client.post(url, json=payload, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
 
         # 从 Responses API 格式中提取文本
         content = ""
@@ -169,8 +185,8 @@ class OpenAIResponsesProvider(LLMProvider):
         payload["stream"] = True
 
         model = body.get("model", self.model)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream("POST", url, json=payload, headers=headers) as resp:
+        client = get_llm_http_client()
+        async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
                 async for line in resp.aiter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -256,10 +272,10 @@ class AnthropicProvider(LLMProvider):
         }
         payload = self._convert_to_anthropic_format(body)
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+        client = get_llm_http_client()
+        resp = await client.post(url, json=payload, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
 
         content = ""
         for block in data.get("content", []):
@@ -280,8 +296,8 @@ class AnthropicProvider(LLMProvider):
         payload["stream"] = True
 
         model = body.get("model", self.model)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream("POST", url, json=payload, headers=headers) as resp:
+        client = get_llm_http_client()
+        async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
                 async for line in resp.aiter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -351,13 +367,13 @@ class GeminiProvider(LLMProvider):
 
     async def chat(self, body: dict, timeout: int) -> dict:
         model, payload = self._convert_to_gemini_format(body)
-        url = f"{self.base_url}/models/{model}:generateContent?key={self.api_key}"
-        headers = {"Content-Type": "application/json"}
+        url = f"{self.base_url}/models/{model}:generateContent"
+        headers = {"Content-Type": "application/json", "x-goog-api-key": self.api_key}
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+        client = get_llm_http_client()
+        resp = await client.post(url, json=payload, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
 
         content = ""
         candidates = data.get("candidates", [])
@@ -370,11 +386,11 @@ class GeminiProvider(LLMProvider):
 
     async def stream_chat(self, body: dict, timeout: int) -> AsyncIterator[str]:
         model, payload = self._convert_to_gemini_format(body)
-        url = f"{self.base_url}/models/{model}:streamGenerateContent?alt=sse&key={self.api_key}"
-        headers = {"Content-Type": "application/json"}
+        url = f"{self.base_url}/models/{model}:streamGenerateContent?alt=sse"
+        headers = {"Content-Type": "application/json", "x-goog-api-key": self.api_key}
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream("POST", url, json=payload, headers=headers) as resp:
+        client = get_llm_http_client()
+        async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
                 async for line in resp.aiter_lines():
                     if not line.startswith("data: "):
                         continue

@@ -53,6 +53,7 @@ from app.core.logging import setup_logging
 from app.core.services import ServiceRegistry, set_service_registry
 from app.core.state import set_config
 from app.core.time_util import set_configured_timezone
+from app.proxy.llm_providers import close_llm_http_client
 from app.storage.migrations import apply_startup_migrations
 from app.storage.vector_sync import VectorSyncWorker
 
@@ -102,6 +103,7 @@ async def lifespan(app: FastAPI):
     logger.info("KokoroMemo shutting down")
     await vector_sync_worker.stop()
     await runner.drain(timeout=30.0)
+    await close_llm_http_client()
     set_background_runner(None)
 
 

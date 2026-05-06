@@ -24,8 +24,8 @@ from app.memory.state_filler import StateFillerConfigView
 from app.memory.state_table_filler import fill_conversation_state_tables
 from app.memory.state_table_renderer import render_state_tables
 from app.proxy.request_parser import RequestContext, resolve_context
-from app.storage.sqlite_app import init_app_db, upsert_character, upsert_conversation
-from app.storage.sqlite_cards import init_cards_db
+from app.storage.migrations import apply_startup_migrations
+from app.storage.sqlite_app import upsert_character, upsert_conversation
 from app.storage.sqlite_conversation import (
     get_turn_count,
     init_chat_db,
@@ -34,7 +34,7 @@ from app.storage.sqlite_conversation import (
     save_raw_response,
     save_turn_and_messages,
 )
-from app.storage.sqlite_state import SQLiteStateStore, init_state_db
+from app.storage.sqlite_state import SQLiteStateStore
 
 logger = logging.getLogger("kokoromemo.pipeline.chat")
 
@@ -304,10 +304,8 @@ async def _persist_injection(ctx: RequestContext, injected_messages: list[dict],
 
 async def _persist_request(cfg, ctx: RequestContext, raw_body: dict) -> None:
     try:
-        await init_app_db(cfg.storage.sqlite.app_db)
+        await apply_startup_migrations(cfg)
         await init_chat_db(ctx.chat_db_path)
-        await init_cards_db(cfg.storage.sqlite.memory_db)
-        await init_state_db(cfg.storage.sqlite.memory_db)
         await upsert_conversation(
             cfg.storage.sqlite.app_db, ctx.conversation_id,
             ctx.user_id, ctx.character_id, ctx.client_name, ctx.conv_dir,

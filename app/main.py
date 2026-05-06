@@ -52,6 +52,7 @@ from app.core.config import load_config, resolve_config_path
 from app.core.logging import setup_logging
 from app.core.state import set_config
 from app.core.time_util import set_configured_timezone
+from app.storage.migrations import apply_startup_migrations
 
 
 @asynccontextmanager
@@ -67,6 +68,7 @@ async def lifespan(app: FastAPI):
     Path(cfg.storage.root_dir, "conversations").mkdir(parents=True, exist_ok=True)
     Path(cfg.storage.root_dir, "memory").mkdir(parents=True, exist_ok=True)
     Path(cfg.storage.root_dir, "vector_indexes").mkdir(parents=True, exist_ok=True)
+    await apply_startup_migrations(cfg)
 
     runner = BackgroundRunner(max_concurrency=8)
     set_background_runner(runner)

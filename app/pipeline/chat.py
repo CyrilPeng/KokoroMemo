@@ -12,6 +12,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.core.background import spawn_background
+from app.core.conversation_locks import get_conversation_lock, wait_for_conversation_idle
 from app.core.ids import generate_id
 from app.core.services import get_embedding_provider, get_lancedb_store
 from app.core.state import get_config
@@ -65,6 +66,7 @@ class ChatPipeline:
         raw_body: dict[str, Any] = await request.json()
         ctx = await resolve_context(request, raw_body, cfg.storage.root_dir, cfg)
         await _persist_request(cfg, ctx, deepcopy(raw_body))
+        await wait_for_conversation_idle(ctx.conversation_id)
 
         messages = deepcopy(raw_body.get("messages", []))
         self._resolve_system_variables(cfg, ctx, messages)
@@ -359,15 +361,19 @@ async def _apply_character_defaults_if_new(cfg, ctx: RequestContext) -> None:
         logger.debug("Character defaults auto-apply skipped: %s", e)
 
 
-async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list[dict], assistant_text: str, response_json: str | None, stream_text: str | None) -> None:
-    """Save response and extract memories."""
+async def _persist_response_turn(
+    ctx: RequestContext,
+    original_messages: list[dict],
+    assistant_text: str,
+    response_json: str | None,
+    stream_text: str | None,
+) -> tuple[str | None, int | None]:
     try:
         resp_id = generate_id("resp_")
         await save_raw_response(
             ctx.chat_db_path, resp_id, ctx.request_id, ctx.conversation_id,
             body_json=response_json, stream_text=stream_text,
         )
-        # 将所有消息保存为一轮对话
         all_msgs = list(original_messages)
         if assistant_text:
             all_msgs.append({"role": "assistant", "content": assistant_text})
@@ -377,16 +383,76 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
             ctx.chat_db_path, turn_id, ctx.conversation_id,
             ctx.user_id, ctx.character_id, ctx.request_id, turn_index, all_msgs,
         )
-    except Exception as e:
-        logger.warning("Failed to persist response: %s", e)
-        turn_id = None
+        return turn_id, turn_index
+    except Exception as exc:
+        logger.warning("Failed to persist response: %s", exc)
+        return None, None
 
+
+async def _schedule_post_process_turn(
+    ctx: RequestContext,
+    cfg,
+    original_messages: list[dict],
+    assistant_text: str,
+    turn_id: str | None,
+    turn_index: int | None,
+    *,
+    name: str,
+) -> None:
+    lock = await get_conversation_lock(ctx.conversation_id)
+    await lock.acquire()
+    task = spawn_background(
+        _post_process_turn_with_acquired_lock(
+            lock,
+            ctx,
+            cfg,
+            original_messages,
+            assistant_text,
+            turn_id,
+            turn_index,
+        ),
+        name=name,
+    )
+    if task is None:
+        lock.release()
+
+
+async def _post_process_turn_with_acquired_lock(
+    lock,
+    ctx: RequestContext,
+    cfg,
+    original_messages: list[dict],
+    assistant_text: str,
+    turn_id: str | None,
+    turn_index: int | None,
+) -> None:
+    try:
+        await _update_state_and_extract_memories(
+            ctx,
+            cfg,
+            original_messages,
+            assistant_text,
+            turn_id,
+            turn_index,
+        )
+    finally:
+        lock.release()
+
+
+async def _update_state_and_extract_memories(
+    ctx: RequestContext,
+    cfg,
+    original_messages: list[dict],
+    assistant_text: str,
+    turn_id: str | None,
+    turn_index: int | None,
+) -> None:
     conversation_config = None
     if cfg.memory.enabled:
         try:
             conversation_config = await SQLiteStateStore(cfg.storage.sqlite.memory_db).ensure_conversation_config(ctx.conversation_id)
-        except Exception as e:
-            logger.warning("Conversation policy loading failed during extraction (degraded): %s", e)
+        except Exception as exc:
+            logger.warning("Conversation policy loading failed during extraction (degraded): %s", exc)
 
     state_update_policy = conversation_config.state_update_policy if conversation_config else "auto"
     memory_write_policy = conversation_config.memory_write_policy if conversation_config else "candidate"
@@ -397,16 +463,16 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
         and cfg.memory.state_updater.update_after_each_turn
         and state_update_policy == "auto"
     ):
-        if assistant_text and _should_run_state_updater(cfg, turn_index if 'turn_index' in locals() else None):
+        if assistant_text and _should_run_state_updater(cfg, turn_index):
             user_msg = _latest_user_message(original_messages)
             if user_msg:
                 try:
-                    table_result = await fill_conversation_state_tables(
+                    await fill_conversation_state_tables(
                         db_path=cfg.storage.sqlite.memory_db,
                         conversation_id=ctx.conversation_id,
                         user_message=user_msg,
                         assistant_message=assistant_text,
-                        turn_id=turn_id if 'turn_id' in locals() else None,
+                        turn_id=turn_id,
                         config=StateFillerConfigView(
                             provider=cfg.memory.state_updater.provider,
                             base_url=cfg.memory.state_updater.base_url or cfg.memory.judge.base_url or cfg.llm.base_url,
@@ -419,10 +485,9 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
                         ),
                         lang=cfg.language,
                     )
-                except Exception as e:
-                    logger.warning("State updater failed: %s", e)
+                except Exception as exc:
+                    logger.warning("State updater failed: %s", exc)
 
-    # 通过卡片系统提取记忆
     if not cfg.memory.enabled or not cfg.memory.extraction_enabled:
         return
     if memory_write_policy == "disabled":
@@ -431,17 +496,14 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
     if not assistant_text:
         return
 
-    # 确保卡片数据库已初始化（可能与 _persist_request 并发）
-    await init_cards_db(cfg.storage.sqlite.memory_db)
-
     user_msg = _latest_user_message(original_messages)
-
     if not user_msg:
         return
 
     try:
         from app.memory.card_extractor import extract_and_route
         from app.memory.judge import MemoryJudgeConfigView
+
         ep = get_embedding_provider(cfg)
         store = get_lancedb_store(cfg)
         judge_config = None
@@ -450,8 +512,8 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
             if memory_write_policy == "stable_only":
                 user_rules = (
                     f"{user_rules}\n\n"
-                    "当前会话策略为 stable_only：只允许用户偏好、角色稳定设定、世界观常识、稳定关系等长期事实进入记忆候选；"
-                    "临时事件、机械状态、剧情进度、资源变化、任务进度、小人即时状态等必须判为不写入长期记忆。"
+                    "??????? stable_only??????????????????????????????????????"
+                    "????????????????????????????????????????????"
                 ).strip()
             judge_config = MemoryJudgeConfigView(
                 provider=cfg.memory.judge.provider,
@@ -480,8 +542,8 @@ async def _persist_and_extract(ctx: RequestContext, cfg, original_messages: list
             lang=cfg.language,
             discarded_keep_limit=cfg.memory.extraction.discarded_keep_limit,
         )
-    except Exception as e:
-        logger.warning("Memory extraction failed: %s", e)
+    except Exception as exc:
+        logger.warning("Memory extraction failed: %s", exc)
 
 
 def _latest_user_message(messages: list[dict]) -> str:
@@ -507,9 +569,12 @@ async def _non_stream_proxy(provider, body: dict, timeout: int, ctx: RequestCont
         if choices:
             assistant_text = choices[0].get("message", {}).get("content", "")
 
-        spawn_background(
-            _persist_and_extract(ctx, cfg, original_messages, assistant_text, json.dumps(resp_data, ensure_ascii=False), None),
-            name=f"persist_and_extract:{ctx.request_id}",
+        turn_id, turn_index = await _persist_response_turn(
+            ctx, original_messages, assistant_text, json.dumps(resp_data, ensure_ascii=False), None
+        )
+        await _schedule_post_process_turn(
+            ctx, cfg, original_messages, assistant_text, turn_id, turn_index,
+            name=f"post_process_turn:{ctx.request_id}",
         )
 
         return JSONResponse(content=resp_data, status_code=200)
@@ -543,8 +608,11 @@ async def _stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext,
         return
 
     full_text = "".join(collected_text)
-    spawn_background(
-        _persist_and_extract(ctx, cfg, original_messages, full_text, None, full_text),
-        name=f"persist_and_extract_stream:{ctx.request_id}",
+    turn_id, turn_index = await _persist_response_turn(
+        ctx, original_messages, full_text, None, full_text
+    )
+    await _schedule_post_process_turn(
+        ctx, cfg, original_messages, full_text, turn_id, turn_index,
+        name=f"post_process_turn_stream:{ctx.request_id}",
     )
 

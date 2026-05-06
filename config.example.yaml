@@ -138,7 +138,6 @@ memory:
       preference: 5
   state_updater:
     enabled: true
-    mode: "model_template"  # model_template | rule_only
     update_after_each_turn: true
     update_every_n_turns: 1
     min_confidence: 0.55

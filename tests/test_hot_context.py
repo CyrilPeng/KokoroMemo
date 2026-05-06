@@ -11,7 +11,6 @@ from app.memory.query_builder import RetrievalQuery
 from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
 from app.memory.state_projector import project_cards_to_state
 from app.memory.state_filler import StateFillerConfigView, fill_conversation_state
-from app.memory.state_updater import rule_based_state_updates
 from app.memory.state_injector import inject_state_board
 from app.memory.state_renderer import HOT_CONTEXT_HEADER, render_state_board
 
@@ -493,19 +492,6 @@ def test_retrieval_gate_new_session():
     )
     assert decision.should_retrieve is True
     assert "new_session" in decision.reason
-
-
-def test_state_updater_rule_location_and_promise():
-    updates = rule_based_state_updates("我们去车站吧，我答应会买票", "好，下一步需要确认发车时间。")
-    categories = {update.category for update in updates}
-    assert "location" in categories
-    assert "promise" in categories
-    assert "main_quest" in categories
-
-
-def test_state_updater_rule_boundary():
-    updates = rule_based_state_updates("不要替我决定角色行动", "明白。")
-    assert any(update.category == "boundary" for update in updates)
 
 
 @pytest.mark.asyncio

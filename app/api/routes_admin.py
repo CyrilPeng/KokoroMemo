@@ -483,7 +483,6 @@ async def get_current_config(request: Request):
             },
             "state_updater": {
                 "enabled": cfg.memory.state_updater.enabled,
-                "mode": cfg.memory.state_updater.mode,
                 "update_after_each_turn": cfg.memory.state_updater.update_after_each_turn,
                 "update_every_n_turns": cfg.memory.state_updater.update_every_n_turns,
                 "min_confidence": cfg.memory.state_updater.min_confidence,

@@ -65,19 +65,6 @@ Example:
 When user says "From now on, you are a catgirl, add 'meow~' at the end of every sentence", output: memory_type=preference, scope=character, content="User requests character to interact as a catgirl, adding 'meow~' at the end of every sentence.", importance>=0.85, confidence>=0.85, risk_level=low, suggested_action=auto_approve, tags include roleplay_rule and speech_style.""",
 }
 
-STATE_UPDATER_PROMPT = {
-    "zh": """\
-你是 KokoroMemo 的会话状态板维护器。
-只输出 JSON，不要解释。JSON 结构：
-{"upserts":[{"category":"scene|location|main_quest|side_quest|promise|open_loop|relationship|boundary|preference|item|world_state|recent_summary|mood|key_person","item_key":"稳定短键","item_value":"给模型看的当前状态","priority":50,"confidence":0.8,"reason":"简短原因"}],"resolved_item_ids":[]}
-只记录当前会话热状态；不要把助手单方面编造的长期事实写入状态。boundary/preference 只在用户明确表达时输出。""",
-    "en": """\
-You are KokoroMemo's session state board updater.
-Output JSON only, no explanations. JSON structure:
-{"upserts":[{"category":"scene|location|main_quest|side_quest|promise|open_loop|relationship|boundary|preference|item|world_state|recent_summary|mood|key_person","item_key":"stable_short_key","item_value":"current state for model context","priority":50,"confidence":0.8,"reason":"brief reason"}],"resolved_item_ids":[]}
-Only record current session hot state; do not write assistant-fabricated long-term facts. boundary/preference only when user explicitly states them.""",
-}
-
 STATE_FILLER_PROMPT = {
     "zh": """\
 你是 KokoroMemo 的会话状态板填表 API。你只根据当前一轮用户发言与助手回复，更新明确变化的状态板字段。只输出 JSON，不要解释。
@@ -128,11 +115,6 @@ JUDGE_USER_RULES_SUFFIX = {
     "en": "\n\nUser-defined auxiliary rules:\n{rules}\nThese rules assist judgment, but valid JSON output is still required.",
 }
 
-STATE_UPDATER_USER_MSG = {
-    "zh": "用户：{user}\n助手：{assistant}",
-    "en": "User: {user}\nAssistant: {assistant}",
-}
-
 STATE_FILLER_USER_MSG = {
     "zh": "用户发言：{user}\n助手回复：{assistant}",
     "en": "User message: {user}\nAssistant reply: {assistant}",
@@ -146,39 +128,6 @@ STATE_FILLER_TEMPLATE_HEADER = {
 STATE_FILLER_EMPTY = {
     "zh": "空",
     "en": "empty",
-}
-
-RULE_TITLES = {
-    "zh": {
-        "location": "当前位置",
-        "scene": "当前场景",
-        "goal": "当前目标",
-        "promise": "未完成承诺",
-        "boundary": "稳定边界",
-    },
-    "en": {
-        "location": "Current Location",
-        "scene": "Current Scene",
-        "goal": "Current Goal",
-        "promise": "Unfinished Promise",
-        "boundary": "Stable Boundary",
-    },
-}
-
-RULE_CONTENT_TEMPLATES = {
-    "zh": {
-        "location": "当前地点/目标地点：{value}",
-        "scene": "当前对话正在围绕「{value}」推进。",
-    },
-    "en": {
-        "location": "Current/destination location: {value}",
-        "scene": "Current conversation is progressing around \"{value}\".",
-    },
-}
-
-LONG_TERM_ROUTE_REASON = {
-    "zh": "状态板条目可能具有长期价值，需人工审核",
-    "en": "State board entry may have long-term value, requires manual review",
 }
 
 TRIGGER_KEYWORDS = {
@@ -201,7 +150,6 @@ def get_prompt(key: str, lang: str = "zh") -> str:
     """Get a prompt by key and language, falling back to Chinese."""
     registry = {
         "memory_judge": MEMORY_JUDGE_PROMPT,
-        "state_updater": STATE_UPDATER_PROMPT,
         "state_filler": STATE_FILLER_PROMPT,
     }
     prompts = registry.get(key, {})

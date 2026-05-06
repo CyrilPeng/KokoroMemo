@@ -479,7 +479,7 @@ ConversationConfig
 
 ### 操作式填充流程
 
-每轮对话完成后，非 `rule_only` 模式优先调用 `state_table_filler`：
+每轮对话完成后调用 `state_table_filler`：
 
 1. 读取默认表格模板和当前会话已有状态行。
 2. 构造系统提示词，列出可用表、列定义和已有行。
@@ -596,8 +596,7 @@ conversation_state_items
 保留原因：
 
 - 不破坏 v0.5.x 以前已有会话状态。
-- 支持 `rule_only` 和旧投影逻辑。
-- 当 v2 状态为空时仍可注入旧状态板。
+- 支持旧投影逻辑（`state_projector`）。
 - 后续可做显式迁移工具，而不是启动时自动破坏性迁移。
 
 ## 9. 检索门控（Retrieval Gate）

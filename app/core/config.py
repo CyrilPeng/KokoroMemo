@@ -166,7 +166,6 @@ class HotContextConfig:
 @dataclass
 class StateUpdaterConfig:
     enabled: bool = True
-    mode: str = "model_template"
     update_after_each_turn: bool = True
     update_every_n_turns: int = 1
     min_confidence: float = 0.55

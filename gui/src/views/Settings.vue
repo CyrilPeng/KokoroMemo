@@ -382,7 +382,6 @@ const config = ref({
   judge_user_rules: '',
   judge_prompt: '',
   state_filler_enabled: true,
-  state_filler_mode: 'model_template',
   state_filler_provider: 'openai_compatible',
   state_filler_base_url: '',
   state_filler_api_key: '',
@@ -690,7 +689,6 @@ const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform
   ['judge_user_rules',                   'memory.judge.user_rules',                           '', (v: any) => (Array.isArray(v) ? v : []).join('\n')],
   ['judge_prompt',                       'memory.judge.prompt',                               ''],
   ['state_filler_enabled',               'memory.state_updater.enabled',                      true],
-  ['state_filler_mode',                  'memory.state_updater.mode',                         'model_template'],
   ['state_filler_provider',              'memory.state_updater.provider',                     'openai_compatible'],
   ['state_filler_base_url',              'memory.state_updater.base_url',                     ''],
   ['state_filler_api_key',               'memory.state_updater.api_key',                      ''],
@@ -851,7 +849,6 @@ async function saveConfig(): Promise<boolean> {
         },
         state_updater: {
           enabled: config.value.state_filler_enabled,
-          mode: config.value.state_filler_mode,
           update_after_each_turn: true,
           update_every_n_turns: 1,
           min_confidence: config.value.state_filler_min_confidence,

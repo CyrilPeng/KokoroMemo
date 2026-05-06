@@ -293,7 +293,6 @@ async def test_state_updater_failure_doesnt_affect_chat(monkeypatch):
         async def fail_updater(*args, **kwargs):
             raise RuntimeError("state updater crashed")
 
-        monkeypatch.setattr("app.api.routes_openai.update_conversation_state", fail_updater)
         monkeypatch.setattr("app.api.routes_openai.fill_conversation_state_tables", fail_updater)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/v1/chat/completions", json={

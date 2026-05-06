@@ -19,7 +19,7 @@ from app.memory.card_injector import inject_cards
 from app.memory.query_builder import build_retrieval_query
 from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
 from app.memory.state_injector import inject_state_board
-from app.memory.state_schema import ConversationStateItem, StateRenderOptions
+from app.memory.state_schema import StateRenderOptions
 from app.memory.state_filler import StateFillerConfigView
 from app.memory.state_table_filler import fill_conversation_state_tables
 from app.memory.state_table_renderer import render_state_tables
@@ -99,7 +99,8 @@ async def chat_completions(request: Request):
             messages[i] = dict(msg)
             messages[i]["content"] = resolve_variables(msg["content"], **var_kwargs)
 
-    state_items: list[ConversationStateItem] = []
+    state_row_count = 0
+    avg_state_confidence: float | None = None
     state_store: SQLiteStateStore | None = None
     conversation_config = None
     if cfg.memory.enabled:
@@ -117,19 +118,21 @@ async def chat_completions(request: Request):
         try:
             if state_store is None:
                 state_store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
-            state_items = await state_store.list_active_items(ctx.conversation_id)
             table_template = await state_store.get_conversation_table_template(ctx.conversation_id)
             table_rows = await state_store.list_table_rows(
                 ctx.conversation_id,
                 table_template.template_id if table_template else None,
             )
+            active_rows = [row for row in table_rows if row.status == "active"]
+            state_row_count = len(active_rows)
+            if active_rows:
+                avg_state_confidence = sum(row.confidence for row in active_rows) / len(active_rows)
             render_options = StateRenderOptions(
                 max_chars=cfg.memory.hot_context.max_chars,
             )
             state_text = render_state_tables(table_template, table_rows, render_options, lang=cfg.language)
             if state_text:
                 injected_messages = inject_state_board(injected_messages, state_text)
-                await state_store.mark_items_injected([item.item_id for item in state_items if item.item_id])
         except Exception as e:
             logger.warning("Hot context injection failed (degraded): %s", e)
 
@@ -145,7 +148,8 @@ async def chat_completions(request: Request):
                 decision = decide_retrieval(
                     RetrievalGateInput(
                         query=query,
-                        state_items=state_items,
+                        state_row_count=state_row_count,
+                        avg_state_confidence=avg_state_confidence,
                         turn_index=turn_index,
                         mode=cfg.memory.retrieval_gate.mode,
                         vector_search_on_new_session=cfg.memory.retrieval_gate.vector_search_on_new_session,

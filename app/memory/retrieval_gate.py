@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.memory.query_builder import RetrievalQuery
-from app.memory.state_schema import ConversationStateItem
 
 
 @dataclass
 class RetrievalGateInput:
     query: RetrievalQuery
-    state_items: list[ConversationStateItem] = field(default_factory=list)
+    state_row_count: int = 0
+    avg_state_confidence: float | None = None
     turn_index: int | None = None
     mode: str = "auto"
     vector_search_on_new_session: bool = True
@@ -35,19 +35,20 @@ class RetrievalGateDecision:
 def decide_retrieval(gate_input: RetrievalGateInput) -> RetrievalGateDecision:
     """Decide whether to run expensive vector retrieval."""
     mode = (gate_input.mode or "auto").lower()
-    stats = _state_stats(gate_input.state_items)
+    state_count = gate_input.state_row_count
+    avg_confidence = gate_input.avg_state_confidence
     if mode == "always":
-        return _decision(True, "mode_always", ["mode_always"], mode, stats)
+        return _decision(True, "mode_always", ["mode_always"], mode, state_count, avg_confidence)
     if mode == "never":
-        return _decision(False, "mode_never", ["mode_never"], mode, stats)
+        return _decision(False, "mode_never", ["mode_never"], mode, state_count, avg_confidence)
 
     latest_user_text = (gate_input.query.latest_user_text or "").strip()
 
     if mode == "keyword_only":
         for keyword in gate_input.trigger_keywords:
             if keyword and keyword in latest_user_text:
-                return _decision(True, f"keyword:{keyword}", [f"keyword:{keyword}"], mode, stats)
-        return _decision(False, "no_keyword_match", ["no_keyword_match"], mode, stats)
+                return _decision(True, f"keyword:{keyword}", [f"keyword:{keyword}"], mode, state_count, avg_confidence)
+        return _decision(False, "no_keyword_match", ["no_keyword_match"], mode, state_count, avg_confidence)
 
     reasons: list[str] = []
 
@@ -64,29 +65,21 @@ def decide_retrieval(gate_input: RetrievalGateInput) -> RetrievalGateDecision:
         if gate_input.turn_index % every_n == 0:
             reasons.append(f"periodic:{every_n}")
 
-    avg_confidence = stats[1]
-    if gate_input.state_items and avg_confidence is not None:
+    if state_count > 0 and avg_confidence is not None:
         if avg_confidence < gate_input.vector_search_when_state_confidence_below:
             reasons.append("low_state_confidence")
 
     if reasons:
-        return _decision(True, reasons[0], reasons, mode, stats)
+        return _decision(True, reasons[0], reasons, mode, state_count, avg_confidence)
 
     text_len = len(latest_user_text)
     if text_len < gate_input.skip_when_latest_user_text_chars_below:
-        return _decision(False, "short_latest_user_text", ["short_latest_user_text"], mode, stats)
+        return _decision(False, "short_latest_user_text", ["short_latest_user_text"], mode, state_count, avg_confidence)
 
-    if gate_input.skip_when_state_is_sufficient and gate_input.state_items:
-        return _decision(False, "state_sufficient", ["state_sufficient"], mode, stats)
+    if gate_input.skip_when_state_is_sufficient and state_count > 0:
+        return _decision(False, "state_sufficient", ["state_sufficient"], mode, state_count, avg_confidence)
 
-    return _decision(True, "no_state_fallback", ["no_state_fallback"], mode, stats)
-
-
-def _state_stats(items: list[ConversationStateItem]) -> tuple[int, float | None]:
-    active_items = [item for item in items if item.status == "active"]
-    if not active_items:
-        return 0, None
-    return len(active_items), sum(item.confidence for item in active_items) / len(active_items)
+    return _decision(True, "no_state_fallback", ["no_state_fallback"], mode, state_count, avg_confidence)
 
 
 def _decision(
@@ -94,13 +87,14 @@ def _decision(
     reason: str,
     reasons: list[str],
     mode: str,
-    stats: tuple[int, float | None],
+    state_count: int,
+    avg_confidence: float | None,
 ) -> RetrievalGateDecision:
     return RetrievalGateDecision(
         should_retrieve=should_retrieve,
         reason=reason,
         reasons=reasons,
         mode=mode,
-        state_item_count=stats[0],
-        avg_state_confidence=stats[1],
+        state_item_count=state_count,
+        avg_state_confidence=avg_confidence,
     )

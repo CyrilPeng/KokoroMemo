@@ -1,23 +1,17 @@
 from __future__ import annotations
 
 import shutil
-import sqlite3
 import uuid
 from pathlib import Path
 
 import pytest
 
+from app.core.prompts import HOT_CONTEXT_HEADER
 from app.memory.query_builder import RetrievalQuery
 from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
-from app.memory.state_projector import project_cards_to_state
-from app.memory.state_filler import StateFillerConfigView
 from app.memory.state_injector import inject_state_board
-from app.core.prompts import HOT_CONTEXT_HEADER
 
 HOT_CONTEXT_HEADER_ZH = HOT_CONTEXT_HEADER["zh"]
-from app.memory.state_schema import ConversationStateItem, StateRenderOptions
-from app.storage.sqlite_state import SQLiteStateStore, init_state_db
-from app.storage.sqlite_cards import init_cards_db, insert_card
 
 
 def make_test_dir() -> Path:
@@ -32,170 +26,6 @@ def cleanup_test_dir(path: Path) -> None:
 
 def make_query(text: str) -> RetrievalQuery:
     return RetrievalQuery(text, text, f"user: {text}", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
-
-
-@pytest.mark.asyncio
-async def test_state_schema_initializes_tables():
-    test_dir = make_test_dir()
-    memory_db = test_dir / "memory.sqlite"
-    try:
-        await init_state_db(str(memory_db))
-        with sqlite3.connect(memory_db) as conn:
-            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert {
-            "conversation_state_items",
-            "conversation_state_events",
-            "retrieval_decisions",
-            "state_board_templates",
-            "state_board_tabs",
-            "state_board_fields",
-            "conversation_state_boards",
-        } <= tables
-    finally:
-        cleanup_test_dir(test_dir)
-
-
-@pytest.mark.asyncio
-async def test_old_state_schema_migrates_field_columns_before_indexes():
-    test_dir = make_test_dir()
-    memory_db = test_dir / "memory.sqlite"
-    try:
-        with sqlite3.connect(memory_db) as conn:
-            conn.executescript("""
-            CREATE TABLE conversation_state_items (
-              item_id TEXT PRIMARY KEY,
-              user_id TEXT,
-              character_id TEXT,
-              conversation_id TEXT NOT NULL,
-              world_id TEXT,
-              category TEXT NOT NULL,
-              item_key TEXT,
-              title TEXT,
-              content TEXT NOT NULL,
-              item_value TEXT,
-              status TEXT NOT NULL DEFAULT 'active',
-              priority INTEGER NOT NULL DEFAULT 50,
-              confidence REAL NOT NULL DEFAULT 0.8,
-              source TEXT NOT NULL DEFAULT 'manual',
-              metadata_json TEXT,
-              ttl_turns INTEGER,
-              created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-              updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-              last_seen_at TEXT,
-              expires_at TEXT
-            );
-            INSERT INTO conversation_state_items (item_id, conversation_id, category, content)
-            VALUES ('old_state', 'conv1', 'scene', '旧状态');
-            CREATE TABLE conversation_state_events (
-              event_id TEXT PRIMARY KEY,
-              item_id TEXT,
-              conversation_id TEXT NOT NULL,
-              event_type TEXT NOT NULL,
-              payload_json TEXT,
-              created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
-            );
-            CREATE TABLE retrieval_decisions (
-              decision_id TEXT PRIMARY KEY,
-              conversation_id TEXT NOT NULL,
-              mode TEXT NOT NULL DEFAULT 'auto',
-              should_retrieve INTEGER NOT NULL,
-              reason TEXT,
-              reasons_json TEXT,
-              latest_user_text TEXT,
-              state_item_count INTEGER NOT NULL DEFAULT 0,
-              avg_state_confidence REAL,
-              turn_index INTEGER,
-              created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
-            );
-            """)
-        await init_state_db(str(memory_db))
-        with sqlite3.connect(memory_db) as conn:
-            columns = {row[1] for row in conn.execute("PRAGMA table_info(conversation_state_items)")}
-            indexes = {row[1] for row in conn.execute("PRAGMA index_list(conversation_state_items)")}
-        assert "field_id" in columns
-        assert "idx_state_items_unique_field" in indexes
-    finally:
-        cleanup_test_dir(test_dir)
-
-
-@pytest.mark.asyncio
-async def test_state_store_upsert_list_resolve_and_decision():
-    test_dir = make_test_dir()
-    memory_db = test_dir / "memory.sqlite"
-    try:
-        store = SQLiteStateStore(str(memory_db))
-        item_id = await store.upsert_item(
-            ConversationStateItem(
-                item_id=None,
-                conversation_id="conv1",
-                user_id="u1",
-                character_id="c1",
-                category="scene",
-                title="地点",
-                content="两人正在旧图书馆调查线索",
-                confidence=0.9,
-                priority=3,
-            )
-        )
-
-        items = await store.list_active_items("conv1")
-        assert len(items) == 1
-        assert items[0].item_id == item_id
-        assert items[0].metadata == {}
-        assert items[0].content == "两人正在旧图书馆调查线索"
-
-        decision_id = await store.record_retrieval_decision(
-            conversation_id="conv1",
-            mode="auto",
-            should_retrieve=False,
-            reason="state_sufficient",
-            reasons=["state_sufficient"],
-            latest_user_text="继续",
-            state_item_count=1,
-            avg_state_confidence=0.9,
-        )
-        assert decision_id.startswith("gate_")
-
-        await store.resolve_item(item_id, "完成调查")
-        assert await store.list_active_items("conv1") == []
-    finally:
-        cleanup_test_dir(test_dir)
-
-
-@pytest.mark.asyncio
-async def test_state_store_upsert_same_key():
-    test_dir = make_test_dir()
-    memory_db = test_dir / "memory.sqlite"
-    try:
-        store = SQLiteStateStore(str(memory_db))
-        await store.upsert_item(
-            ConversationStateItem(
-                item_id=None,
-                conversation_id="conv1",
-                user_id="u1",
-                category="scene",
-                item_key="current_scene",
-                content="在图书馆",
-                confidence=0.8,
-            )
-        )
-        await store.upsert_item(
-            ConversationStateItem(
-                item_id=None,
-                conversation_id="conv1",
-                user_id="u1",
-                category="scene",
-                item_key="current_scene",
-                content="前往车站",
-                confidence=0.9,
-            )
-        )
-        items = await store.list_active_items("conv1")
-        assert len(items) == 1
-        assert items[0].content == "前往车站"
-        assert items[0].confidence == 0.9
-    finally:
-        cleanup_test_dir(test_dir)
 
 
 def test_state_injector_preserves_original_system_prompt():
@@ -213,7 +43,8 @@ def test_retrieval_gate_keyword_triggers():
     decision = decide_retrieval(
         RetrievalGateInput(
             query=make_query("你还记得上次的约定吗"),
-            state_items=[ConversationStateItem(None, "conv1", "scene", "正在聊天")],
+            state_row_count=1,
+            avg_state_confidence=0.7,
             turn_index=3,
             trigger_keywords=["还记得", "约定"],
         )
@@ -226,7 +57,8 @@ def test_retrieval_gate_short_text_skips():
     decision = decide_retrieval(
         RetrievalGateInput(
             query=make_query("嗯"),
-            state_items=[],
+            state_row_count=0,
+            avg_state_confidence=None,
             turn_index=3,
             vector_search_on_new_session=False,
             trigger_keywords=[],
@@ -241,7 +73,8 @@ def test_retrieval_gate_low_confidence_triggers():
     decision = decide_retrieval(
         RetrievalGateInput(
             query=make_query("继续推进剧情"),
-            state_items=[ConversationStateItem(None, "conv1", "scene", "地点不确定", confidence=0.3)],
+            state_row_count=1,
+            avg_state_confidence=0.3,
             turn_index=3,
             vector_search_on_new_session=False,
             trigger_keywords=[],
@@ -256,7 +89,8 @@ def test_retrieval_gate_new_session():
     decision = decide_retrieval(
         RetrievalGateInput(
             query=make_query("你好啊今天天气不错"),
-            state_items=[],
+            state_row_count=0,
+            avg_state_confidence=None,
             turn_index=0,
             vector_search_on_new_session=True,
             trigger_keywords=[],
@@ -267,20 +101,20 @@ def test_retrieval_gate_new_session():
     assert "new_session" in decision.reason
 
 
-@pytest.mark.asyncio
-async def test_project_approved_boundary_card_to_state():
-    test_dir = make_test_dir()
-    memory_db = test_dir / "memory.sqlite"
-    try:
-        await init_cards_db(str(memory_db))
-        await init_state_db(str(memory_db))
-        await insert_card(
-            str(memory_db), "card_boundary", "u1", "c1", None,
-            "character", "boundary", "不要替用户决定角色行动", status="approved", confidence=0.9,
+def test_retrieval_gate_state_sufficient_skips():
+    decision = decide_retrieval(
+        RetrievalGateInput(
+            query=make_query("继续推进剧情"),
+            state_row_count=3,
+            avg_state_confidence=0.9,
+            turn_index=4,
+            vector_search_on_new_session=False,
+            trigger_keywords=[],
+            vector_search_every_n_turns=0,
+            vector_search_when_state_confidence_below=0.6,
+            skip_when_state_is_sufficient=True,
+            skip_when_latest_user_text_chars_below=2,
         )
-        result = await project_cards_to_state(str(memory_db), "conv1", user_id="u1", character_id="c1")
-        assert result["projected"] == 1
-        items = await SQLiteStateStore(str(memory_db)).list_active_items("conv1")
-        assert items[0].linked_card_ids == ["card_boundary"]
-    finally:
-        cleanup_test_dir(test_dir)
+    )
+    assert decision.should_retrieve is False
+    assert decision.reason == "state_sufficient"

@@ -454,9 +454,6 @@ async def get_current_config(request: Request):
                 "enabled": cfg.memory.hot_context.enabled,
                 "inject_always": cfg.memory.hot_context.inject_always,
                 "max_chars": cfg.memory.hot_context.max_chars,
-                "include_sections": dict(cfg.memory.hot_context.include_sections),
-                "section_order": list(cfg.memory.hot_context.section_order),
-                "max_items_per_section": dict(cfg.memory.hot_context.max_items_per_section),
             },
             "retrieval_gate": {
                 "enabled": cfg.memory.retrieval_gate.enabled,
@@ -2156,12 +2153,7 @@ async def preview_state_board(conversation_id: str, request: Request):
     table_template = await store.get_conversation_table_template(conversation_id)
     table_rows = await store.list_table_rows(conversation_id, table_template.template_id if table_template else None)
     hot = cfg.memory.hot_context
-    options = StateRenderOptions(
-        max_chars=hot.max_chars,
-        include_sections=hot.include_sections,
-        section_order=hot.section_order,
-        max_items_per_section=hot.max_items_per_section,
-    )
+    options = StateRenderOptions(max_chars=hot.max_chars)
     text = render_state_tables(table_template, table_rows, options, lang=cfg.language)
     return {
         "preview": text,

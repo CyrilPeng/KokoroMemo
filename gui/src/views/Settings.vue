@@ -428,9 +428,6 @@ const config = ref({
   hc_enabled: true,
   hc_inject_always: true,
   hc_max_chars: 1200,
-  hc_include_sections: {} as Record<string, boolean>,
-  hc_section_order: [] as string[],
-  hc_max_items: {} as Record<string, number>,
 })
 
 const forwardModeOptions = computed(() => [
@@ -444,12 +441,6 @@ const providerOptions = computed(() => [
   { label: 'Anthropic Claude', value: 'anthropic' },
   { label: 'Google Gemini', value: 'gemini' },
 ])
-
-const HOT_CONTEXT_SECTION_KEYS = [
-  'boundary', 'scene', 'location', 'key_person', 'relationship',
-  'main_quest', 'side_quest', 'promise', 'open_loop', 'item',
-  'world_state', 'recent_summary', 'mood', 'preference',
-]
 
 const retrievalGateModes = computed(() => [
   { label: t('settings.adv.gateModeAuto'), value: 'auto' },
@@ -475,42 +466,6 @@ const advancedMenuOptions = computed(() => [
   { label: t('settings.adv.scoring'), key: 'scoring' },
   { label: t('settings.adv.retrievalGate'), key: 'gate' },
   { label: t('settings.adv.hotContext'), key: 'hotContext' },
-])
-
-const hotContextRows = computed(() =>
-  HOT_CONTEXT_SECTION_KEYS.map((key) => ({
-    key,
-    label: t(`settings.adv.section.${key}`),
-    enabled: config.value.hc_include_sections[key] !== false,
-    max: config.value.hc_max_items[key] ?? 5,
-  }))
-)
-
-const hotContextColumns = computed(() => [
-  {
-    title: t('settings.adv.hcColEnabled'),
-    key: 'enabled',
-    width: 80,
-    render: (row: any) => h(NSwitch, {
-      size: 'small',
-      value: row.enabled,
-      'onUpdate:value': (v: boolean) => { config.value.hc_include_sections[row.key] = v },
-    }),
-  },
-  { title: t('settings.adv.hcColSection'), key: 'label', minWidth: 140 },
-  {
-    title: t('settings.adv.hcColMax'),
-    key: 'max',
-    width: 130,
-    render: (row: any) => h(NInputNumber, {
-      size: 'small',
-      value: row.max,
-      min: 0,
-      max: 50,
-      style: 'width: 100%;',
-      'onUpdate:value': (v: number | null) => { config.value.hc_max_items[row.key] = v ?? 5 },
-    }),
-  },
 ])
 
 const judgeModeOptions = computed(() => [
@@ -638,10 +593,6 @@ function applyConfigToForm(data: any) {
   // 映射表中不存在的特殊情况
   const rg = data.memory?.retrieval_gate || {}
   config.value.rg_trigger_keywords = Array.isArray(rg.trigger_keywords) ? [...rg.trigger_keywords] : []
-  const hc = data.memory?.hot_context || {}
-  config.value.hc_include_sections = { ...(hc.include_sections || {}) }
-  config.value.hc_section_order = Array.isArray(hc.section_order) ? [...hc.section_order] : []
-  config.value.hc_max_items = { ...(hc.max_items_per_section || {}) }
   timezone.value = data.server?.timezone || ''
   if (data.server?.actual_port) {
     actualServerPort.value = data.server.actual_port
@@ -831,9 +782,6 @@ async function saveConfig(): Promise<boolean> {
           enabled: config.value.hc_enabled,
           inject_always: config.value.hc_inject_always,
           max_chars: config.value.hc_max_chars,
-          include_sections: config.value.hc_include_sections,
-          section_order: config.value.hc_section_order,
-          max_items_per_section: config.value.hc_max_items,
         },
         judge: {
           enabled: config.value.judge_enabled,
@@ -1560,10 +1508,6 @@ onMounted(() => {
                   <NFormItem :label="$t('settings.adv.hcInjectAlways')"><NSwitch v-model:value="config.hc_inject_always" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.hcMaxChars')"><NInputNumber v-model:value="config.hc_max_chars" :min="100" :max="10000" :step="100" style="width: 200px;" /></NFormItem>
                 </NForm>
-                <div style="margin-top: 12px;">
-                  <p class="adv-hint" style="margin-bottom: 8px;">{{ $t('settings.adv.hcSections') }}</p>
-                  <NDataTable :columns="hotContextColumns" :data="hotContextRows" :pagination="false" :bordered="false" size="small" />
-                </div>
               </div>
             </div>
           </div>

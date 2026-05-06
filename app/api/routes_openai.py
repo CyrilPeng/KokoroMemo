@@ -125,9 +125,6 @@ async def chat_completions(request: Request):
             )
             render_options = StateRenderOptions(
                 max_chars=cfg.memory.hot_context.max_chars,
-                include_sections=cfg.memory.hot_context.include_sections,
-                section_order=cfg.memory.hot_context.section_order,
-                max_items_per_section=cfg.memory.hot_context.max_items_per_section,
             )
             state_text = render_state_tables(table_template, table_rows, render_options, lang=cfg.language)
             if state_text:

@@ -91,51 +91,6 @@ memory:
     enabled: true
     inject_always: true
     max_chars: 1200
-    include_sections:
-      scene: true
-      key_person: true
-      main_quest: true
-      side_quest: true
-      promise: true
-      open_loop: true
-      relationship: true
-      boundary: true
-      preference: true
-      location: true
-      item: true
-      world_state: true
-      recent_summary: true
-      mood: true
-    section_order:
-      - boundary
-      - scene
-      - location
-      - key_person
-      - relationship
-      - main_quest
-      - side_quest
-      - promise
-      - open_loop
-      - item
-      - world_state
-      - recent_summary
-      - mood
-      - preference
-    max_items_per_section:
-      boundary: 5
-      scene: 6
-      location: 4
-      key_person: 8
-      relationship: 4
-      main_quest: 5
-      side_quest: 5
-      promise: 6
-      open_loop: 6
-      item: 6
-      world_state: 5
-      recent_summary: 3
-      mood: 3
-      preference: 5
   state_updater:
     enabled: true
     update_after_each_turn: true

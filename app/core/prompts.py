@@ -65,44 +65,9 @@ Example:
 When user says "From now on, you are a catgirl, add 'meow~' at the end of every sentence", output: memory_type=preference, scope=character, content="User requests character to interact as a catgirl, adding 'meow~' at the end of every sentence.", importance>=0.85, confidence>=0.85, risk_level=low, suggested_action=auto_approve, tags include roleplay_rule and speech_style.""",
 }
 
-STATE_FILLER_PROMPT = {
-    "zh": """\
-你是 KokoroMemo 的会话状态板填表 API。你只根据当前一轮用户发言与助手回复，更新明确变化的状态板字段。只输出 JSON，不要解释。
-输出格式：{"updates":[{"field_key":"字段 key","value":"应写入状态板的简洁中文内容","confidence":0.0,"reason":"简短原因"}]}
-规则：
-1. 只能填写"可填写字段"中列出的 field_key，不要创造新字段。
-2. 只在对话明确表达、确认或强烈暗示状态变化时更新；不确定则不输出。
-3. 用户要求角色身份、扮演方式、固定句尾、口癖、语气规则时，优先写入 speech_habit；如果模板有 roleplay_persona 字段，也要写入角色身份/扮演设定。
-4. 例如"你是一只猫娘，每句话末尾加上喵~"应写入 speech_habit="角色以猫娘方式说话，每句话末尾加上'喵~'"。
-5. value 写成当前状态，不要写推理过程。
-6. 如果当前值仍然正确且没有变化，可以不输出。
-7. 不处理长期记忆卡片，只维护当前会话热状态。""",
-    "en": """\
-You are KokoroMemo's session state board form-filling API. Based on the current user message and assistant reply, update only fields with clear changes. Output JSON only, no explanations.
-Output format: {"updates":[{"field_key":"field_key","value":"concise current state to write","confidence":0.0,"reason":"brief reason"}]}
-Rules:
-1. Only fill field_keys listed in "writable fields", do not create new fields.
-2. Only update when conversation clearly states, confirms, or strongly implies a state change; if uncertain, do not output.
-3. When user specifies character identity, roleplay style, catchphrases, or tone rules, write to speech_habit first; if template has roleplay_persona field, also write character identity/roleplay settings.
-4. E.g. "You are a catgirl, add 'meow~' at the end" should write speech_habit="Character speaks as catgirl, adding 'meow~' at end of every sentence".
-5. Write value as current state, not reasoning process.
-6. If current value is still correct with no change, you may omit it.
-7. Do not handle long-term memory cards, only maintain current session hot state.""",
-}
-
 HOT_CONTEXT_HEADER = {
     "zh": "【KokoroMemo 会话状态板】",
     "en": "[KokoroMemo Session State Board]",
-}
-
-HOT_CONTEXT_INTRO = {
-    "zh": "以下是当前会话的热状态，仅用于保持当前剧情与互动连续性：",
-    "en": "The following is the current session hot state, used only to maintain narrative and interaction continuity:",
-}
-
-HOT_CONTEXT_TEMPLATE_INTRO = {
-    "zh": "当前状态板模板：{name}。以下内容用于保持当前剧情、任务和互动连续性：",
-    "en": "Current state board template: {name}. The following maintains narrative, quest, and interaction continuity:",
 }
 
 JUDGE_USER_PREFIX = {
@@ -113,21 +78,6 @@ JUDGE_USER_PREFIX = {
 JUDGE_USER_RULES_SUFFIX = {
     "zh": "\n\n用户自定义辅助规则：\n{rules}\n这些规则用于辅助判断，但仍必须输出合法 JSON。",
     "en": "\n\nUser-defined auxiliary rules:\n{rules}\nThese rules assist judgment, but valid JSON output is still required.",
-}
-
-STATE_FILLER_USER_MSG = {
-    "zh": "用户发言：{user}\n助手回复：{assistant}",
-    "en": "User message: {user}\nAssistant reply: {assistant}",
-}
-
-STATE_FILLER_TEMPLATE_HEADER = {
-    "zh": "\n\n状态板模板：{name}\n可填写字段：\n",
-    "en": "\n\nState board template: {name}\nWritable fields:\n",
-}
-
-STATE_FILLER_EMPTY = {
-    "zh": "空",
-    "en": "empty",
 }
 
 TRIGGER_KEYWORDS = {
@@ -150,7 +100,6 @@ def get_prompt(key: str, lang: str = "zh") -> str:
     """Get a prompt by key and language, falling back to Chinese."""
     registry = {
         "memory_judge": MEMORY_JUDGE_PROMPT,
-        "state_filler": STATE_FILLER_PROMPT,
     }
     prompts = registry.get(key, {})
     return prompts.get(lang, prompts.get("zh", ""))

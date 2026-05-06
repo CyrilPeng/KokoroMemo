@@ -113,54 +113,6 @@ class HotContextConfig:
     enabled: bool = True
     inject_always: bool = True
     max_chars: int = 1200
-    include_sections: dict[str, bool] = field(default_factory=lambda: {
-        "scene": True,
-        "key_person": True,
-        "main_quest": True,
-        "side_quest": True,
-        "promise": True,
-        "open_loop": True,
-        "relationship": True,
-        "boundary": True,
-        "preference": True,
-        "location": True,
-        "item": True,
-        "world_state": True,
-        "recent_summary": True,
-        "mood": True,
-    })
-    section_order: list[str] = field(default_factory=lambda: [
-        "boundary",
-        "scene",
-        "location",
-        "key_person",
-        "relationship",
-        "main_quest",
-        "side_quest",
-        "promise",
-        "open_loop",
-        "item",
-        "world_state",
-        "recent_summary",
-        "mood",
-        "preference",
-    ])
-    max_items_per_section: dict[str, int] = field(default_factory=lambda: {
-        "boundary": 5,
-        "scene": 6,
-        "location": 4,
-        "key_person": 8,
-        "relationship": 4,
-        "main_quest": 5,
-        "side_quest": 5,
-        "promise": 6,
-        "open_loop": 6,
-        "item": 6,
-        "world_state": 5,
-        "recent_summary": 3,
-        "mood": 3,
-        "preference": 5,
-    })
 
 
 @dataclass

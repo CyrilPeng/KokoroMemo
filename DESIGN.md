@@ -171,7 +171,7 @@ KokoroMemo 的核心设计决策是**分层记忆**，避免每轮都做昂贵�
         │
 [3] upsert_conversation: 注册/更新会话记录
         │
-[4] state_renderer: 读取并渲染当前会话状态板
+[4] state_table_renderer: 读取并渲染当前会话状态板表格
 [5] state_injector: 注入状态板到消息数组（system 消息后）
         │
 [6] retrieval_gate: 判断是否需要长期记忆检索
@@ -487,7 +487,6 @@ ConversationConfig
 4. 要求模型只返回严格 JSON。
 5. 后端解析、校验 `table_key`、操作类型、列 key 和置信度。
 6. 通过 `upsert_table_row` 更新 SQLite，并写入 `state_table_events`。
-7. 若 v2 没有应用任何操作，可回退旧字段式 `fill_conversation_state`。
 
 模型输出格式：
 
@@ -530,7 +529,6 @@ ConversationConfig
 3. `render_state_tables` 按 `prompt_priority`、`priority`、`confidence`、更新时间排序。
 4. 每张表最多注入 `max_prompt_rows` 行。
 5. 单元格按列 `max_chars` 截断。
-6. 如果 v2 没有可渲染内容，回退旧 `render_state_board`。
 
 渲染示例：
 

@@ -13,23 +13,39 @@ from app.storage.sqlite_cards import init_cards_db
 from app.storage.sqlite_state import init_state_db
 
 SCHEMA_VERSION_TABLE = "schema_version"
-APP_SCHEMA_VERSION = 1
-MEMORY_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class Migration:
+    version: int
+    name: str
+    apply: Callable[[str], Awaitable[None]]
 
 
 @dataclass(frozen=True)
 class DatabaseMigrationTarget:
     name: str
     db_path: str
-    target_version: int
-    initializer: Callable[[str], Awaitable[None]]
+    migrations: tuple[Migration, ...]
+
+    @property
+    def target_version(self) -> int:
+        return max((migration.version for migration in self.migrations), default=0)
+
+
+APP_MIGRATIONS = (
+    Migration(1, "baseline_app_schema", init_app_db),
+)
+MEMORY_MIGRATIONS = (
+    Migration(1, "baseline_memory_schema", lambda db_path: _init_memory_db(db_path)),
+)
 
 
 async def apply_startup_migrations(cfg) -> None:
     """Apply all process-wide database schema migrations once during startup."""
     targets = [
-        DatabaseMigrationTarget("app", cfg.storage.sqlite.app_db, APP_SCHEMA_VERSION, init_app_db),
-        DatabaseMigrationTarget("memory", cfg.storage.sqlite.memory_db, MEMORY_SCHEMA_VERSION, _init_memory_db),
+        DatabaseMigrationTarget("app", cfg.storage.sqlite.app_db, APP_MIGRATIONS),
+        DatabaseMigrationTarget("memory", cfg.storage.sqlite.memory_db, MEMORY_MIGRATIONS),
     ]
     for target in targets:
         await apply_migrations(target)
@@ -38,11 +54,11 @@ async def apply_startup_migrations(cfg) -> None:
 async def apply_migrations(target: DatabaseMigrationTarget) -> None:
     Path(target.db_path).parent.mkdir(parents=True, exist_ok=True)
     current_version = await get_schema_version(target.db_path, target.name)
-    if current_version >= target.target_version:
-        return
-
-    await target.initializer(target.db_path)
-    await set_schema_version(target.db_path, target.name, target.target_version)
+    for migration in sorted(target.migrations, key=lambda item: item.version):
+        if migration.version <= current_version:
+            continue
+        await migration.apply(target.db_path)
+        await set_schema_version(target.db_path, target.name, migration.version)
 
 
 async def get_schema_version(db_path: str, namespace: str) -> int:

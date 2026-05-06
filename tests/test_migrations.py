@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from app.storage.migrations.manager import (
     DatabaseMigrationTarget,
+    Migration,
     apply_migrations,
     apply_startup_migrations,
     get_schema_version,
@@ -31,15 +32,25 @@ def test_apply_migrations_records_version():
         calls = []
         db_path = str(_work_dir("custom") / "custom.sqlite")
 
-        async def initializer(path: str) -> None:
-            calls.append(path)
+        async def migration_one(path: str) -> None:
+            calls.append((1, path))
 
-        target = DatabaseMigrationTarget("custom", db_path, 3, initializer)
+        async def migration_two(path: str) -> None:
+            calls.append((2, path))
+
+        target = DatabaseMigrationTarget(
+            "custom",
+            db_path,
+            (
+                Migration(1, "one", migration_one),
+                Migration(2, "two", migration_two),
+            ),
+        )
         await apply_migrations(target)
         await apply_migrations(target)
 
-        assert calls == [db_path]
-        assert await get_schema_version(db_path, "custom") == 3
+        assert calls == [(1, db_path), (2, db_path)]
+        assert await get_schema_version(db_path, "custom") == 2
 
     try:
         asyncio.run(run())

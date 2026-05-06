@@ -197,8 +197,8 @@ async def test_deprecated_cards_not_injected_in_pipeline(monkeypatch):
             return [{"card_id": "card_old", "content": "用户喜欢猫娘说话方式", "status": "deprecated", "score": 0.9}]
 
         from app.providers.embedding_dummy import DummyEmbeddingProvider
-        monkeypatch.setattr("app.api.routes_openai.get_embedding_provider", lambda _cfg: DummyEmbeddingProvider(8))
-        monkeypatch.setattr("app.api.routes_openai.get_lancedb_store", lambda _cfg: FakeLanceDBStore())
+        monkeypatch.setattr("app.pipeline.chat.get_embedding_provider", lambda _cfg: DummyEmbeddingProvider(8))
+        monkeypatch.setattr("app.pipeline.chat.get_lancedb_store", lambda _cfg: FakeLanceDBStore())
         monkeypatch.setattr("app.memory.card_retriever.retrieve_cards", fake_retrieve_cards)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

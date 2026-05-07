@@ -1834,6 +1834,23 @@ async def update_state_table_template(template_id: str, request: Request, data: 
     return {"status": "ok", "template": _state_table_template_to_dict(saved)}
 
 
+@router.delete("/admin/state/table-templates/{template_id}")
+async def delete_state_table_template(template_id: str, request: Request):
+    """Delete a custom state board template (soft-delete)."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    try:
+        ok = await store.delete_table_template(template_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not ok:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"status": "ok"}
+
+
 @router.post("/admin/state/table-templates/{template_id}/tables")
 async def add_state_table_template_table(template_id: str, request: Request, data: dict = Body(...)):
     """Add a tab/table to a state board template. Built-ins are cloned automatically."""

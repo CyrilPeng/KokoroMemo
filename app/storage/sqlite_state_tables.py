@@ -338,6 +338,29 @@ class StateTablesMixin:
         ))
         return await self.save_table_template(template)
 
+    async def delete_table_template(self, template_id: str) -> bool:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT is_builtin FROM state_table_templates WHERE template_id = ? AND status = 'active'",
+                (template_id,),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return False
+            if int(row[0]) == 1:
+                raise ValueError("builtin templates cannot be deleted")
+            await db.execute(
+                "UPDATE state_table_templates SET status = 'deleted', updated_at = datetime('now', 'localtime') WHERE template_id = ?",
+                (template_id,),
+            )
+            await db.execute(
+                "UPDATE conversation_configs SET table_template_id = NULL WHERE table_template_id = ?",
+                (template_id,),
+            )
+            await db.commit()
+            return True
+
     async def list_table_rows(
         self,
         conversation_id: str,

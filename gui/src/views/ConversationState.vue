@@ -26,7 +26,7 @@ import {
   NTag,
   useMessage,
 } from 'naive-ui'
-import { AddOutline, RefreshOutline, SettingsOutline } from '@vicons/ionicons5'
+import { AddOutline, CreateOutline, RefreshOutline, SettingsOutline, TrashOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
@@ -116,6 +116,7 @@ const showAddTabModal = ref(false)
 const showAddColumnModal = ref(false)
 const showPresetModal = ref(false)
 const showProfileModal = ref(false)
+const showRenameTemplateModal = ref(false)
 const editingTable = ref<StateTable | null>(null)
 const editingRow = ref<StateRow | null>(null)
 const editValues = ref<Record<string, string>>({})
@@ -126,6 +127,7 @@ const tabForm = ref({ table_key: '', name: '', description: '' })
 const columnForm = ref({ table_key: '', column_key: '', name: '', description: '', max_chars: 240, required: 0 })
 const presetForm = ref({ preset_id: '', name: '', description: '' })
 const profileForm = ref({ profile_id: '', name: '', description: '' })
+const renameTemplateForm = ref({ template_id: '', name: '' })
 
 const profileDescriptions: Record<string, string> = {
   airp_roleplay: '日常角色扮演与陪伴聊天，AI 抽取的记忆候选会进入待审核',
@@ -135,9 +137,16 @@ const profileDescriptions: Record<string, string> = {
   proxy_only: '纯透传代理，不注入、不写入、不维护任何状态',
 }
 const profileOptions = computed(() => profiles.value.map((item) => ({
-  label: `${item.name}${item.is_builtin === false ? ` ? ${t('state.template.customMark')}` : ''}`,
+  label: item.name,
   value: item.profile_id,
+  is_builtin: item.is_builtin,
 })))
+const profileRenderLabel = (option: any) => {
+  if (option.is_builtin === false) {
+    return h('span', {}, [option.label, ' ', h(NTag, { size: 'tiny', type: 'info', bordered: false, style: 'vertical-align: middle' }, () => t('state.template.customMark'))])
+  }
+  return option.label
+}
 const selectedProfileHint = computed(() => {
   const id = config.value?.profile_id || ''
   return profileDescriptions[id] || profiles.value.find((item) => item.profile_id === id)?.description || ''
@@ -147,9 +156,15 @@ const selectedDefaultProfileHint = computed(() => {
   return profileDescriptions[id] || profiles.value.find((item) => item.profile_id === id)?.description || ''
 })
 const tableTemplateOptions = computed(() => [
-  { label: '不使用表格模板', value: null },
-  ...tableTemplates.value.map((item) => ({ label: `${item.name}${item.is_builtin === false ? ` ? ${t('state.template.customMark')}` : ''}`, value: item.template_id })),
+  { label: t('state.template.noTemplate'), value: null },
+  ...tableTemplates.value.map((item) => ({ label: item.name, value: item.template_id, is_builtin: item.is_builtin })),
 ])
+const templateRenderLabel = (option: any) => {
+  if (option.is_builtin === false) {
+    return h('span', {}, [option.label, ' ', h(NTag, { size: 'tiny', type: 'info', bordered: false, style: 'vertical-align: middle' }, () => t('state.template.customMark'))])
+  }
+  return option.label
+}
 const mountPresetOptions = computed(() => [
   { label: '不套用挂载预设', value: null },
   ...mountPresets.value.map((item) => ({ label: item.name, value: item.preset_id })),
@@ -705,6 +720,55 @@ async function deleteProfile(profile: any) {
   }
 }
 
+function openRenameTemplate(tmpl: any) {
+  renameTemplateForm.value = { template_id: tmpl.template_id, name: tmpl.name }
+  showRenameTemplateModal.value = true
+}
+
+async function renameTemplate() {
+  if (!renameTemplateForm.value.name.trim()) return
+  saving.value = true
+  try {
+    const full = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(renameTemplateForm.value.template_id)}`, { headers: authHeaders() })
+    const fullData = await full.json()
+    if (!full.ok) throw new Error(fullData.detail || 'Load failed')
+    fullData.name = renameTemplateForm.value.name.trim()
+    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(renameTemplateForm.value.template_id)}`, {
+      method: 'PUT',
+      headers: authHeaders(true),
+      body: JSON.stringify(fullData),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.templateRenameFailed'))
+    showRenameTemplateModal.value = false
+    message.success(t('state.messages.templateRenamed'))
+    await fetchOptions()
+  } catch (error: any) {
+    message.error(error.message || t('state.messages.templateRenameFailed'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteTemplate(tmpl: any) {
+  if (tmpl?.is_builtin !== false) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(tmpl.template_id)}`, { method: 'DELETE', headers: authHeaders() })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.templateDeleteFailed'))
+    message.success(t('state.messages.templateDeleted'))
+    await fetchOptions()
+    if (config.value?.table_template_id === tmpl.template_id) {
+      config.value.table_template_id = null
+    }
+  } catch (error: any) {
+    message.error(error.message || t('state.messages.templateDeleteFailed'))
+  } finally {
+    saving.value = false
+  }
+}
+
 async function fetchPreview() {
   if (!conversationId.value.trim()) return
   previewLoading.value = true
@@ -925,18 +989,52 @@ onMounted(async () => {
           <NGrid :cols="24" :x-gap="12" :y-gap="12">
             <NGridItem :span="8">
               <NFormItem label="会话方案">
-                <NSelect v-model:value="config.profile_id" :options="profileOptions" @update:value="applyProfileToConfig" />
+                <NSelect v-model:value="config.profile_id" :options="profileOptions" :render-label="profileRenderLabel" @update:value="applyProfileToConfig" />
               </NFormItem>
               <div v-if="selectedProfileHint" class="hint-text">{{ selectedProfileHint }}</div>
               <NSpace style="margin-top: 6px;">
-                <NButton size="tiny" @click="openProfileModal()">{{ $t('state.profile.saveAs') }}</NButton>
-                <NButton v-if="profiles.find((item) => item.profile_id === config?.profile_id)?.is_builtin === false" size="tiny" @click="openProfileModal(profiles.find((item) => item.profile_id === config?.profile_id))">{{ $t('state.actions.edit') }}</NButton>
+                <NButton size="tiny" @click="openProfileModal()">
+                  <template #icon><NIcon :component="AddOutline" size="14" /></template>
+                  {{ $t('state.profile.createNew') }}
+                </NButton>
+                <NButton v-if="profiles.find((item) => item.profile_id === config?.profile_id)?.is_builtin === false" size="tiny" @click="openProfileModal(profiles.find((item) => item.profile_id === config?.profile_id))">
+                  <template #icon><NIcon :component="CreateOutline" size="14" /></template>
+                  {{ $t('state.profile.rename') }}
+                </NButton>
+                <NPopconfirm v-if="profiles.find((item) => item.profile_id === config?.profile_id)?.is_builtin === false" @positive-click="deleteProfile(profiles.find((item) => item.profile_id === config?.profile_id))">
+                  <template #trigger>
+                    <NButton size="tiny" type="error" quaternary>
+                      <template #icon><NIcon :component="TrashOutline" size="14" /></template>
+                      {{ $t('state.actions.delete') }}
+                    </NButton>
+                  </template>
+                  {{ $t('state.profile.deleteConfirm') }}
+                </NPopconfirm>
               </NSpace>
             </NGridItem>
             <NGridItem :span="8">
               <NFormItem label="状态板表格模板">
-                <NSelect v-model:value="config.table_template_id" filterable :options="tableTemplateOptions" />
+                <NSelect v-model:value="config.table_template_id" filterable :options="tableTemplateOptions" :render-label="templateRenderLabel" />
               </NFormItem>
+              <NSpace style="margin-top: 6px;">
+                <NButton size="tiny" @click="cloneCurrentTemplate" :disabled="!config.table_template_id">
+                  <template #icon><NIcon :component="AddOutline" size="14" /></template>
+                  {{ $t('state.template.createNew') }}
+                </NButton>
+                <NButton v-if="tableTemplates.find((item) => item.template_id === config?.table_template_id)?.is_builtin === false" size="tiny" @click="openRenameTemplate(tableTemplates.find((item) => item.template_id === config?.table_template_id))">
+                  <template #icon><NIcon :component="CreateOutline" size="14" /></template>
+                  {{ $t('state.template.rename') }}
+                </NButton>
+                <NPopconfirm v-if="tableTemplates.find((item) => item.template_id === config?.table_template_id)?.is_builtin === false" @positive-click="deleteTemplate(tableTemplates.find((item) => item.template_id === config?.table_template_id))">
+                  <template #trigger>
+                    <NButton size="tiny" type="error" quaternary>
+                      <template #icon><NIcon :component="TrashOutline" size="14" /></template>
+                      {{ $t('state.actions.delete') }}
+                    </NButton>
+                  </template>
+                  {{ $t('state.template.deleteConfirm') }}
+                </NPopconfirm>
+              </NSpace>
             </NGridItem>
             <NGridItem :span="8">
               <NFormItem label="挂载组合预设">
@@ -1003,7 +1101,6 @@ onMounted(async () => {
             <NCard title="状态表格">
               <template #header-extra>
                 <NSpace>
-                  <NButton size="tiny" :disabled="!template" @click="cloneCurrentTemplate">{{ $t('state.template.cloneEditable') }}</NButton>
                   <NButton size="tiny" type="primary" :disabled="!template" @click="openAddTab">{{ $t('state.template.addTab') }}</NButton>
                 </NSpace>
               </template>
@@ -1059,11 +1156,11 @@ onMounted(async () => {
         </p>
         <NForm v-if="defaultConfig" label-placement="top">
           <NFormItem label="默认会话方案">
-            <NSelect v-model:value="defaultConfig.profile_id" :options="profileOptions" @update:value="applyProfileToDefault" />
+            <NSelect v-model:value="defaultConfig.profile_id" :options="profileOptions" :render-label="profileRenderLabel" @update:value="applyProfileToDefault" />
           </NFormItem>
           <div v-if="selectedDefaultProfileHint" class="hint-text" style="margin-bottom: 12px;">{{ selectedDefaultProfileHint }}</div>
           <NFormItem label="默认表格模板">
-            <NSelect v-model:value="defaultConfig.table_template_id" filterable :options="tableTemplateOptions" />
+            <NSelect v-model:value="defaultConfig.table_template_id" filterable :options="tableTemplateOptions" :render-label="templateRenderLabel" />
           </NFormItem>
           <NFormItem label="默认挂载组合预设">
             <NSelect v-model:value="defaultConfig.mount_preset_id" filterable :options="mountPresetOptions" />
@@ -1173,6 +1270,17 @@ onMounted(async () => {
           </NPopconfirm>
           <span v-else></span>
           <NSpace><NButton @click="showProfileModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" :loading="saving" @click="saveProfile">{{ $t('common.save') }}</NButton></NSpace>
+        </NSpace>
+      </template>
+    </NModal>
+    <NModal v-model:show="showRenameTemplateModal" preset="card" :title="$t('state.template.renameTitle')" style="width: min(420px, 96vw)">
+      <NForm label-placement="top">
+        <NFormItem :label="$t('state.template.newName')"><NInput v-model:value="renameTemplateForm.name" /></NFormItem>
+      </NForm>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showRenameTemplateModal = false">{{ $t('common.cancel') }}</NButton>
+          <NButton type="primary" :loading="saving" @click="renameTemplate">{{ $t('common.save') }}</NButton>
         </NSpace>
       </template>
     </NModal>

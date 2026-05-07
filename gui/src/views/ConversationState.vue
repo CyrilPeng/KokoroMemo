@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   NAlert,
   NButton,
@@ -1056,7 +1056,15 @@ async function batchAction(action: string, value?: any) {
   }
 }
 
+function onWsEvent(e: any) {
+  const data = e.detail
+  if (data?.event === 'state_fill_complete' && data?.conversation_id === conversationId.value.trim()) {
+    fetchBoard()
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('kokoromemo:event', onWsEvent)
   fetchOptions()
   fetchDefaultConfig()
   await fetchConversations()
@@ -1065,6 +1073,10 @@ onMounted(async () => {
   } else {
     showDefaultDrawer.value = true
   }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('kokoromemo:event', onWsEvent)
 })
 </script>
 

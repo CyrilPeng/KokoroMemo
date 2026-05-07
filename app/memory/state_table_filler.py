@@ -179,6 +179,17 @@ async def fill_conversation_state_tables(
             before=op_before, after=op_after,
         ))
 
+    if not dry_run and result.applied > 0:
+        try:
+            from app.core.events import emit
+            await emit("state_fill_complete", {
+                "conversation_id": conversation_id,
+                "applied": result.applied,
+                "skipped": result.skipped,
+            })
+        except Exception:
+            pass
+
     return result
 
 

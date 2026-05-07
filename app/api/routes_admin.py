@@ -74,11 +74,57 @@ async def get_update_manifest_api(request: Request):
 
 @router.get("/admin/conversation-profiles")
 async def list_conversation_profiles_api(request: Request):
-    """List built-in conversation policy profiles."""
+    """List built-in and custom conversation policy profiles."""
     _require_admin(request)
+    from app.core.state import get_config
     from app.memory.conversation_policy import list_profiles
+    from app.storage.sqlite_state import SQLiteStateStore
 
-    return {"items": [profile.to_dict() for profile in list_profiles()]}
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    items = [{**profile.to_dict(), "is_builtin": True} for profile in list_profiles()]
+    items.extend({**profile.to_dict(), "is_builtin": False} for profile in await store.list_custom_conversation_profiles())
+    return {"items": items}
+
+
+@router.post("/admin/conversation-profiles")
+async def create_conversation_profile_api(request: Request, data: dict = Body(...)):
+    """Create a custom conversation policy profile."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    profile = await SQLiteStateStore(get_config().storage.sqlite.memory_db).upsert_custom_conversation_profile(data)
+    return {"status": "ok", "profile": {**profile.to_dict(), "is_builtin": False}}
+
+
+@router.put("/admin/conversation-profiles/{profile_id}")
+async def update_conversation_profile_api(profile_id: str, request: Request, data: dict = Body(...)):
+    """Update a custom conversation policy profile."""
+    _require_admin(request)
+    from app.memory.conversation_policy import BUILTIN_CONVERSATION_PROFILES
+    if profile_id in BUILTIN_CONVERSATION_PROFILES:
+        raise HTTPException(status_code=400, detail="Built-in profiles cannot be modified")
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    payload = dict(data)
+    payload["profile_id"] = profile_id
+    profile = await SQLiteStateStore(get_config().storage.sqlite.memory_db).upsert_custom_conversation_profile(payload)
+    return {"status": "ok", "profile": {**profile.to_dict(), "is_builtin": False}}
+
+
+@router.delete("/admin/conversation-profiles/{profile_id}")
+async def delete_conversation_profile_api(profile_id: str, request: Request):
+    """Delete a custom conversation policy profile."""
+    _require_admin(request)
+    from app.memory.conversation_policy import BUILTIN_CONVERSATION_PROFILES
+    if profile_id in BUILTIN_CONVERSATION_PROFILES:
+        raise HTTPException(status_code=400, detail="Built-in profiles cannot be deleted")
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    ok = await SQLiteStateStore(get_config().storage.sqlite.memory_db).delete_custom_conversation_profile(profile_id)
+    return {"status": "ok" if ok else "error", "message": None if ok else "custom profile not found"}
 
 
 @router.get("/admin/conversation-defaults")
@@ -1638,6 +1684,62 @@ def _state_table_template_to_dict(template, include_tables: bool = True) -> dict
     return data
 
 
+
+def _state_table_template_from_dict(data: dict):
+    from app.memory.state_schema import StateTableColumn, StateTableSchema, StateTableTemplate
+
+    template_id = data.get("template_id")
+    tables = []
+    for table_index, raw_table in enumerate(data.get("tables") or []):
+        table = StateTableSchema(
+            table_id=raw_table.get("table_id"),
+            template_id=template_id or raw_table.get("template_id") or "",
+            table_key=raw_table.get("table_key") or raw_table.get("name") or f"tab_{table_index + 1}",
+            name=raw_table.get("name") or raw_table.get("table_key") or f"Tab {table_index + 1}",
+            description=raw_table.get("description", ""),
+            sort_order=int(raw_table.get("sort_order", table_index)),
+            enabled=bool(raw_table.get("enabled", True)),
+            required=bool(raw_table.get("required", False)),
+            as_status=bool(raw_table.get("as_status", False)),
+            include_in_prompt=bool(raw_table.get("include_in_prompt", True)),
+            max_prompt_rows=int(raw_table.get("max_prompt_rows", 4)),
+            prompt_priority=int(raw_table.get("prompt_priority", 50)),
+            insert_rule=raw_table.get("insert_rule", ""),
+            update_rule=raw_table.get("update_rule", ""),
+            delete_rule=raw_table.get("delete_rule", ""),
+            resolve_rule=raw_table.get("resolve_rule", ""),
+            note=raw_table.get("note", ""),
+        )
+        table.columns = [
+            StateTableColumn(
+                column_id=raw_column.get("column_id"),
+                table_id=table.table_id or "",
+                column_key=raw_column.get("column_key") or raw_column.get("name") or f"col_{column_index + 1}",
+                name=raw_column.get("name") or raw_column.get("column_key") or f"? {column_index + 1}",
+                description=raw_column.get("description", ""),
+                value_type=raw_column.get("value_type", "text"),
+                required=bool(raw_column.get("required", False)),
+                sort_order=int(raw_column.get("sort_order", column_index)),
+                include_in_prompt=bool(raw_column.get("include_in_prompt", True)),
+                max_chars=int(raw_column.get("max_chars", 240)),
+                default_value=raw_column.get("default_value", ""),
+                options=raw_column.get("options") or {},
+            )
+            for column_index, raw_column in enumerate(raw_table.get("columns") or [])
+        ]
+        tables.append(table)
+    return StateTableTemplate(
+        template_id=template_id,
+        name=data.get("name") or "Custom state board template",
+        description=data.get("description", ""),
+        scenario_type=data.get("scenario_type", "custom"),
+        is_builtin=False,
+        status=data.get("status", "active"),
+        version=int(data.get("version", 1)),
+        tables=tables,
+    )
+
+
 def _state_table_row_to_dict(row) -> dict:
     return {
         "row_id": row.row_id,
@@ -1684,6 +1786,80 @@ async def get_state_table_template(template_id: str, request: Request):
         raise HTTPException(status_code=404, detail="State table template not found")
     return _state_table_template_to_dict(template)
 
+
+
+
+@router.post("/admin/state/table-templates")
+async def create_state_table_template(request: Request, data: dict = Body(...)):
+    """Create a custom table-based state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    template = _state_table_template_from_dict(data)
+    template.template_id = None
+    saved = await store.save_table_template(template)
+    return {"status": "ok", "template": _state_table_template_to_dict(saved)}
+
+
+@router.post("/admin/state/table-templates/{template_id}/clone")
+async def clone_state_table_template(template_id: str, request: Request, data: dict = Body(default={})):
+    """Clone a state board template into an editable custom template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    try:
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).clone_table_template(template_id, data.get("name"))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"status": "ok", "template": _state_table_template_to_dict(saved)}
+
+
+@router.put("/admin/state/table-templates/{template_id}")
+async def update_state_table_template(template_id: str, request: Request, data: dict = Body(...)):
+    """Replace an editable custom state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    payload = dict(data)
+    payload["template_id"] = template_id
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    existing = await store.get_table_template(template_id)
+    if existing and existing.is_builtin:
+        raise HTTPException(status_code=400, detail="Built-in templates cannot be modified; clone it first")
+    saved = await store.save_table_template(_state_table_template_from_dict(payload))
+    return {"status": "ok", "template": _state_table_template_to_dict(saved)}
+
+
+@router.post("/admin/state/table-templates/{template_id}/tables")
+async def add_state_table_template_table(template_id: str, request: Request, data: dict = Body(...)):
+    """Add a tab/table to a state board template. Built-ins are cloned automatically."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    try:
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).add_table_to_template(template_id, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "template": _state_table_template_to_dict(saved)}
+
+
+@router.post("/admin/state/table-templates/{template_id}/tables/{table_key}/columns")
+async def add_state_table_template_column(template_id: str, table_key: str, request: Request, data: dict = Body(...)):
+    """Add a column to one state board table. Built-ins are cloned automatically."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    try:
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).add_column_to_table(template_id, table_key, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "template": _state_table_template_to_dict(saved)}
 
 @router.get("/admin/conversations/{conversation_id}/state/tables")
 async def get_conversation_state_tables(conversation_id: str, request: Request):

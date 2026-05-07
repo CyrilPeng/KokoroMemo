@@ -18,6 +18,21 @@ PRAGMA synchronous = NORMAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 
+
+CREATE TABLE IF NOT EXISTS conversation_profiles (
+  profile_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  table_template_id TEXT,
+  mount_preset_id TEXT,
+  memory_write_policy TEXT NOT NULL DEFAULT 'candidate',
+  state_update_policy TEXT NOT NULL DEFAULT 'auto',
+  injection_policy TEXT NOT NULL DEFAULT 'mixed',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS conversation_configs (
   conversation_id TEXT PRIMARY KEY,
   profile_id TEXT NOT NULL,

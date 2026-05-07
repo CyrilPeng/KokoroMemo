@@ -6,8 +6,11 @@ from typing import Any
 
 import aiosqlite
 
+from app.core.ids import generate_id
+
 from app.memory.conversation_policy import (
     ConversationConfig,
+    ConversationProfile,
     DEFAULT_CONVERSATION_PROFILE_ID,
     get_profile,
 )
@@ -28,6 +31,83 @@ def _row_to_conversation_config(row: aiosqlite.Row) -> ConversationConfig:
 
 
 class ConversationConfigMixin:
+
+    async def list_custom_conversation_profiles(self, include_inactive: bool = False) -> list[ConversationProfile]:
+        await self.init_schema()
+        where = "" if include_inactive else "WHERE status = 'active'"
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                f"SELECT * FROM conversation_profiles {where} ORDER BY updated_at DESC, name ASC"
+            )
+            rows = await cursor.fetchall()
+        return [
+            ConversationProfile(
+                profile_id=row["profile_id"],
+                name=row["name"],
+                description=row["description"] or "",
+                table_template_id=row["table_template_id"],
+                mount_preset_id=row["mount_preset_id"],
+                memory_write_policy=row["memory_write_policy"],
+                state_update_policy=row["state_update_policy"],
+                injection_policy=row["injection_policy"],
+            )
+            for row in rows
+        ]
+
+    async def upsert_custom_conversation_profile(self, data: dict[str, Any]) -> ConversationProfile:
+        await self.init_schema()
+        profile_id = data.get("profile_id") or generate_id("profile_")
+        name = data.get("name") or "未命名会话方案"
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """INSERT INTO conversation_profiles
+                   (profile_id, name, description, table_template_id, mount_preset_id,
+                    memory_write_policy, state_update_policy, injection_policy, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
+                   ON CONFLICT(profile_id) DO UPDATE SET
+                    name = excluded.name,
+                    description = excluded.description,
+                    table_template_id = excluded.table_template_id,
+                    mount_preset_id = excluded.mount_preset_id,
+                    memory_write_policy = excluded.memory_write_policy,
+                    state_update_policy = excluded.state_update_policy,
+                    injection_policy = excluded.injection_policy,
+                    status = 'active',
+                    updated_at = datetime('now', 'localtime')""",
+                (
+                    profile_id,
+                    name,
+                    data.get("description", ""),
+                    data.get("table_template_id"),
+                    data.get("mount_preset_id"),
+                    data.get("memory_write_policy") or "candidate",
+                    data.get("state_update_policy") or "auto",
+                    data.get("injection_policy") or "mixed",
+                ),
+            )
+            await db.commit()
+        return ConversationProfile(
+            profile_id=profile_id,
+            name=name,
+            description=data.get("description", ""),
+            table_template_id=data.get("table_template_id"),
+            mount_preset_id=data.get("mount_preset_id"),
+            memory_write_policy=data.get("memory_write_policy") or "candidate",
+            state_update_policy=data.get("state_update_policy") or "auto",
+            injection_policy=data.get("injection_policy") or "mixed",
+        )
+
+    async def delete_custom_conversation_profile(self, profile_id: str) -> bool:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "UPDATE conversation_profiles SET status = 'deleted', updated_at = datetime('now', 'localtime') WHERE profile_id = ?",
+                (profile_id,),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
     async def get_default_conversation_config(self) -> ConversationConfig:
         await self.init_schema()
         async with aiosqlite.connect(self.db_path) as db:

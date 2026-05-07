@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import aiosqlite
@@ -108,6 +109,11 @@ def _row_to_table_row(row: aiosqlite.Row) -> StateTableRow:
     )
 
 
+def _slugify_key(value: str, prefix: str) -> str:
+    key = re.sub(r"[^a-zA-Z0-9_]+", "_", (value or "").strip().lower()).strip("_")
+    return key or f"{prefix}_{generate_id('')[:8]}"
+
+
 class StateTablesMixin:
     async def list_table_templates(self, include_inactive: bool = False) -> list[StateTableTemplate]:
         await self.init_schema()
@@ -154,6 +160,183 @@ class StateTablesMixin:
             if template:
                 return template
         return await self.get_default_table_template()
+
+
+    async def save_table_template(self, template: StateTableTemplate) -> StateTableTemplate:
+        await self.init_schema()
+        template_id = template.template_id or generate_id("tpl_custom_")
+        async with aiosqlite.connect(self.db_path) as db:
+            existing_cursor = await db.execute("SELECT is_builtin FROM state_table_templates WHERE template_id = ?", (template_id,))
+            existing = await existing_cursor.fetchone()
+            if existing and int(existing[0]) == 1:
+                raise ValueError("builtin templates cannot be overwritten")
+            await db.execute(
+                """INSERT INTO state_table_templates
+                   (template_id, name, description, scenario_type, is_builtin, status, version)
+                   VALUES (?, ?, ?, ?, 0, ?, ?)
+                   ON CONFLICT(template_id) DO UPDATE SET
+                    name = excluded.name,
+                    description = excluded.description,
+                    scenario_type = excluded.scenario_type,
+                    status = excluded.status,
+                    version = state_table_templates.version + 1,
+                    updated_at = datetime('now', 'localtime')""",
+                (template_id, template.name, template.description, template.scenario_type, template.status, template.version),
+            )
+            for table_index, table in enumerate(template.tables):
+                table_key = _slugify_key(table.table_key or table.name, "tab")
+                table_id = table.table_id or f"{template_id}__{table_key}"
+                await db.execute(
+                    """INSERT INTO state_table_schemas
+                       (table_id, template_id, table_key, name, description, sort_order,
+                        enabled, required, as_status, include_in_prompt, max_prompt_rows,
+                        prompt_priority, insert_rule, update_rule, delete_rule, resolve_rule, note)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(table_id) DO UPDATE SET
+                        table_key = excluded.table_key,
+                        name = excluded.name,
+                        description = excluded.description,
+                        sort_order = excluded.sort_order,
+                        enabled = excluded.enabled,
+                        required = excluded.required,
+                        as_status = excluded.as_status,
+                        include_in_prompt = excluded.include_in_prompt,
+                        max_prompt_rows = excluded.max_prompt_rows,
+                        prompt_priority = excluded.prompt_priority,
+                        insert_rule = excluded.insert_rule,
+                        update_rule = excluded.update_rule,
+                        delete_rule = excluded.delete_rule,
+                        resolve_rule = excluded.resolve_rule,
+                        note = excluded.note,
+                        updated_at = datetime('now', 'localtime')""",
+                    (
+                        table_id, template_id, table_key, table.name, table.description,
+                        table.sort_order if table.sort_order is not None else table_index,
+                        int(table.enabled), int(table.required), int(table.as_status), int(table.include_in_prompt),
+                        int(table.max_prompt_rows), int(table.prompt_priority), table.insert_rule, table.update_rule,
+                        table.delete_rule, table.resolve_rule, table.note,
+                    ),
+                )
+                for column_index, column in enumerate(table.columns):
+                    column_key = _slugify_key(column.column_key or column.name, "col")
+                    column_id = column.column_id or f"{table_id}__{column_key}"
+                    await db.execute(
+                        """INSERT INTO state_table_columns
+                           (column_id, table_id, column_key, name, description, value_type,
+                            required, sort_order, include_in_prompt, max_chars, default_value, options_json)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(column_id) DO UPDATE SET
+                            column_key = excluded.column_key,
+                            name = excluded.name,
+                            description = excluded.description,
+                            value_type = excluded.value_type,
+                            required = excluded.required,
+                            sort_order = excluded.sort_order,
+                            include_in_prompt = excluded.include_in_prompt,
+                            max_chars = excluded.max_chars,
+                            default_value = excluded.default_value,
+                            options_json = excluded.options_json,
+                            updated_at = datetime('now', 'localtime')""",
+                        (
+                            column_id, table_id, column_key, column.name, column.description, column.value_type,
+                            int(column.required), column.sort_order if column.sort_order is not None else column_index,
+                            int(column.include_in_prompt), int(column.max_chars), column.default_value,
+                            json.dumps(column.options or {}, ensure_ascii=False),
+                        ),
+                    )
+            await db.commit()
+        saved = await self.get_table_template(template_id)
+        if not saved:
+            raise RuntimeError("failed to save state table template")
+        return saved
+
+    async def clone_table_template(self, source_template_id: str, name: str | None = None) -> StateTableTemplate:
+        source = await self.get_table_template(source_template_id)
+        if not source:
+            raise ValueError("source template not found")
+        template_id = generate_id("tpl_custom_")
+        source.template_id = template_id
+        source.name = name or f"{source.name} ??"
+        source.is_builtin = False
+        source.version = 1
+        for table in source.tables:
+            old_table_key = table.table_key
+            table.table_id = f"{template_id}__{old_table_key}"
+            table.template_id = template_id
+            for column in table.columns:
+                column.table_id = table.table_id
+                column.column_id = f"{table.table_id}__{column.column_key}"
+        return await self.save_table_template(source)
+
+    async def add_table_to_template(self, template_id: str, data: dict[str, Any]) -> StateTableTemplate:
+        template = await self.get_table_template(template_id)
+        if not template:
+            raise ValueError("template not found")
+        if template.is_builtin:
+            template = await self.clone_table_template(template_id, f"{template.name} 自定义")
+            template_id = template.template_id or template_id
+        table_key = _slugify_key(data.get("table_key") or data.get("name"), "tab")
+        if any(table.table_key == table_key for table in template.tables):
+            raise ValueError("table_key already exists")
+        table = StateTableSchema(
+            table_id=f"{template_id}__{table_key}",
+            template_id=template_id,
+            table_key=table_key,
+            name=data.get("name") or table_key,
+            description=data.get("description", ""),
+            sort_order=len(template.tables),
+            max_prompt_rows=int(data.get("max_prompt_rows", 4)),
+            prompt_priority=int(data.get("prompt_priority", 50)),
+            columns=[
+                StateTableColumn(
+                    column_id=None,
+                    table_id=f"{template_id}__{table_key}",
+                    column_key="name",
+                    name="??",
+                    description="状态项名称",
+                    required=True,
+                    sort_order=0,
+                    max_chars=120,
+                ),
+                StateTableColumn(
+                    column_id=None,
+                    table_id=f"{template_id}__{table_key}",
+                    column_key="value",
+                    name="??",
+                    description="状态内容",
+                    sort_order=1,
+                    max_chars=360,
+                ),
+            ],
+        )
+        template.tables.append(table)
+        return await self.save_table_template(template)
+
+    async def add_column_to_table(self, template_id: str, table_key: str, data: dict[str, Any]) -> StateTableTemplate:
+        template = await self.get_table_template(template_id)
+        if not template:
+            raise ValueError("template not found")
+        if template.is_builtin:
+            template = await self.clone_table_template(template_id, f"{template.name} 自定义")
+            template_id = template.template_id or template_id
+        table = next((item for item in template.tables if item.table_key == table_key), None)
+        if not table:
+            raise ValueError("table not found")
+        column_key = _slugify_key(data.get("column_key") or data.get("name"), "col")
+        if any(column.column_key == column_key for column in table.columns):
+            raise ValueError("column_key already exists")
+        table.columns.append(StateTableColumn(
+            column_id=None,
+            table_id=table.table_id or f"{template_id}__{table.table_key}",
+            column_key=column_key,
+            name=data.get("name") or column_key,
+            description=data.get("description", ""),
+            required=bool(data.get("required", False)),
+            sort_order=len(table.columns),
+            include_in_prompt=bool(data.get("include_in_prompt", True)),
+            max_chars=int(data.get("max_chars", 240)),
+        ))
+        return await self.save_table_template(template)
 
     async def list_table_rows(
         self,

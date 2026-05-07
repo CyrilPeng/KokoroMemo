@@ -108,12 +108,20 @@ const showFillModal = ref(false)
 const showHelpModal = ref(false)
 const showRenameModal = ref(false)
 const showDefaultDrawer = ref(false)
+const showAddTabModal = ref(false)
+const showAddColumnModal = ref(false)
+const showPresetModal = ref(false)
+const showProfileModal = ref(false)
 const editingTable = ref<StateTable | null>(null)
 const editingRow = ref<StateRow | null>(null)
 const editValues = ref<Record<string, string>>({})
 const editMeta = ref({ priority: 80, confidence: 0.9 })
 const fillForm = ref({ user_message: '', assistant_message: '' })
 const renameForm = ref({ title: '' })
+const tabForm = ref({ table_key: '', name: '', description: '' })
+const columnForm = ref({ table_key: '', column_key: '', name: '', description: '', max_chars: 240, required: 0 })
+const presetForm = ref({ preset_id: '', name: '', description: '' })
+const profileForm = ref({ profile_id: '', name: '', description: '' })
 
 const profileDescriptions: Record<string, string> = {
   airp_roleplay: '日常角色扮演与陪伴聊天，AI 抽取的记忆候选会进入待审核',
@@ -123,7 +131,7 @@ const profileDescriptions: Record<string, string> = {
   proxy_only: '纯透传代理，不注入、不写入、不维护任何状态',
 }
 const profileOptions = computed(() => profiles.value.map((item) => ({
-  label: item.name,
+  label: `${item.name}${item.is_builtin === false ? ' ? custom' : ''}`,
   value: item.profile_id,
 })))
 const selectedProfileHint = computed(() => {
@@ -136,7 +144,7 @@ const selectedDefaultProfileHint = computed(() => {
 })
 const tableTemplateOptions = computed(() => [
   { label: '不使用表格模板', value: null },
-  ...tableTemplates.value.map((item) => ({ label: item.name, value: item.template_id })),
+  ...tableTemplates.value.map((item) => ({ label: `${item.name}${item.is_builtin === false ? ' ? custom' : ''}`, value: item.template_id })),
 ])
 const mountPresetOptions = computed(() => [
   { label: '不套用挂载预设', value: null },
@@ -476,7 +484,12 @@ async function saveConfig() {
     const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/config`, {
       method: 'PUT',
       headers: authHeaders(true),
-      body: JSON.stringify(config.value),
+      body: JSON.stringify({
+        ...config.value,
+        mounted_library_ids: mountedLibraryIds.value,
+        library_ids: mountedLibraryIds.value,
+        write_library_id: writeLibraryId.value || mountedLibraryIds.value[0],
+      }),
     })
     const data = await resp.json()
     if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存会话策略失败')
@@ -485,6 +498,197 @@ async function saveConfig() {
     await fetchBoard()
   } catch (error: any) {
     message.error(error.message || '保存会话策略失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+
+async function applyTemplateUpdate(updatedTemplate: any) {
+  template.value = updatedTemplate
+  await fetchOptions()
+  if (config.value && updatedTemplate?.template_id) {
+    config.value.table_template_id = updatedTemplate.template_id
+    await saveConfig()
+  } else {
+    await fetchBoard()
+  }
+}
+
+function openAddTab() {
+  tabForm.value = { table_key: '', name: '', description: '' }
+  showAddTabModal.value = true
+}
+
+function openAddColumn(table: StateTable) {
+  columnForm.value = { table_key: table.table_key, column_key: '', name: '', description: '', max_chars: 240, required: 0 }
+  showAddColumnModal.value = true
+}
+
+async function cloneCurrentTemplate() {
+  if (!template.value?.template_id) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/clone`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({ name: `${template.value.name || 'Template'} custom` }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Clone template failed')
+    message.success('Template cloned')
+    await applyTemplateUpdate(data.template)
+  } catch (error: any) {
+    message.error(error.message || 'Clone template failed')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveNewTab() {
+  if (!template.value?.template_id || !tabForm.value.name.trim()) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify(tabForm.value),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Add tab failed')
+    showAddTabModal.value = false
+    activeTableKey.value = data.template.tables?.at(-1)?.table_key || activeTableKey.value
+    message.success('Tab added')
+    await applyTemplateUpdate(data.template)
+  } catch (error: any) {
+    message.error(error.message || 'Add tab failed')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveNewColumn() {
+  if (!template.value?.template_id || !columnForm.value.table_key || !columnForm.value.name.trim()) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables/${encodeURIComponent(columnForm.value.table_key)}/columns`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify(columnForm.value),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Add column failed')
+    showAddColumnModal.value = false
+    message.success('Column added')
+    await applyTemplateUpdate(data.template)
+  } catch (error: any) {
+    message.error(error.message || 'Add column failed')
+  } finally {
+    saving.value = false
+  }
+}
+
+function openPresetModal(preset?: any) {
+  presetForm.value = {
+    preset_id: preset?.preset_id || '',
+    name: preset?.name || '',
+    description: preset?.description || '',
+  }
+  showPresetModal.value = true
+}
+
+async function savePreset() {
+  if (!presetForm.value.name.trim() || !mountedLibraryIds.value.length) return
+  saving.value = true
+  try {
+    const isEdit = Boolean(presetForm.value.preset_id)
+    const resp = await apiFetch(isEdit ? `/admin/memory-mount-presets/${encodeURIComponent(presetForm.value.preset_id)}` : '/admin/memory-mount-presets', {
+      method: isEdit ? 'PUT' : 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({
+        name: presetForm.value.name,
+        description: presetForm.value.description,
+        library_ids: mountedLibraryIds.value,
+        write_library_id: writeLibraryId.value || mountedLibraryIds.value[0],
+      }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Save preset failed')
+    showPresetModal.value = false
+    message.success('Preset saved')
+    await fetchOptions()
+  } catch (error: any) {
+    message.error(error.message || 'Save preset failed')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deletePreset(preset: any) {
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/memory-mount-presets/${encodeURIComponent(preset.preset_id)}`, { method: 'DELETE', headers: authHeaders() })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Delete preset failed')
+    message.success('Preset deleted')
+    await fetchOptions()
+  } catch (error: any) {
+    message.error(error.message || 'Delete preset failed')
+  } finally {
+    saving.value = false
+  }
+}
+
+function openProfileModal(profile?: any) {
+  profileForm.value = {
+    profile_id: profile?.is_builtin === false ? profile.profile_id : '',
+    name: profile?.is_builtin === false ? profile.name : '',
+    description: profile?.is_builtin === false ? profile.description || '' : '',
+  }
+  showProfileModal.value = true
+}
+
+async function saveProfile() {
+  if (!profileForm.value.name.trim() || !config.value) return
+  saving.value = true
+  try {
+    const isEdit = Boolean(profileForm.value.profile_id)
+    const resp = await apiFetch(isEdit ? `/admin/conversation-profiles/${encodeURIComponent(profileForm.value.profile_id)}` : '/admin/conversation-profiles', {
+      method: isEdit ? 'PUT' : 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({
+        ...config.value,
+        profile_id: profileForm.value.profile_id || undefined,
+        name: profileForm.value.name,
+        description: profileForm.value.description,
+        table_template_id: config.value.table_template_id,
+        mount_preset_id: config.value.mount_preset_id,
+      }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Save profile failed')
+    showProfileModal.value = false
+    message.success('Profile saved')
+    await fetchOptions()
+    if (data.profile?.profile_id) config.value.profile_id = data.profile.profile_id
+  } catch (error: any) {
+    message.error(error.message || 'Save profile failed')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteProfile(profile: any) {
+  if (profile?.is_builtin !== false) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/conversation-profiles/${encodeURIComponent(profile.profile_id)}`, { method: 'DELETE', headers: authHeaders() })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Delete profile failed')
+    message.success('Profile deleted')
+    await fetchOptions()
+  } catch (error: any) {
+    message.error(error.message || 'Delete profile failed')
   } finally {
     saving.value = false
   }
@@ -590,6 +794,10 @@ async function exportBoard() {
   const payload = { conversation_id: conversationId.value.trim(), template: template.value, rows: rows.value }
   const savedPath = await saveJsonExport(`state_board_${conversationId.value.trim()}.json`, payload)
   message.success(savedPath ? `已导出到 ${savedPath}` : '已导出')
+}
+
+function tableScrollX(table: StateTable) {
+  return Math.max(760, table.columns.length * 180 + 430)
 }
 
 function columnsFor(table: StateTable) {
@@ -709,6 +917,10 @@ onMounted(() => {
                 <NSelect v-model:value="config.profile_id" :options="profileOptions" @update:value="applyProfileToConfig" />
               </NFormItem>
               <div v-if="selectedProfileHint" class="hint-text">{{ selectedProfileHint }}</div>
+              <NSpace style="margin-top: 6px;">
+                <NButton size="tiny" @click="openProfileModal()">Save as profile</NButton>
+                <NButton v-if="profiles.find((item) => item.profile_id === config?.profile_id)?.is_builtin === false" size="tiny" @click="openProfileModal(profiles.find((item) => item.profile_id === config?.profile_id))">Edit</NButton>
+              </NSpace>
             </NGridItem>
             <NGridItem :span="8">
               <NFormItem label="状态板表格模板">
@@ -719,6 +931,13 @@ onMounted(() => {
               <NFormItem label="挂载组合预设">
                 <NSelect v-model:value="config.mount_preset_id" filterable :options="mountPresetOptions" />
               </NFormItem>
+              <NSpace>
+                <NButton size="tiny" @click="openPresetModal(mountPresets.find((item) => item.preset_id === config?.mount_preset_id))" :disabled="!config.mount_preset_id">Edit</NButton>
+                <NPopconfirm v-if="config.mount_preset_id" @positive-click="deletePreset(mountPresets.find((item) => item.preset_id === config?.mount_preset_id))">
+                  <template #trigger><NButton size="tiny" type="error" quaternary>Delete</NButton></template>
+                  Delete this preset?
+                </NPopconfirm>
+              </NSpace>
             </NGridItem>
             <NGridItem :span="16">
               <NFormItem label="挂载的长期记忆库">
@@ -771,6 +990,12 @@ onMounted(() => {
         <NGrid :cols="24" :x-gap="16" :y-gap="16">
           <NGridItem :span="16">
             <NCard title="状态表格">
+              <template #header-extra>
+                <NSpace>
+                  <NButton size="tiny" :disabled="!template" @click="cloneCurrentTemplate">Clone editable template</NButton>
+                  <NButton size="tiny" type="primary" :disabled="!template" @click="openAddTab">Add tab</NButton>
+                </NSpace>
+              </template>
               <NTabs v-if="tables.length" v-model:value="activeTableKey" type="line" animated>
                 <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">
                   <NSpace vertical size="medium">
@@ -780,9 +1005,10 @@ onMounted(() => {
                         <template #icon><NIcon :component="AddOutline" /></template>
                         新增状态行
                       </NButton>
+                      <NButton size="small" @click="openAddColumn(table)">Add column</NButton>
                       <NButton size="small" @click="fetchPreview">刷新注入预览</NButton>
                     </NSpace>
-                    <NDataTable :columns="columnsFor(table)" :data="rowsByTable[table.table_key] || []" :pagination="{ pageSize: 8 }" />
+                    <NDataTable class="state-data-table" :columns="columnsFor(table)" :data="rowsByTable[table.table_key] || []" :pagination="{ pageSize: 8 }" :scroll-x="tableScrollX(table)" />
                   </NSpace>
                 </NTabPane>
               </NTabs>
@@ -890,6 +1116,55 @@ onMounted(() => {
       </template>
     </NModal>
 
+
+    <NModal v-model:show="showAddTabModal" preset="card" title="Add state tab" style="width: min(560px, 96vw)">
+      <NForm label-placement="top">
+        <NFormItem label="Tab name"><NInput v-model:value="tabForm.name" placeholder="Quest notes" /></NFormItem>
+        <NFormItem label="Key"><NInput v-model:value="tabForm.table_key" placeholder="quests" /></NFormItem>
+        <NFormItem label="Description"><NInput v-model:value="tabForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showAddTabModal = false">Cancel</NButton><NButton type="primary" :loading="saving" @click="saveNewTab">Save</NButton></NSpace></template>
+    </NModal>
+
+    <NModal v-model:show="showAddColumnModal" preset="card" title="Add state column" style="width: min(560px, 96vw)">
+      <NForm label-placement="top">
+        <NFormItem label="Column name"><NInput v-model:value="columnForm.name" placeholder="Owner" /></NFormItem>
+        <NFormItem label="Key"><NInput v-model:value="columnForm.column_key" placeholder="owner" /></NFormItem>
+        <NFormItem label="Description"><NInput v-model:value="columnForm.description" /></NFormItem>
+        <NGrid :cols="2" :x-gap="12">
+          <NGridItem><NFormItem label="Max chars"><NInputNumber v-model:value="columnForm.max_chars" :min="20" :max="2000" /></NFormItem></NGridItem>
+          <NGridItem><NFormItem label="Required"><NSelect v-model:value="columnForm.required" :options="[{ label: 'No', value: 0 }, { label: 'Yes', value: 1 }]" /></NFormItem></NGridItem>
+        </NGrid>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showAddColumnModal = false">Cancel</NButton><NButton type="primary" :loading="saving" @click="saveNewColumn">Save</NButton></NSpace></template>
+    </NModal>
+
+    <NModal v-model:show="showPresetModal" preset="card" title="Manage mount preset" style="width: min(560px, 96vw)">
+      <NForm label-placement="top">
+        <NFormItem label="Preset name"><NInput v-model:value="presetForm.name" placeholder="Character world libraries" /></NFormItem>
+        <NFormItem label="Description"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
+        <NAlert type="info" :show-icon="false">Saves currently mounted libraries and write target.</NAlert>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showPresetModal = false">Cancel</NButton><NButton type="primary" :loading="saving" @click="savePreset">Save</NButton></NSpace></template>
+    </NModal>
+
+    <NModal v-model:show="showProfileModal" preset="card" title="Manage conversation profile" style="width: min(560px, 96vw)">
+      <NForm label-placement="top">
+        <NFormItem label="Profile name"><NInput v-model:value="profileForm.name" placeholder="Story + multi-library memory" /></NFormItem>
+        <NFormItem label="Description"><NInput v-model:value="profileForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
+        <NAlert type="info" :show-icon="false">Saves the current template, preset, write policy, state policy and injection policy.</NAlert>
+      </NForm>
+      <template #footer>
+        <NSpace justify="space-between" style="width: 100%;">
+          <NPopconfirm v-if="profileForm.profile_id" @positive-click="deleteProfile(profiles.find((item) => item.profile_id === profileForm.profile_id))">
+            <template #trigger><NButton type="error" quaternary>Delete profile</NButton></template>
+            Delete this custom profile?
+          </NPopconfirm>
+          <span v-else></span>
+          <NSpace><NButton @click="showProfileModal = false">Cancel</NButton><NButton type="primary" :loading="saving" @click="saveProfile">Save</NButton></NSpace>
+        </NSpace>
+      </template>
+    </NModal>
     <HelpModal v-model:show="showHelpModal" title="会话状态板帮助" :sections="stateHelpSections" />
   </div>
 </template>
@@ -897,6 +1172,14 @@ onMounted(() => {
 <style scoped>
 .state-page {
   padding: 20px;
+}
+
+.state-data-table {
+  width: 100%;
+}
+
+.state-data-table :deep(.n-data-table-base-table-body) {
+  overflow-x: auto;
 }
 
 .hint-text {

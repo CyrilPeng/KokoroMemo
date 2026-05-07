@@ -298,6 +298,17 @@ export default {
       confirmDeleteTab: 'Delete tab "{name}"? It has {count} state items that will be moved to "Legacy State Items".',
       confirmDeleteTabEmpty: 'Delete tab "{name}"?',
       confirmDeletePreset: 'Delete preset "{name}"?',
+      fillNoChanges: 'AI produced no operations',
+      reverted: 'Reverted {count} operations',
+      revertFailed: 'Revert failed',
+    },
+    fill: {
+      previewBtn: 'Preview Fill',
+      directBtn: 'Execute Directly',
+      previewTitle: 'AI Fill Preview',
+      confirmBtn: 'Confirm & Execute',
+      undoHint: 'AI updated {count} state items.',
+      undoBtn: 'Undo',
     },
   },
 }

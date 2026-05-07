@@ -298,6 +298,17 @@ export default {
       confirmDeleteTab: '确认删除标签页"{name}"？该标签页下有 {count} 个状态项，它们将移到"旧类别状态项"中。',
       confirmDeleteTabEmpty: '确认删除标签页"{name}"？',
       confirmDeletePreset: '确认删除挂载预设"{name}"？',
+      fillNoChanges: 'AI 分析后未产生任何操作',
+      reverted: '已撤销 {count} 项操作',
+      revertFailed: '撤销失败',
+    },
+    fill: {
+      previewBtn: '预览填表',
+      directBtn: '直接执行',
+      previewTitle: 'AI 填表预览',
+      confirmBtn: '确认执行',
+      undoHint: 'AI 已更新 {count} 项状态。',
+      undoBtn: '撤销本次操作',
     },
   },
 }

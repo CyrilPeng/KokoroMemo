@@ -118,6 +118,10 @@ const showAddColumnModal = ref(false)
 const showPresetModal = ref(false)
 const showProfileModal = ref(false)
 const showRenameTemplateModal = ref(false)
+const showFillPreviewModal = ref(false)
+const fillPreviewOps = ref<any[]>([])
+const lastFillEventIds = ref<string[]>([])
+const showUndoAlert = ref(false)
 const editingTable = ref<StateTable | null>(null)
 const editingRow = ref<StateRow | null>(null)
 const editValues = ref<Record<string, string>>({})
@@ -844,9 +848,34 @@ async function deleteRow(row: StateRow) {
   }
 }
 
-async function runFill() {
+async function runFillPreview() {
   if (!conversationId.value.trim()) return
   saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/fill`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({ ...fillForm.value, table_only: true, preview: true }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.fillFailed'))
+    fillPreviewOps.value = data.operations || []
+    if (!fillPreviewOps.value.length) {
+      message.info(t('state.messages.fillNoChanges'))
+    } else {
+      showFillPreviewModal.value = true
+    }
+  } catch (error: any) {
+    message.error(error.message || t('state.messages.fillFailed'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function runFillConfirm() {
+  if (!conversationId.value.trim()) return
+  saving.value = true
+  showFillPreviewModal.value = false
   try {
     const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/fill`, {
       method: 'POST',
@@ -854,12 +883,44 @@ async function runFill() {
       body: JSON.stringify({ ...fillForm.value, table_only: true }),
     })
     const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '填充失败')
-    message.success(`AI 填充完成：应用 ${data.applied}，跳过 ${data.skipped}`)
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.fillFailed'))
+    message.success(t('state.messages.fillDone', { applied: data.applied, skipped: data.skipped }))
     showFillModal.value = false
     await fetchBoard()
+    const eventsResp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/events?limit=20`, { headers: authHeaders() })
+    const eventsData = await eventsResp.json()
+    const recentIds = (eventsData.items || [])
+      .filter((e: any) => e.event_type !== 'revert')
+      .slice(0, data.applied)
+      .map((e: any) => e.event_id)
+    if (recentIds.length) {
+      lastFillEventIds.value = recentIds
+      showUndoAlert.value = true
+    }
   } catch (error: any) {
-    message.error(error.message || '填充失败')
+    message.error(error.message || t('state.messages.fillFailed'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function revertLastFill() {
+  if (!lastFillEventIds.value.length || !conversationId.value.trim()) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/revert`, {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({ event_ids: lastFillEventIds.value }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message)
+    message.success(t('state.messages.reverted', { count: data.reverted }))
+    showUndoAlert.value = false
+    lastFillEventIds.value = []
+    await fetchBoard()
+  } catch (error: any) {
+    message.error(error.message || t('state.messages.revertFailed'))
   } finally {
     saving.value = false
   }
@@ -1104,6 +1165,11 @@ onMounted(async () => {
         </NForm>
       </NCard>
 
+      <NAlert v-if="showUndoAlert" type="success" closable style="margin-bottom: 12px;" @close="showUndoAlert = false">
+        {{ $t('state.fill.undoHint', { count: lastFillEventIds.length }) }}
+        <NButton size="tiny" type="warning" style="margin-left: 12px;" :loading="saving" @click="revertLastFill">{{ $t('state.fill.undoBtn') }}</NButton>
+      </NAlert>
+
       <NSpin :show="loading">
         <NGrid :cols="24" :x-gap="16" :y-gap="16">
           <NGridItem :span="16">
@@ -1149,7 +1215,10 @@ onMounted(async () => {
                 <NSpace vertical>
                   <NInput v-model:value="fillForm.user_message" type="textarea" placeholder="用户消息" :autosize="{ minRows: 3, maxRows: 6 }" />
                   <NInput v-model:value="fillForm.assistant_message" type="textarea" placeholder="助手回复" :autosize="{ minRows: 3, maxRows: 8 }" />
-                  <NButton type="primary" :loading="saving" :disabled="!conversationId.trim()" @click="runFill">运行表格填充</NButton>
+                  <NSpace>
+                    <NButton type="primary" :loading="saving" :disabled="!conversationId.trim()" @click="runFillPreview">{{ $t('state.fill.previewBtn') }}</NButton>
+                    <NButton :loading="saving" :disabled="!conversationId.trim()" @click="runFillConfirm">{{ $t('state.fill.directBtn') }}</NButton>
+                  </NSpace>
                 </NSpace>
               </NCard>
             </NSpace>
@@ -1290,6 +1359,30 @@ onMounted(async () => {
         <NSpace justify="end">
           <NButton @click="showRenameTemplateModal = false">{{ $t('common.cancel') }}</NButton>
           <NButton type="primary" :loading="saving" @click="renameTemplate">{{ $t('common.save') }}</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+    <NModal v-model:show="showFillPreviewModal" preset="card" :title="$t('state.fill.previewTitle')" style="width: min(700px, 96vw)">
+      <div v-if="fillPreviewOps.length" style="max-height: 400px; overflow-y: auto;">
+        <div v-for="(op, idx) in fillPreviewOps" :key="idx" style="margin-bottom: 12px; padding: 8px; border-radius: 4px; background: #1a1a2e;">
+          <NSpace align="center" size="small">
+            <NTag :type="op.op.includes('insert') ? 'success' : op.op.includes('delete') || op.op.includes('resolve') ? 'error' : 'warning'" size="small">
+              {{ op.op === 'insert_row' ? '+' : op.op.includes('delete') || op.op.includes('resolve') ? '×' : '~' }} {{ op.op }}
+            </NTag>
+            <span style="color: #a1a1aa; font-size: 12px;">{{ op.table_key }}</span>
+            <span v-if="op.reason" style="color: #888; font-size: 12px;">— {{ op.reason }}</span>
+          </NSpace>
+          <div v-if="op.after" style="margin-top: 6px; font-size: 12px; color: #e0e0e0;">
+            <div v-for="(val, key) in op.after" :key="key" style="margin-left: 12px;">
+              <span style="color: #63e2b7;">{{ key }}</span>: {{ val }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="showFillPreviewModal = false">{{ $t('common.cancel') }}</NButton>
+          <NButton type="primary" :loading="saving" @click="runFillConfirm">{{ $t('state.fill.confirmBtn') }}</NButton>
         </NSpace>
       </template>
     </NModal>

@@ -20,6 +20,8 @@ class AppliedTableOperation:
     row_id: str | None = None
     confidence: float = 0.7
     reason: str = ""
+    before: dict[str, Any] | None = None
+    after: dict[str, Any] | None = None
 
 
 @dataclass
@@ -39,6 +41,7 @@ async def fill_conversation_state_tables(
     config: StateFillerConfigView,
     lang: str = "zh",
     turn_id: str | None = None,
+    dry_run: bool = False,
 ) -> StateTableFillResult:
     result = StateTableFillResult()
     if not config.base_url or not config.model or not assistant_message:
@@ -99,69 +102,82 @@ async def fill_conversation_state_tables(
             continue
         row = _match_row(rows_by_table.get(table.table_key, []), operation)
         normalized_values = _normalize_values(table, operation.values)
+        op_before: dict[str, Any] | None = None
+        op_after: dict[str, Any] | None = None
+        row_id: str | None = None
         if operation.op in {"insert_row", "upsert_row"} and not row:
-            row = StateTableRow(
-                row_id=None,
-                conversation_id=conversation_id,
-                template_id=template.template_id or "",
-                table_id=table.table_id or "",
-                table_key=table.table_key,
-                priority=table.prompt_priority,
-                confidence=operation.confidence,
-                source="state_table_filler",
-                source_turn_id=turn_id,
-                metadata={"reason": operation.reason},
-            )
-            row_id = await store.upsert_table_row(row, normalized_values)
-            await store.record_table_event(
-                conversation_id,
-                "insert_row",
-                table_key=table.table_key,
-                row_id=row_id,
-                operation=operation.__dict__,
-                after=normalized_values,
-                reason=operation.reason,
-                turn_id=turn_id,
-                model_output=text,
-            )
+            op_after = normalized_values
+            if not dry_run:
+                row = StateTableRow(
+                    row_id=None,
+                    conversation_id=conversation_id,
+                    template_id=template.template_id or "",
+                    table_id=table.table_id or "",
+                    table_key=table.table_key,
+                    priority=table.prompt_priority,
+                    confidence=operation.confidence,
+                    source="state_table_filler",
+                    source_turn_id=turn_id,
+                    metadata={"reason": operation.reason},
+                )
+                row_id = await store.upsert_table_row(row, normalized_values)
+                await store.record_table_event(
+                    conversation_id,
+                    "insert_row",
+                    table_key=table.table_key,
+                    row_id=row_id,
+                    operation=operation.__dict__,
+                    after=normalized_values,
+                    reason=operation.reason,
+                    turn_id=turn_id,
+                    model_output=text,
+                )
         elif operation.op in {"update_row", "upsert_row"} and row:
-            before = {key: cell.value for key, cell in row.cells.items()}
-            values = {**before, **normalized_values}
-            row.confidence = operation.confidence
-            row.source = "state_table_filler"
-            row.source_turn_id = turn_id
-            row.metadata = {**row.metadata, "reason": operation.reason}
-            row_id = await store.upsert_table_row(row, values)
-            await store.record_table_event(
-                conversation_id,
-                "update_row",
-                table_key=table.table_key,
-                row_id=row_id,
-                operation=operation.__dict__,
-                before=before,
-                after=values,
-                reason=operation.reason,
-                turn_id=turn_id,
-                model_output=text,
-            )
+            op_before = {key: cell.value for key, cell in row.cells.items()}
+            op_after = {**op_before, **normalized_values}
+            if not dry_run:
+                row.confidence = operation.confidence
+                row.source = "state_table_filler"
+                row.source_turn_id = turn_id
+                row.metadata = {**row.metadata, "reason": operation.reason}
+                row_id = await store.upsert_table_row(row, op_after)
+                await store.record_table_event(
+                    conversation_id,
+                    "update_row",
+                    table_key=table.table_key,
+                    row_id=row_id,
+                    operation=operation.__dict__,
+                    before=op_before,
+                    after=op_after,
+                    reason=operation.reason,
+                    turn_id=turn_id,
+                    model_output=text,
+                )
+            else:
+                row_id = row.row_id
         elif operation.op in {"delete_row", "resolve_row"} and row and row.row_id:
             row_id = row.row_id
-            await store.update_table_row_status(row_id, "resolved", operation.reason)
-            await store.record_table_event(
-                conversation_id,
-                operation.op,
-                table_key=table.table_key,
-                row_id=row_id,
-                operation=operation.__dict__,
-                reason=operation.reason,
-                turn_id=turn_id,
-                model_output=text,
-            )
+            op_before = {key: cell.value for key, cell in row.cells.items()}
+            if not dry_run:
+                await store.update_table_row_status(row_id, "resolved", operation.reason)
+                await store.record_table_event(
+                    conversation_id,
+                    operation.op,
+                    table_key=table.table_key,
+                    row_id=row_id,
+                    operation=operation.__dict__,
+                    reason=operation.reason,
+                    turn_id=turn_id,
+                    model_output=text,
+                )
         else:
             result.skipped += 1
             continue
         result.applied += 1
-        result.operations.append(AppliedTableOperation(operation.op, operation.table_key, row_id, operation.confidence, operation.reason))
+        result.operations.append(AppliedTableOperation(
+            operation.op, operation.table_key, row_id, operation.confidence, operation.reason,
+            before=op_before, after=op_after,
+        ))
 
     return result
 

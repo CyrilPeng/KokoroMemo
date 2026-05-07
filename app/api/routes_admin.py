@@ -2031,15 +2031,52 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
         assistant_message=data.get("assistant_message", ""),
         config=filler_config,
         lang=cfg.language,
+        dry_run=bool(data.get("preview")),
     )
     return {
         "status": "ok",
         "mode": "table",
         "applied": table_result.applied,
         "skipped": table_result.skipped,
-        "operations": [operation.__dict__ for operation in table_result.operations],
+        "operations": [
+            {k: v for k, v in op.__dict__.items() if v is not None}
+            for op in table_result.operations
+        ],
         "notes": table_result.notes,
+        "preview": bool(data.get("preview")),
     }
+
+
+@router.get("/admin/conversations/{conversation_id}/state/events")
+async def list_conversation_state_events(
+    conversation_id: str,
+    request: Request,
+    turn_id: str | None = Query(default=None),
+    limit: int = Query(default=50, le=200),
+):
+    """List state table change events for a conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    events = await store.list_table_events(conversation_id, turn_id=turn_id, limit=limit)
+    return {"items": events}
+
+
+@router.post("/admin/conversations/{conversation_id}/state/revert")
+async def revert_conversation_state_events(conversation_id: str, request: Request, data: dict = Body(...)):
+    """Revert state table events (undo operations)."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    event_ids = data.get("event_ids", [])
+    if not event_ids:
+        raise HTTPException(status_code=400, detail="event_ids required")
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    reverted = await store.revert_table_events(conversation_id, event_ids)
+    return {"status": "ok", "reverted": reverted}
 
 
 @router.post("/admin/inbox/{inbox_id}/reject")

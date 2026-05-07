@@ -584,3 +584,90 @@ class StateTablesMixin:
             )
             await db.commit()
         return event_id
+
+    async def list_table_events(
+        self,
+        conversation_id: str,
+        turn_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        await self.init_schema()
+        where = ["conversation_id = ?"]
+        params: list[Any] = [conversation_id]
+        if turn_id:
+            where.append("turn_id = ?")
+            params.append(turn_id)
+        where_sql = " AND ".join(where)
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                f"SELECT * FROM state_table_events WHERE {where_sql} ORDER BY created_at DESC LIMIT ?",
+                params + [limit],
+            )
+            events = []
+            for row in await cursor.fetchall():
+                events.append({
+                    "event_id": row["event_id"],
+                    "event_type": row["event_type"],
+                    "table_key": row["table_key"],
+                    "row_id": row["row_id"],
+                    "before": json.loads(row["before_json"]) if row["before_json"] else None,
+                    "after": json.loads(row["after_json"]) if row["after_json"] else None,
+                    "reason": row["reason"],
+                    "turn_id": row["turn_id"],
+                    "created_at": row["created_at"],
+                })
+            return events
+
+    async def revert_table_events(self, conversation_id: str, event_ids: list[str]) -> int:
+        await self.init_schema()
+        reverted = 0
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            for event_id in event_ids:
+                cursor = await db.execute(
+                    "SELECT * FROM state_table_events WHERE event_id = ? AND conversation_id = ?",
+                    (event_id, conversation_id),
+                )
+                event = await cursor.fetchone()
+                if not event:
+                    continue
+                event_type = event["event_type"]
+                row_id = event["row_id"]
+                before_json = event["before_json"]
+                if not row_id:
+                    continue
+                if event_type == "insert_row":
+                    await db.execute(
+                        "UPDATE state_table_rows SET status = 'resolved', updated_at = datetime('now', 'localtime') WHERE row_id = ?",
+                        (row_id,),
+                    )
+                elif event_type in {"update_row", "manual_cell_edit", "manual_upsert_row"}:
+                    before = json.loads(before_json) if before_json else {}
+                    if before:
+                        for col_key, value in before.items():
+                            await db.execute(
+                                """UPDATE state_table_cells SET value = ?, updated_at = datetime('now', 'localtime')
+                                   WHERE row_id = ? AND column_key = ?""",
+                                (str(value), row_id, col_key),
+                            )
+                        await db.execute(
+                            "UPDATE state_table_rows SET updated_at = datetime('now', 'localtime') WHERE row_id = ?",
+                            (row_id,),
+                        )
+                elif event_type in {"delete_row", "resolve_row", "resolved"}:
+                    await db.execute(
+                        "UPDATE state_table_rows SET status = 'active', updated_at = datetime('now', 'localtime') WHERE row_id = ?",
+                        (row_id,),
+                    )
+                else:
+                    continue
+                reverted += 1
+            await db.commit()
+        if reverted > 0:
+            await self.record_table_event(
+                conversation_id,
+                "revert",
+                reason=f"Reverted {reverted} events",
+            )
+        return reverted

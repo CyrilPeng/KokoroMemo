@@ -936,6 +936,43 @@ async function exportBoard() {
   message.success(savedPath ? `已导出到 ${savedPath}` : '已导出')
 }
 
+async function importBoard() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const targetId = conversationId.value.trim() || data.conversation_id
+      if (!targetId) { message.error(t('state.messages.inputId')); return }
+      const resp = await apiFetch('/admin/conversations/import', {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          target_conversation_id: targetId,
+          config: data.config || {},
+          table_rows: (data.rows || data.table_rows || []).map((r: any) => ({
+            table_key: r.table_key,
+            values: r.values || r.cells || {},
+            priority: r.priority,
+            confidence: r.confidence,
+          })),
+        }),
+      })
+      const result = await resp.json()
+      if (!resp.ok || result.status !== 'ok') throw new Error(result.detail || result.message)
+      message.success(t('state.messages.importDone', { count: result.imported_rows || 0 }))
+      if (targetId === conversationId.value.trim()) await fetchBoard()
+    } catch (error: any) {
+      message.error(error.message || t('state.messages.importFailed'))
+    }
+  }
+  input.click()
+}
+
 function tableScrollX(table: StateTable) {
   return Math.max(760, table.columns.length * 180 + 430)
 }
@@ -1060,6 +1097,7 @@ onMounted(async () => {
                 加载
               </NButton>
               <NButton :disabled="!template" @click="exportBoard">导出</NButton>
+              <NButton @click="importBoard">导入</NButton>
               <NButton :disabled="!selectedConversation" @click="openRenameConversation">重命名</NButton>
               <NPopconfirm
                 :disabled="!conversationId.trim()"
@@ -1247,8 +1285,13 @@ onMounted(async () => {
                   <NButton size="tiny" :loading="previewLoading" @click="fetchPreview">刷新</NButton>
                 </template>
                 <NSpace vertical>
-                  <NTag size="small">{{ preview.char_count }} / {{ preview.max_chars }} 字符，{{ preview.item_count }} 行</NTag>
+                  <NTag size="small">{{ preview.char_count }} / {{ preview.max_chars }} 字符，{{ preview.item_count }} 行，≈{{ Math.ceil(preview.char_count / 2.5) }} tokens</NTag>
                   <NInput :value="preview.preview" type="textarea" readonly :autosize="{ minRows: 12, maxRows: 24 }" placeholder="加载后显示注入到模型的状态板文本" />
+                  <div v-if="tables.length" style="font-size: 12px; color: #a1a1aa;">
+                    <div v-for="table in tables" :key="table.table_key">
+                      {{ table.name }}: {{ (rowsByTable[table.table_key] || []).length }} 行
+                    </div>
+                  </div>
                 </NSpace>
               </NCard>
 

@@ -301,6 +301,8 @@ export default {
       fillNoChanges: 'AI produced no operations',
       reverted: 'Reverted {count} operations',
       revertFailed: 'Revert failed',
+      importDone: 'Imported {count} state items',
+      importFailed: 'Import failed',
     },
     fill: {
       previewBtn: 'Preview Fill',

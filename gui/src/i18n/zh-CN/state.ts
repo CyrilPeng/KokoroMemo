@@ -301,6 +301,8 @@ export default {
       fillNoChanges: 'AI 分析后未产生任何操作',
       reverted: '已撤销 {count} 项操作',
       revertFailed: '撤销失败',
+      importDone: '已导入 {count} 个状态项',
+      importFailed: '导入失败',
     },
     fill: {
       previewBtn: '预览填表',

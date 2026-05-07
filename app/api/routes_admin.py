@@ -1890,10 +1890,12 @@ async def get_conversation_state_tables(conversation_id: str, request: Request):
     if not template:
         raise HTTPException(status_code=404, detail="State table template not found")
     rows = await store.list_table_rows(conversation_id, template.template_id)
+    recent_events = await store.list_table_events(conversation_id, limit=30)
     return {
         "conversation_id": conversation_id,
         "template": _state_table_template_to_dict(template),
         "rows": [_state_table_row_to_dict(row) for row in rows],
+        "recent_events": recent_events,
         "source": "table",
     }
 

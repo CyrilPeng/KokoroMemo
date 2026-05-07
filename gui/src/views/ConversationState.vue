@@ -98,6 +98,7 @@ const adminToken = ref(localStorage.getItem('kokoromemo.adminToken') || '')
 const conversations = ref<any[]>([])
 const template = ref<any | null>(null)
 const rows = ref<StateRow[]>([])
+const recentEvents = ref<any[]>([])
 const config = ref<ConversationConfig | null>(null)
 const defaultConfig = ref<ConversationConfig | null>(null)
 const profiles = ref<any[]>([])
@@ -273,6 +274,7 @@ async function fetchBoard() {
     if (!resp.ok) throw new Error(data.detail || data.message || '加载失败')
     template.value = data.template
     rows.value = data.rows || []
+    recentEvents.value = data.recent_events || []
     reconcileActiveTable()
     await fetchPreview()
     await fetchMounts()
@@ -974,6 +976,14 @@ function columnsFor(table: StateTable) {
   ]
 }
 
+function rowClassName(row: StateRow) {
+  const evt = recentEvents.value.find((e: any) => e.row_id === row.row_id)
+  if (!evt) return ''
+  if (evt.event_type === 'insert_row') return 'row-inserted'
+  if (evt.event_type === 'update_row' || evt.event_type === 'manual_cell_edit' || evt.event_type === 'manual_upsert_row') return 'row-updated'
+  return ''
+}
+
 onMounted(async () => {
   fetchOptions()
   fetchDefaultConfig()
@@ -1191,7 +1201,7 @@ onMounted(async () => {
                       <NButton size="small" @click="openAddColumn(table)">{{ $t('state.template.addColumn') }}</NButton>
                       <NButton size="small" @click="fetchPreview">刷新注入预览</NButton>
                     </NSpace>
-                    <NDataTable class="state-data-table" :columns="columnsFor(table)" :data="rowsByTable[table.table_key] || []" :pagination="{ pageSize: 8 }" :scroll-x="tableScrollX(table)" />
+                    <NDataTable class="state-data-table" :columns="columnsFor(table)" :data="rowsByTable[table.table_key] || []" :pagination="{ pageSize: 8 }" :scroll-x="tableScrollX(table)" :row-class-name="rowClassName" />
                   </NSpace>
                 </NTabPane>
               </NTabs>
@@ -1427,5 +1437,13 @@ onMounted(async () => {
   .state-page :deep(.n-grid-item) {
     grid-column: span 1 / span 1 !important;
   }
+}
+
+.state-data-table :deep(.row-inserted td) {
+  border-left: 3px solid #18a058;
+}
+
+.state-data-table :deep(.row-updated td) {
+  border-left: 3px solid #2080f0;
 }
 </style>

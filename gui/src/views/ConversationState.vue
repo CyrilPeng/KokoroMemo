@@ -27,6 +27,7 @@ import {
   useMessage,
 } from 'naive-ui'
 import { AddOutline, RefreshOutline, SettingsOutline } from '@vicons/ionicons5'
+import { useI18n } from 'vue-i18n'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
 import HelpModal from '../components/HelpModal.vue'
@@ -85,6 +86,7 @@ type ConversationConfig = {
 }
 
 const message = useMessage()
+const { t } = useI18n()
 const loading = ref(false)
 const saving = ref(false)
 const previewLoading = ref(false)
@@ -131,7 +133,7 @@ const profileDescriptions: Record<string, string> = {
   proxy_only: '纯透传代理，不注入、不写入、不维护任何状态',
 }
 const profileOptions = computed(() => profiles.value.map((item) => ({
-  label: `${item.name}${item.is_builtin === false ? ' ? custom' : ''}`,
+  label: `${item.name}${item.is_builtin === false ? ` ? ${t('state.template.customMark')}` : ''}`,
   value: item.profile_id,
 })))
 const selectedProfileHint = computed(() => {
@@ -144,7 +146,7 @@ const selectedDefaultProfileHint = computed(() => {
 })
 const tableTemplateOptions = computed(() => [
   { label: '不使用表格模板', value: null },
-  ...tableTemplates.value.map((item) => ({ label: `${item.name}${item.is_builtin === false ? ' ? custom' : ''}`, value: item.template_id })),
+  ...tableTemplates.value.map((item) => ({ label: `${item.name}${item.is_builtin === false ? ` ? ${t('state.template.customMark')}` : ''}`, value: item.template_id })),
 ])
 const mountPresetOptions = computed(() => [
   { label: '不套用挂载预设', value: null },
@@ -532,11 +534,11 @@ async function cloneCurrentTemplate() {
     const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/clone`, {
       method: 'POST',
       headers: authHeaders(true),
-      body: JSON.stringify({ name: `${template.value.name || 'Template'} custom` }),
+      body: JSON.stringify({ name: `${template.value.name || t('state.template.fallbackName')} ${t('state.template.customSuffix')}` }),
     })
     const data = await resp.json()
     if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Clone template failed')
-    message.success('Template cloned')
+    message.success(t('state.messages.templateCloned'))
     await applyTemplateUpdate(data.template)
   } catch (error: any) {
     message.error(error.message || 'Clone template failed')
@@ -555,13 +557,13 @@ async function saveNewTab() {
       body: JSON.stringify(tabForm.value),
     })
     const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Add tab failed')
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.addTabFailed'))
     showAddTabModal.value = false
     activeTableKey.value = data.template.tables?.at(-1)?.table_key || activeTableKey.value
-    message.success('Tab added')
+    message.success(t('state.messages.tabAdded'))
     await applyTemplateUpdate(data.template)
   } catch (error: any) {
-    message.error(error.message || 'Add tab failed')
+    message.error(error.message || t('state.messages.addTabFailed'))
   } finally {
     saving.value = false
   }
@@ -577,12 +579,12 @@ async function saveNewColumn() {
       body: JSON.stringify(columnForm.value),
     })
     const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Add column failed')
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.addColumnFailed'))
     showAddColumnModal.value = false
-    message.success('Column added')
+    message.success(t('state.messages.columnAdded'))
     await applyTemplateUpdate(data.template)
   } catch (error: any) {
-    message.error(error.message || 'Add column failed')
+    message.error(error.message || t('state.messages.addColumnFailed'))
   } finally {
     saving.value = false
   }
@@ -613,12 +615,12 @@ async function savePreset() {
       }),
     })
     const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Save preset failed')
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.savePresetFailed'))
     showPresetModal.value = false
-    message.success('Preset saved')
+    message.success(t('state.messages.presetSaved'))
     await fetchOptions()
   } catch (error: any) {
-    message.error(error.message || 'Save preset failed')
+    message.error(error.message || t('state.messages.savePresetFailed'))
   } finally {
     saving.value = false
   }
@@ -629,11 +631,11 @@ async function deletePreset(preset: any) {
   try {
     const resp = await apiFetch(`/admin/memory-mount-presets/${encodeURIComponent(preset.preset_id)}`, { method: 'DELETE', headers: authHeaders() })
     const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Delete preset failed')
-    message.success('Preset deleted')
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.deletePresetFailed'))
+    message.success(t('state.messages.presetDeleted'))
     await fetchOptions()
   } catch (error: any) {
-    message.error(error.message || 'Delete preset failed')
+    message.error(error.message || t('state.messages.deletePresetFailed'))
   } finally {
     saving.value = false
   }
@@ -666,13 +668,13 @@ async function saveProfile() {
       }),
     })
     const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Save profile failed')
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.saveProfileFailed'))
     showProfileModal.value = false
-    message.success('Profile saved')
+    message.success(t('state.messages.profileSaved'))
     await fetchOptions()
     if (data.profile?.profile_id) config.value.profile_id = data.profile.profile_id
   } catch (error: any) {
-    message.error(error.message || 'Save profile failed')
+    message.error(error.message || t('state.messages.saveProfileFailed'))
   } finally {
     saving.value = false
   }
@@ -684,11 +686,11 @@ async function deleteProfile(profile: any) {
   try {
     const resp = await apiFetch(`/admin/conversation-profiles/${encodeURIComponent(profile.profile_id)}`, { method: 'DELETE', headers: authHeaders() })
     const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Delete profile failed')
-    message.success('Profile deleted')
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.deleteProfileFailed'))
+    message.success(t('state.messages.profileDeleted'))
     await fetchOptions()
   } catch (error: any) {
-    message.error(error.message || 'Delete profile failed')
+    message.error(error.message || t('state.messages.deleteProfileFailed'))
   } finally {
     saving.value = false
   }
@@ -918,8 +920,8 @@ onMounted(() => {
               </NFormItem>
               <div v-if="selectedProfileHint" class="hint-text">{{ selectedProfileHint }}</div>
               <NSpace style="margin-top: 6px;">
-                <NButton size="tiny" @click="openProfileModal()">Save as profile</NButton>
-                <NButton v-if="profiles.find((item) => item.profile_id === config?.profile_id)?.is_builtin === false" size="tiny" @click="openProfileModal(profiles.find((item) => item.profile_id === config?.profile_id))">Edit</NButton>
+                <NButton size="tiny" @click="openProfileModal()">{{ $t('state.profile.saveAs') }}</NButton>
+                <NButton v-if="profiles.find((item) => item.profile_id === config?.profile_id)?.is_builtin === false" size="tiny" @click="openProfileModal(profiles.find((item) => item.profile_id === config?.profile_id))">{{ $t('state.actions.edit') }}</NButton>
               </NSpace>
             </NGridItem>
             <NGridItem :span="8">
@@ -932,10 +934,10 @@ onMounted(() => {
                 <NSelect v-model:value="config.mount_preset_id" filterable :options="mountPresetOptions" />
               </NFormItem>
               <NSpace>
-                <NButton size="tiny" @click="openPresetModal(mountPresets.find((item) => item.preset_id === config?.mount_preset_id))" :disabled="!config.mount_preset_id">Edit</NButton>
+                <NButton size="tiny" @click="openPresetModal(mountPresets.find((item) => item.preset_id === config?.mount_preset_id))" :disabled="!config.mount_preset_id">{{ $t('state.actions.edit') }}</NButton>
                 <NPopconfirm v-if="config.mount_preset_id" @positive-click="deletePreset(mountPresets.find((item) => item.preset_id === config?.mount_preset_id))">
-                  <template #trigger><NButton size="tiny" type="error" quaternary>Delete</NButton></template>
-                  Delete this preset?
+                  <template #trigger><NButton size="tiny" type="error" quaternary>{{ $t('state.actions.delete') }}</NButton></template>
+                  {{ $t('state.messages.confirmDeleteCurrentPreset') }}
                 </NPopconfirm>
               </NSpace>
             </NGridItem>
@@ -992,8 +994,8 @@ onMounted(() => {
             <NCard title="状态表格">
               <template #header-extra>
                 <NSpace>
-                  <NButton size="tiny" :disabled="!template" @click="cloneCurrentTemplate">Clone editable template</NButton>
-                  <NButton size="tiny" type="primary" :disabled="!template" @click="openAddTab">Add tab</NButton>
+                  <NButton size="tiny" :disabled="!template" @click="cloneCurrentTemplate">{{ $t('state.template.cloneEditable') }}</NButton>
+                  <NButton size="tiny" type="primary" :disabled="!template" @click="openAddTab">{{ $t('state.template.addTab') }}</NButton>
                 </NSpace>
               </template>
               <NTabs v-if="tables.length" v-model:value="activeTableKey" type="line" animated>
@@ -1005,7 +1007,7 @@ onMounted(() => {
                         <template #icon><NIcon :component="AddOutline" /></template>
                         新增状态行
                       </NButton>
-                      <NButton size="small" @click="openAddColumn(table)">Add column</NButton>
+                      <NButton size="small" @click="openAddColumn(table)">{{ $t('state.template.addColumn') }}</NButton>
                       <NButton size="small" @click="fetchPreview">刷新注入预览</NButton>
                     </NSpace>
                     <NDataTable class="state-data-table" :columns="columnsFor(table)" :data="rowsByTable[table.table_key] || []" :pagination="{ pageSize: 8 }" :scroll-x="tableScrollX(table)" />
@@ -1117,51 +1119,51 @@ onMounted(() => {
     </NModal>
 
 
-    <NModal v-model:show="showAddTabModal" preset="card" title="Add state tab" style="width: min(560px, 96vw)">
+    <NModal v-model:show="showAddTabModal" preset="card" :title="$t('state.template.addTabTitle')" style="width: min(560px, 96vw)">
       <NForm label-placement="top">
-        <NFormItem label="Tab name"><NInput v-model:value="tabForm.name" placeholder="Quest notes" /></NFormItem>
-        <NFormItem label="Key"><NInput v-model:value="tabForm.table_key" placeholder="quests" /></NFormItem>
-        <NFormItem label="Description"><NInput v-model:value="tabForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
+        <NFormItem :label="$t('state.template.tabName')"><NInput v-model:value="tabForm.name" :placeholder="$t('state.template.tabNamePlaceholder')" /></NFormItem>
+        <NFormItem :label="$t('state.template.key')"><NInput v-model:value="tabForm.table_key" placeholder="quests" /></NFormItem>
+        <NFormItem :label="$t('state.template.description')"><NInput v-model:value="tabForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
       </NForm>
-      <template #footer><NSpace justify="end"><NButton @click="showAddTabModal = false">Cancel</NButton><NButton type="primary" :loading="saving" @click="saveNewTab">Save</NButton></NSpace></template>
+      <template #footer><NSpace justify="end"><NButton @click="showAddTabModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" :loading="saving" @click="saveNewTab">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
-    <NModal v-model:show="showAddColumnModal" preset="card" title="Add state column" style="width: min(560px, 96vw)">
+    <NModal v-model:show="showAddColumnModal" preset="card" :title="$t('state.template.addColumnTitle')" style="width: min(560px, 96vw)">
       <NForm label-placement="top">
-        <NFormItem label="Column name"><NInput v-model:value="columnForm.name" placeholder="Owner" /></NFormItem>
-        <NFormItem label="Key"><NInput v-model:value="columnForm.column_key" placeholder="owner" /></NFormItem>
-        <NFormItem label="Description"><NInput v-model:value="columnForm.description" /></NFormItem>
+        <NFormItem :label="$t('state.template.columnName')"><NInput v-model:value="columnForm.name" :placeholder="$t('state.template.columnNamePlaceholder')" /></NFormItem>
+        <NFormItem :label="$t('state.template.key')"><NInput v-model:value="columnForm.column_key" placeholder="owner" /></NFormItem>
+        <NFormItem :label="$t('state.template.description')"><NInput v-model:value="columnForm.description" /></NFormItem>
         <NGrid :cols="2" :x-gap="12">
-          <NGridItem><NFormItem label="Max chars"><NInputNumber v-model:value="columnForm.max_chars" :min="20" :max="2000" /></NFormItem></NGridItem>
-          <NGridItem><NFormItem label="Required"><NSelect v-model:value="columnForm.required" :options="[{ label: 'No', value: 0 }, { label: 'Yes', value: 1 }]" /></NFormItem></NGridItem>
+          <NGridItem><NFormItem :label="$t('state.template.maxChars')"><NInputNumber v-model:value="columnForm.max_chars" :min="20" :max="2000" /></NFormItem></NGridItem>
+          <NGridItem><NFormItem :label="$t('state.template.required')"><NSelect v-model:value="columnForm.required" :options="[{ label: $t('common.no'), value: 0 }, { label: $t('common.yes'), value: 1 }]" /></NFormItem></NGridItem>
         </NGrid>
       </NForm>
-      <template #footer><NSpace justify="end"><NButton @click="showAddColumnModal = false">Cancel</NButton><NButton type="primary" :loading="saving" @click="saveNewColumn">Save</NButton></NSpace></template>
+      <template #footer><NSpace justify="end"><NButton @click="showAddColumnModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" :loading="saving" @click="saveNewColumn">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
-    <NModal v-model:show="showPresetModal" preset="card" title="Manage mount preset" style="width: min(560px, 96vw)">
+    <NModal v-model:show="showPresetModal" preset="card" :title="$t('state.preset.manageTitle')" style="width: min(560px, 96vw)">
       <NForm label-placement="top">
-        <NFormItem label="Preset name"><NInput v-model:value="presetForm.name" placeholder="Character world libraries" /></NFormItem>
-        <NFormItem label="Description"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
-        <NAlert type="info" :show-icon="false">Saves currently mounted libraries and write target.</NAlert>
+        <NFormItem :label="$t('state.preset.name')"><NInput v-model:value="presetForm.name" :placeholder="$t('state.preset.namePlaceholder')" /></NFormItem>
+        <NFormItem :label="$t('state.template.description')"><NInput v-model:value="presetForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
+        <NAlert type="info" :show-icon="false">{{ $t('state.preset.saveCurrentHelp') }}</NAlert>
       </NForm>
-      <template #footer><NSpace justify="end"><NButton @click="showPresetModal = false">Cancel</NButton><NButton type="primary" :loading="saving" @click="savePreset">Save</NButton></NSpace></template>
+      <template #footer><NSpace justify="end"><NButton @click="showPresetModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" :loading="saving" @click="savePreset">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
-    <NModal v-model:show="showProfileModal" preset="card" title="Manage conversation profile" style="width: min(560px, 96vw)">
+    <NModal v-model:show="showProfileModal" preset="card" :title="$t('state.profile.manageTitle')" style="width: min(560px, 96vw)">
       <NForm label-placement="top">
-        <NFormItem label="Profile name"><NInput v-model:value="profileForm.name" placeholder="Story + multi-library memory" /></NFormItem>
-        <NFormItem label="Description"><NInput v-model:value="profileForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
-        <NAlert type="info" :show-icon="false">Saves the current template, preset, write policy, state policy and injection policy.</NAlert>
+        <NFormItem :label="$t('state.profile.name')"><NInput v-model:value="profileForm.name" :placeholder="$t('state.profile.namePlaceholder')" /></NFormItem>
+        <NFormItem :label="$t('state.template.description')"><NInput v-model:value="profileForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
+        <NAlert type="info" :show-icon="false">{{ $t('state.profile.saveCurrentHelp') }}</NAlert>
       </NForm>
       <template #footer>
         <NSpace justify="space-between" style="width: 100%;">
           <NPopconfirm v-if="profileForm.profile_id" @positive-click="deleteProfile(profiles.find((item) => item.profile_id === profileForm.profile_id))">
-            <template #trigger><NButton type="error" quaternary>Delete profile</NButton></template>
-            Delete this custom profile?
+            <template #trigger><NButton type="error" quaternary>{{ $t('state.profile.delete') }}</NButton></template>
+            {{ $t('state.messages.confirmDeleteCurrentProfile') }}
           </NPopconfirm>
           <span v-else></span>
-          <NSpace><NButton @click="showProfileModal = false">Cancel</NButton><NButton type="primary" :loading="saving" @click="saveProfile">Save</NButton></NSpace>
+          <NSpace><NButton @click="showProfileModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" :loading="saving" @click="saveProfile">{{ $t('common.save') }}</NButton></NSpace>
         </NSpace>
       </template>
     </NModal>

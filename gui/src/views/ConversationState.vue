@@ -32,6 +32,7 @@ import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
 import HelpModal from '../components/HelpModal.vue'
 import PageHeader from '../components/PageHeader.vue'
+import EditableCell from '../components/state/EditableCell.vue'
 
 const stateHelpSections = [
   { title: '这是什么', body: '状态板用于追踪当前会话的"热信息"——场景、角色情绪、规则、关系等会随对话演变的内容。它会和长期记忆一起注入到 AI 的 system prompt，帮助 AI 维持连续性。' },
@@ -880,8 +881,16 @@ function columnsFor(table: StateTable) {
     title: column.name,
     key: column.column_key,
     minWidth: 140,
-    ellipsis: { tooltip: true },
-    render: (row: StateRow) => row.values?.[column.column_key] || '-',
+    render: (row: StateRow) => h(EditableCell, {
+      value: row.values?.[column.column_key] || '',
+      rowId: row.row_id,
+      columnKey: column.column_key,
+      maxChars: column.max_chars || 360,
+      adminToken: adminToken.value,
+      onSaved: (_key: string, newValue: string) => {
+        if (row.values) row.values[column.column_key] = newValue
+      },
+    }),
   }))
   return [
     ...valueColumns,

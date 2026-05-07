@@ -464,6 +464,67 @@ class StateTablesMixin:
             await db.commit()
         return row_id
 
+    async def update_single_cell(self, row_id: str, column_key: str, value: str) -> dict[str, Any] | None:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT conversation_id, table_key, table_id FROM state_table_rows WHERE row_id = ?",
+                (row_id,),
+            )
+            row_info = await cursor.fetchone()
+            if not row_info:
+                return None
+            old_cursor = await db.execute(
+                "SELECT value FROM state_table_cells WHERE row_id = ? AND column_key = ?",
+                (row_id, column_key),
+            )
+            old_row = await old_cursor.fetchone()
+            old_value = old_row["value"] if old_row else ""
+            col_cursor = await db.execute(
+                "SELECT column_id FROM state_table_columns WHERE table_id = ? AND column_key = ?",
+                (row_info["table_id"], column_key),
+            )
+            col_row = await col_cursor.fetchone()
+            column_id = col_row["column_id"] if col_row else None
+            cell_id = generate_id("state_cell_")
+            cell_value = "" if value is None else str(value)
+            await db.execute(
+                """INSERT INTO state_table_cells (cell_id, row_id, column_id, column_key, value, confidence)
+                   VALUES (?, ?, ?, ?, ?, 1.0)
+                   ON CONFLICT(row_id, column_key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = datetime('now', 'localtime')""",
+                (cell_id, row_id, column_id, column_key, cell_value),
+            )
+            await db.execute(
+                "UPDATE state_table_rows SET updated_at = datetime('now', 'localtime') WHERE row_id = ?",
+                (row_id,),
+            )
+            await db.commit()
+            cell_cursor = await db.execute(
+                "SELECT cell_id, value, confidence, updated_at FROM state_table_cells WHERE row_id = ? AND column_key = ?",
+                (row_id, column_key),
+            )
+            cell = await cell_cursor.fetchone()
+        conversation_id = row_info["conversation_id"]
+        table_key = row_info["table_key"]
+        await self.record_table_event(
+            conversation_id,
+            "manual_cell_edit",
+            table_key=table_key,
+            row_id=row_id,
+            before={column_key: old_value},
+            after={column_key: cell_value},
+        )
+        return {
+            "cell_id": cell["cell_id"],
+            "column_key": column_key,
+            "value": cell["value"],
+            "confidence": cell["confidence"],
+            "updated_at": cell["updated_at"],
+        } if cell else None
+
     async def update_table_row_status(self, row_id: str, status: str, reason: str | None = None) -> bool:
         await self.init_schema()
         async with aiosqlite.connect(self.db_path) as db:

@@ -1949,6 +1949,21 @@ async def delete_conversation_state_table_row(row_id: str, request: Request):
     return {"status": "ok" if ok else "error", "message": None if ok else "State table row not found"}
 
 
+@router.patch("/admin/state/table-rows/{row_id}/cells/{column_key}")
+async def patch_state_table_cell(row_id: str, column_key: str, request: Request, data: dict = Body(...)):
+    """Update a single cell value in a state table row."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    value = data.get("value", "")
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    cell = await store.update_single_cell(row_id, column_key, str(value))
+    if not cell:
+        raise HTTPException(status_code=404, detail="Row not found")
+    return {"status": "ok", "cell": cell}
+
+
 @router.get("/admin/conversations/{conversation_id}/retrieval-decisions")
 async def get_retrieval_decisions(
     conversation_id: str,

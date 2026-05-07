@@ -46,14 +46,19 @@ function preloadViews() {
   else window.setTimeout(run, 800)
 }
 
-async function bootstrap() {
-  // 桌面端需要先通过 Tauri 获取实际后端端口；浏览器模式直接走同源，避免移动端首屏等待探测。
-  if ((window as any).__TAURI_INTERNALS__) await resolveBackendUrl()
+function warmupBackendUrl() {
+  if (!(window as any).__TAURI_INTERNALS__) return
+  resolveBackendUrl().catch((error) => {
+    console.warn('Backend port discovery failed; requests will retry:', error)
+  })
+}
 
+function bootstrap() {
   const app = createApp(App)
   app.use(i18n)
   app.use(router)
   app.mount('#app')
+  warmupBackendUrl()
   preloadViews()
 }
 

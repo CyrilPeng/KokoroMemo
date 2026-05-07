@@ -85,12 +85,14 @@ type ConversationConfig = {
   created_from_default?: boolean
 }
 
+const STATE_CONVERSATION_STORAGE_KEY = 'kokoromemo.stateConversationId'
+const STATE_ACTIVE_TABLE_STORAGE_KEY = 'kokoromemo.stateActiveTableKey'
 const message = useMessage()
 const { t } = useI18n()
 const loading = ref(false)
 const saving = ref(false)
 const previewLoading = ref(false)
-const conversationId = ref(localStorage.getItem('kokoromemo.stateConversationId') || '')
+const conversationId = ref(localStorage.getItem(STATE_CONVERSATION_STORAGE_KEY) || '')
 const adminToken = ref(localStorage.getItem('kokoromemo.adminToken') || '')
 const conversations = ref<any[]>([])
 const template = ref<any | null>(null)
@@ -103,7 +105,7 @@ const mountPresets = ref<any[]>([])
 const memoryLibraries = ref<any[]>([])
 const mountedLibraryIds = ref<string[]>([])
 const writeLibraryId = ref<string | null>(null)
-const activeTableKey = ref('')
+const activeTableKey = ref(localStorage.getItem(STATE_ACTIVE_TABLE_STORAGE_KEY) || '')
 const preview = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0 })
 const showEditModal = ref(false)
 const showFillModal = ref(false)
@@ -216,8 +218,23 @@ function authHeaders(json = false) {
 }
 
 function persistInputs() {
-  localStorage.setItem('kokoromemo.stateConversationId', conversationId.value.trim())
+  localStorage.setItem(STATE_CONVERSATION_STORAGE_KEY, conversationId.value.trim())
   localStorage.setItem('kokoromemo.adminToken', adminToken.value.trim())
+}
+
+function persistActiveTable() {
+  localStorage.setItem(STATE_ACTIVE_TABLE_STORAGE_KEY, activeTableKey.value)
+}
+
+function reconcileActiveTable() {
+  if (!tables.value.length) {
+    activeTableKey.value = ''
+    persistActiveTable()
+    return
+  }
+  const exists = tables.value.some((table) => table.table_key === activeTableKey.value)
+  if (!activeTableKey.value || !exists) activeTableKey.value = tables.value[0].table_key
+  persistActiveTable()
 }
 
 async function fetchBoard() {
@@ -236,7 +253,7 @@ async function fetchBoard() {
     if (!resp.ok) throw new Error(data.detail || data.message || '加载失败')
     template.value = data.template
     rows.value = data.rows || []
-    if (!activeTableKey.value && tables.value.length) activeTableKey.value = tables.value[0].table_key
+    reconcileActiveTable()
     await fetchPreview()
     await fetchMounts()
   } catch (error: any) {
@@ -336,16 +353,6 @@ async function fetchConversations() {
     const data = await resp.json()
     if (!resp.ok) throw new Error(data.detail || data.message || '加载会话列表失败')
     conversations.value = data.items || []
-    const currentId = conversationId.value.trim()
-    const exists = conversations.value.some((item) => item.conversation_id === currentId)
-    if (currentId && !exists) {
-      conversationId.value = ''
-      template.value = null
-      rows.value = []
-      config.value = null
-      preview.value = { preview: '', char_count: 0, max_chars: 0, item_count: 0 }
-      persistInputs()
-    }
     if (!conversationId.value.trim() && conversations.value.length) {
       conversationId.value = conversations.value[0].conversation_id
       persistInputs()
@@ -378,6 +385,7 @@ async function deleteSelectedConversation() {
     preview.value = { preview: '', char_count: 0, max_chars: 0, item_count: 0 }
     persistInputs()
     if (conversationId.value) await fetchBoard()
+    else persistActiveTable()
   } catch (error: any) {
     message.error(error.message || '删除会话失败')
   } finally {
@@ -560,6 +568,7 @@ async function saveNewTab() {
     if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.addTabFailed'))
     showAddTabModal.value = false
     activeTableKey.value = data.template.tables?.at(-1)?.table_key || activeTableKey.value
+    persistActiveTable()
     message.success(t('state.messages.tabAdded'))
     await applyTemplateUpdate(data.template)
   } catch (error: any) {
@@ -831,15 +840,15 @@ function columnsFor(table: StateTable) {
   ]
 }
 
-onMounted(() => {
+onMounted(async () => {
   fetchOptions()
-  fetchConversations().then(() => {
-    if (!conversationId.value.trim()) {
-      showDefaultDrawer.value = true
-    }
-  })
   fetchDefaultConfig()
-  if (conversationId.value.trim()) fetchBoard()
+  await fetchConversations()
+  if (conversationId.value.trim()) {
+    await fetchBoard()
+  } else {
+    showDefaultDrawer.value = true
+  }
 })
 </script>
 
@@ -998,7 +1007,7 @@ onMounted(() => {
                   <NButton size="tiny" type="primary" :disabled="!template" @click="openAddTab">{{ $t('state.template.addTab') }}</NButton>
                 </NSpace>
               </template>
-              <NTabs v-if="tables.length" v-model:value="activeTableKey" type="line" animated>
+              <NTabs v-if="tables.length" v-model:value="activeTableKey" type="line" animated @update:value="persistActiveTable">
                 <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">
                   <NSpace vertical size="medium">
                     <div v-if="table.description" class="hint-text">{{ table.description }}</div>

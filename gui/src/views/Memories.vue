@@ -18,10 +18,16 @@ const memories = ref<any[]>([])
 const libraries = ref<any[]>([])
 const loading = ref(true)
 const total = ref(0)
-const page = ref(1)
+const MEMORY_LIBRARY_STORAGE_KEY = 'kokoromemo.memories.selectedLibraryId'
+const MEMORY_SCOPE_STORAGE_KEY = 'kokoromemo.memories.scopeFilter'
+const MEMORY_PAGE_STORAGE_KEY = 'kokoromemo.memories.page'
+const storedLibraryId = localStorage.getItem(MEMORY_LIBRARY_STORAGE_KEY)
+const storedScopeFilter = localStorage.getItem(MEMORY_SCOPE_STORAGE_KEY)
+const storedPage = Number(localStorage.getItem(MEMORY_PAGE_STORAGE_KEY) || '1')
+const page = ref(Number.isFinite(storedPage) && storedPage > 0 ? storedPage : 1)
 const pageSize = 20
-const scopeFilter = ref<string | null>(null)
-const selectedLibraryId = ref('')
+const scopeFilter = ref<string | null>(storedScopeFilter || null)
+const selectedLibraryId = ref(storedLibraryId ?? '')
 const showEditModal = ref(false)
 const showLibraryModal = ref(false)
 const showPresetModal = ref(false)
@@ -97,21 +103,46 @@ function typeLabel(type: string) {
   return typeMap[type] || type
 }
 
+function persistMemoryState() {
+  localStorage.setItem(MEMORY_LIBRARY_STORAGE_KEY, selectedLibraryId.value)
+  localStorage.setItem(MEMORY_SCOPE_STORAGE_KEY, scopeFilter.value || '')
+  localStorage.setItem(MEMORY_PAGE_STORAGE_KEY, String(page.value))
+}
+
+function reconcileSelectedLibrary() {
+  if (!libraries.value.length) {
+    selectedLibraryId.value = ''
+    persistMemoryState()
+    return
+  }
+  if (!selectedLibraryId.value) {
+    if (storedLibraryId === null) selectedLibraryId.value = libraries.value[0].library_id
+    persistMemoryState()
+    return
+  }
+  const exists = libraries.value.some((item) => item.library_id === selectedLibraryId.value)
+  if (!exists) {
+    selectedLibraryId.value = libraries.value[0].library_id
+    persistMemoryState()
+  }
+}
+
 async function fetchLibraries() {
   const resp = await apiFetch('/admin/memory-libraries')
   const data = await resp.json()
   libraries.value = data.items || []
-  if (!selectedLibraryId.value && libraries.value.length) selectedLibraryId.value = libraries.value[0].library_id
+  reconcileSelectedLibrary()
 }
 
 async function fetchMemories() {
   loading.value = true
+  await fetchLibraries()
   const offset = (page.value - 1) * pageSize
   let url = `/admin/memories?limit=${pageSize}&offset=${offset}`
   if (scopeFilter.value) url += `&scope=${scopeFilter.value}`
   if (selectedLibraryId.value) url += `&library_id=${selectedLibraryId.value}`
   try {
-    await fetchLibraries()
+    persistMemoryState()
     const resp = await apiFetch(url)
     if (resp.ok) {
       const data = await resp.json()
@@ -180,6 +211,7 @@ async function saveLibrary() {
     return
   }
   if (data.library_id) selectedLibraryId.value = data.library_id
+  persistMemoryState()
   showLibraryModal.value = false
   message.success(t('memories.librarySaved'))
   fetchMemories()
@@ -198,6 +230,7 @@ async function savePreset() {
     return
   }
   selectedLibraryId.value = data.library_id
+  persistMemoryState()
   showPresetModal.value = false
   message.success(t('memories.savedAsPreset'))
   fetchMemories()
@@ -209,6 +242,7 @@ async function deleteLibrary() {
   const data = await resp.json()
   if (data.status === 'ok') {
     selectedLibraryId.value = ''
+    persistMemoryState()
     message.success(t('memories.libraryDeleted'))
     fetchMemories()
   } else {
@@ -229,6 +263,7 @@ async function deleteCard(cardId: string) {
 
 function handleFilterChange() {
   page.value = 1
+  persistMemoryState()
   fetchMemories()
 }
 
@@ -262,6 +297,7 @@ function triggerImportLibrary() {
       const result = await resp.json()
       if (result.status === 'ok') {
         selectedLibraryId.value = result.library_id
+        persistMemoryState()
         message.success(t('memories.libraryImported', { count: result.imported_cards || 0 }))
         fetchMemories()
       } else {
@@ -399,7 +435,7 @@ onMounted(fetchMemories)
       </NSpin>
 
       <div v-if="total > pageSize" style="display: flex; justify-content: center; margin-top: 16px;">
-        <NPagination :page="page" :page-size="pageSize" :item-count="total" @update:page="(p) => { page = p; fetchMemories() }" />
+        <NPagination :page="page" :page-size="pageSize" :item-count="total" @update:page="(p) => { page = p; persistMemoryState(); fetchMemories() }" />
       </div>
     </NCard>
 

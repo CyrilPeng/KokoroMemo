@@ -62,24 +62,9 @@ async def lifespan(app: FastAPI):
     set_configured_timezone(cfg.server.timezone or None)
     setup_logging(cfg.server.log_level)
 
-    # 确保数据目录存在
-    Path(cfg.storage.root_dir).mkdir(parents=True, exist_ok=True)
-    Path(cfg.storage.root_dir, "conversations").mkdir(parents=True, exist_ok=True)
-    Path(cfg.storage.root_dir, "memory").mkdir(parents=True, exist_ok=True)
-    Path(cfg.storage.root_dir, "vector_indexes").mkdir(parents=True, exist_ok=True)
-    await apply_startup_migrations(cfg)
-
-    registry = ServiceRegistry()
-    set_service_registry(registry)
-    app.state.service_registry = registry
-
-    runner = BackgroundRunner(max_concurrency=8)
-    set_background_runner(runner)
-
-    vector_sync_worker = VectorSyncWorker(cfg, service_registry=registry)
-    vector_sync_worker.start()
-    app.state.vector_sync_worker = vector_sync_worker
-
+    lifecycle = AppLifecycle(app, cfg)
+    await lifecycle.start()
+    app.state.lifecycle = lifecycle
     import logging
     logger = logging.getLogger("kokoromemo")
     logger.info("KokoroMemo started on %s:%d", cfg.server.host, cfg.server.port)

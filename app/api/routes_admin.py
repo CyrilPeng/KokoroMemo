@@ -1984,6 +1984,23 @@ async def patch_state_table_cell(row_id: str, column_key: str, request: Request,
     return {"status": "ok", "cell": cell}
 
 
+@router.get("/admin/state/table-rows/{row_id}/cells/{column_key}/history")
+async def get_cell_history(
+    row_id: str,
+    column_key: str,
+    request: Request,
+    limit: int = Query(default=20, le=100),
+):
+    """Get value change history for a specific cell."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    history = await store.get_cell_history(row_id, column_key, limit=limit)
+    return {"items": history}
+
+
 @router.get("/admin/conversations/{conversation_id}/retrieval-decisions")
 async def get_retrieval_decisions(
     conversation_id: str,

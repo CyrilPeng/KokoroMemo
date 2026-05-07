@@ -699,3 +699,31 @@ class StateTablesMixin:
                 affected = cursor.rowcount
             await db.commit()
         return affected
+
+    async def get_cell_history(self, row_id: str, column_key: str, limit: int = 20) -> list[dict[str, Any]]:
+        await self.init_schema()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """SELECT event_id, event_type, before_json, after_json, reason, turn_id, created_at
+                   FROM state_table_events
+                   WHERE row_id = ? AND (before_json LIKE ? OR after_json LIKE ?)
+                   ORDER BY created_at DESC LIMIT ?""",
+                (row_id, f'%"{column_key}"%', f'%"{column_key}"%', limit),
+            )
+            history: list[dict[str, Any]] = []
+            for row in await cursor.fetchall():
+                before = json.loads(row["before_json"]) if row["before_json"] else {}
+                after = json.loads(row["after_json"]) if row["after_json"] else {}
+                if column_key not in before and column_key not in after:
+                    continue
+                history.append({
+                    "event_id": row["event_id"],
+                    "event_type": row["event_type"],
+                    "old_value": before.get(column_key),
+                    "new_value": after.get(column_key),
+                    "reason": row["reason"],
+                    "turn_id": row["turn_id"],
+                    "created_at": row["created_at"],
+                })
+            return history

@@ -100,6 +100,8 @@ const template = ref<any | null>(null)
 const rows = ref<StateRow[]>([])
 const recentEvents = ref<any[]>([])
 const checkedRowKeys = ref<string[]>([])
+const historyEvents = ref<any[]>([])
+const historyLoading = ref(false)
 const config = ref<ConversationConfig | null>(null)
 const defaultConfig = ref<ConversationConfig | null>(null)
 const profiles = ref<any[]>([])
@@ -929,6 +931,17 @@ async function revertLastFill() {
   }
 }
 
+async function fetchHistory() {
+  if (!conversationId.value.trim()) return
+  historyLoading.value = true
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/events?limit=100`, { headers: authHeaders() })
+    const data = await resp.json()
+    historyEvents.value = data.items || []
+  } catch { /* silent */ }
+  historyLoading.value = false
+}
+
 async function exportBoard() {
   if (!template.value) return
   const payload = { conversation_id: conversationId.value.trim(), template: template.value, rows: rows.value }
@@ -1309,6 +1322,28 @@ onMounted(async () => {
           </NGridItem>
         </NGrid>
       </NSpin>
+
+      <NCard v-if="conversationId.trim()" :title="$t('state.history.title')" style="margin-top: 16px;">
+        <template #header-extra>
+          <NButton size="tiny" :loading="historyLoading" @click="fetchHistory">{{ $t('common.refresh') }}</NButton>
+        </template>
+        <div v-if="!historyEvents.length" class="hint-text">{{ $t('state.history.empty') }}</div>
+        <div v-else style="max-height: 400px; overflow-y: auto;">
+          <div v-for="evt in historyEvents" :key="evt.event_id" style="padding: 6px 0; border-bottom: 1px solid #333; font-size: 12px;">
+            <NSpace align="center" size="small">
+              <NTag size="tiny" :type="evt.event_type.includes('insert') ? 'success' : evt.event_type.includes('delete') || evt.event_type.includes('resolve') ? 'error' : evt.event_type === 'revert' ? 'warning' : 'info'">
+                {{ evt.event_type }}
+              </NTag>
+              <span style="color: #a1a1aa;">{{ evt.table_key || '-' }}</span>
+              <span style="color: #666;">{{ evt.created_at }}</span>
+            </NSpace>
+            <div v-if="evt.reason" style="margin-top: 2px; color: #888;">{{ evt.reason }}</div>
+            <div v-if="evt.after && Object.keys(evt.after).length" style="margin-top: 2px; color: #63e2b7;">
+              <span v-for="(val, key) in evt.after" :key="key" style="margin-right: 8px;">{{ key }}={{ val }}</span>
+            </div>
+          </div>
+        </div>
+      </NCard>
     </NSpace>
 
     <NDrawer v-model:show="showDefaultDrawer" width="min(560px, 96vw)" placement="right">

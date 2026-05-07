@@ -320,5 +320,9 @@ export default {
       done: '批量操作完成，影响 {count} 行',
       failed: '批量操作失败',
     },
+    history: {
+      title: '变更历史',
+      empty: '暂无变更记录，加载状态板后点击刷新。',
+    },
   },
 }

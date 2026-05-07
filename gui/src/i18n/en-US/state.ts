@@ -320,5 +320,9 @@ export default {
       done: 'Batch done, {count} rows affected',
       failed: 'Batch operation failed',
     },
+    history: {
+      title: 'Change History',
+      empty: 'No events yet. Load a state board then click refresh.',
+    },
   },
 }

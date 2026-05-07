@@ -1951,6 +1951,24 @@ async def delete_conversation_state_table_row(row_id: str, request: Request):
     return {"status": "ok" if ok else "error", "message": None if ok else "State table row not found"}
 
 
+@router.post("/admin/state/table-rows/batch")
+async def batch_update_state_table_rows(request: Request, data: dict = Body(...)):
+    """Batch operations on state table rows (delete, set_priority, set_status)."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    action = data.get("action")
+    row_ids = data.get("row_ids", [])
+    if not action or not row_ids:
+        raise HTTPException(status_code=400, detail="action and row_ids required")
+    if action not in {"delete", "set_priority", "set_status"}:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    affected = await store.batch_update_rows(row_ids, action, data.get("value"))
+    return {"status": "ok", "affected": affected}
+
+
 @router.patch("/admin/state/table-rows/{row_id}/cells/{column_key}")
 async def patch_state_table_cell(row_id: str, column_key: str, request: Request, data: dict = Body(...)):
     """Update a single cell value in a state table row."""

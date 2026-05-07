@@ -310,5 +310,13 @@ export default {
       undoHint: 'AI updated {count} state items.',
       undoBtn: 'Undo',
     },
+    batch: {
+      selected: '{count} selected',
+      deleteSelected: 'Delete selected',
+      deleteConfirm: 'Delete {count} state rows?',
+      clearSelection: 'Clear selection',
+      done: 'Batch done, {count} rows affected',
+      failed: 'Batch operation failed',
+    },
   },
 }

@@ -99,6 +99,7 @@ const conversations = ref<any[]>([])
 const template = ref<any | null>(null)
 const rows = ref<StateRow[]>([])
 const recentEvents = ref<any[]>([])
+const checkedRowKeys = ref<string[]>([])
 const config = ref<ConversationConfig | null>(null)
 const defaultConfig = ref<ConversationConfig | null>(null)
 const profiles = ref<any[]>([])
@@ -984,6 +985,27 @@ function rowClassName(row: StateRow) {
   return ''
 }
 
+async function batchAction(action: string, value?: any) {
+  if (!checkedRowKeys.value.length) return
+  saving.value = true
+  try {
+    const resp = await apiFetch('/admin/state/table-rows/batch', {
+      method: 'POST',
+      headers: authHeaders(true),
+      body: JSON.stringify({ action, row_ids: checkedRowKeys.value, value }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message)
+    message.success(t('state.batch.done', { count: data.affected }))
+    checkedRowKeys.value = []
+    await fetchBoard()
+  } catch (error: any) {
+    message.error(error.message || t('state.batch.failed'))
+  } finally {
+    saving.value = false
+  }
+}
+
 onMounted(async () => {
   fetchOptions()
   fetchDefaultConfig()
@@ -1193,7 +1215,7 @@ onMounted(async () => {
                 <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">
                   <NSpace vertical size="medium">
                     <div v-if="table.description" class="hint-text">{{ table.description }}</div>
-                    <NSpace>
+                    <NSpace align="center">
                       <NButton type="primary" size="small" @click="openCreate(table)">
                         <template #icon><NIcon :component="AddOutline" /></template>
                         新增状态行
@@ -1201,7 +1223,16 @@ onMounted(async () => {
                       <NButton size="small" @click="openAddColumn(table)">{{ $t('state.template.addColumn') }}</NButton>
                       <NButton size="small" @click="fetchPreview">刷新注入预览</NButton>
                     </NSpace>
-                    <NDataTable class="state-data-table" :columns="columnsFor(table)" :data="rowsByTable[table.table_key] || []" :pagination="{ pageSize: 8 }" :scroll-x="tableScrollX(table)" :row-class-name="rowClassName" />
+                    <NSpace v-if="checkedRowKeys.length" align="center" size="small" style="padding: 6px 10px; background: #1a1a2e; border-radius: 4px;">
+                      <span style="font-size: 12px; color: #a1a1aa;">{{ $t('state.batch.selected', { count: checkedRowKeys.length }) }}</span>
+                      <NPopconfirm @positive-click="batchAction('delete')">
+                        <template #trigger><NButton size="tiny" type="error" quaternary>{{ $t('state.batch.deleteSelected') }}</NButton></template>
+                        {{ $t('state.batch.deleteConfirm', { count: checkedRowKeys.length }) }}
+                      </NPopconfirm>
+                      <NButton size="tiny" quaternary @click="checkedRowKeys = []">{{ $t('state.batch.clearSelection') }}</NButton>
+                    </NSpace>
+                    </NSpace>
+                    <NDataTable class="state-data-table" :columns="columnsFor(table)" :data="rowsByTable[table.table_key] || []" :pagination="{ pageSize: 8 }" :scroll-x="tableScrollX(table)" :row-class-name="rowClassName" row-key="row_id" v-model:checked-row-keys="checkedRowKeys" />
                   </NSpace>
                 </NTabPane>
               </NTabs>

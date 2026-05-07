@@ -671,3 +671,31 @@ class StateTablesMixin:
                 reason=f"Reverted {reverted} events",
             )
         return reverted
+
+    async def batch_update_rows(self, row_ids: list[str], action: str, value: Any = None) -> int:
+        await self.init_schema()
+        if not row_ids:
+            return 0
+        affected = 0
+        async with aiosqlite.connect(self.db_path) as db:
+            placeholders = ",".join("?" for _ in row_ids)
+            if action == "delete":
+                cursor = await db.execute(
+                    f"UPDATE state_table_rows SET status = 'resolved', updated_at = datetime('now', 'localtime') WHERE row_id IN ({placeholders})",
+                    row_ids,
+                )
+                affected = cursor.rowcount
+            elif action == "set_priority":
+                cursor = await db.execute(
+                    f"UPDATE state_table_rows SET priority = ?, updated_at = datetime('now', 'localtime') WHERE row_id IN ({placeholders})",
+                    [int(value or 50)] + row_ids,
+                )
+                affected = cursor.rowcount
+            elif action == "set_status":
+                cursor = await db.execute(
+                    f"UPDATE state_table_rows SET status = ?, updated_at = datetime('now', 'localtime') WHERE row_id IN ({placeholders})",
+                    [str(value or "active")] + row_ids,
+                )
+                affected = cursor.rowcount
+            await db.commit()
+        return affected

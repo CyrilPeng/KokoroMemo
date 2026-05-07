@@ -310,5 +310,13 @@ export default {
       undoHint: 'AI 已更新 {count} 项状态。',
       undoBtn: '撤销本次操作',
     },
+    batch: {
+      selected: '已选 {count} 项',
+      deleteSelected: '删除所选',
+      deleteConfirm: '确认删除 {count} 个状态行？',
+      clearSelection: '取消选择',
+      done: '批量操作完成，影响 {count} 行',
+      failed: '批量操作失败',
+    },
   },
 }

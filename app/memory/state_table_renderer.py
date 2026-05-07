@@ -6,6 +6,20 @@ from app.core.prompts import HOT_CONTEXT_HEADER, get_text
 from app.memory.state_schema import StateRenderOptions, StateTableRow, StateTableTemplate
 
 
+def _truncate(value: str, max_chars: int) -> str:
+    value = value.strip()
+    if max_chars > 0 and len(value) > max_chars:
+        return value[:max_chars].rstrip() + "\u2026"
+    return value
+
+
+def _format_cell(column_name: str, value: str) -> str:
+    if "\n" in value or len(value) > 80:
+        indented = "\n".join(f"    {line}" for line in value.splitlines() if line.strip())
+        return f"  - **{column_name}**:\n{indented}"
+    return f"  - **{column_name}**: {value}"
+
+
 def render_state_tables(
     template: StateTableTemplate | None,
     rows: list[StateTableRow],
@@ -24,7 +38,10 @@ def render_state_tables(
         return ""
 
     header = get_text(HOT_CONTEXT_HEADER, lang)
-    intro = f"当前会话状态板模板：{template.name}。以下表格用于保持角色扮演、剧情与互动连续性："
+    if lang.startswith("zh"):
+        intro = f"\u5f53\u524d\u4f1a\u8bdd\u72b6\u6001\u677f\u6a21\u677f\uff1a{template.name}\u3002\u4ee5\u4e0b\u4e3a\u9700\u8981\u4f18\u5148\u4fdd\u6301\u4e00\u81f4\u7684\u70ed\u72b6\u6001\uff1a"
+    else:
+        intro = f"Current session state board template: {template.name}. Keep the following hot state consistent:"
     lines = [header, intro]
     tables = sorted(
         [table for table in template.tables if table.enabled and table.include_in_prompt],
@@ -39,21 +56,25 @@ def render_state_tables(
             key=lambda row: (row.priority, row.confidence, row.updated_at or ""),
             reverse=True,
         )[: table.max_prompt_rows]
-        section_lines = [f"【{table.name}】"]
-        columns = [column for column in sorted(table.columns, key=lambda item: (item.sort_order, item.name)) if column.include_in_prompt]
-        for row in selected:
-            parts: list[str] = []
+        section_lines = ["", f"## {table.name}"]
+        if table.description:
+            section_lines.append(f"> {table.description.strip()}")
+        columns = [
+            column
+            for column in sorted(table.columns, key=lambda item: (item.sort_order, item.name))
+            if column.include_in_prompt
+        ]
+        for index, row in enumerate(selected, 1):
+            row_lines: list[str] = []
             for column in columns:
                 cell = row.cells.get(column.column_key)
-                value = (cell.value if cell else "").strip()
-                if not value:
-                    continue
-                if column.max_chars > 0 and len(value) > column.max_chars:
-                    value = value[: column.max_chars].rstrip() + "…"
-                parts.append(f"{column.name}: {value}")
-            if parts:
-                section_lines.append("- " + "；".join(parts))
-        if len(section_lines) <= 1:
+                value = _truncate(cell.value if cell else "", column.max_chars)
+                if value:
+                    row_lines.append(_format_cell(column.name, value))
+            if row_lines:
+                section_lines.append(f"- Row {index} (priority {row.priority}, confidence {row.confidence:.2f})")
+                section_lines.extend(row_lines)
+        if len(section_lines) <= (3 if table.description else 2):
             continue
         candidate_lines = lines + section_lines
         candidate_text = "\n".join(candidate_lines)
@@ -63,4 +84,4 @@ def render_state_tables(
 
     if len(lines) <= 2:
         return ""
-    return "\n".join(lines)[: options.max_chars]
+    return "\n".join(lines)[: options.max_chars].rstrip()

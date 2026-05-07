@@ -126,21 +126,21 @@ function health(row: Character) {
 
 const columns = computed(() => [
   {
-    title: '角色', key: 'character', minWidth: 220, render: (row: Character) => h('div', [
+    title: '角色', key: 'character', width: 280, render: (row: Character) => h('div', [
       h('div', { style: 'font-weight: 600;' }, row.display_name || row.character_id),
-      h('div', { style: 'font-size: 12px; color: #71717a;' }, row.character_id),
+      h('div', { style: 'font-size: 12px; color: #71717a; white-space: normal; word-break: break-all;' }, row.character_id),
     ]),
   },
-  { title: '会话', key: 'conversation_count', width: 80 },
-  { title: '最近活跃', key: 'last_seen_at', width: 160, render: (row: Character) => row.last_seen_at || '-' },
-  { title: '默认方案', key: 'profile_id', minWidth: 180, render: (row: Character) => profileName(row.profile_id) },
-  { title: '表格模板', key: 'table_template_id', minWidth: 190, ellipsis: { tooltip: true }, render: (row: Character) => tableTemplateName(row.table_template_id) },
-  { title: '长期记忆', key: 'memory_write_policy', width: 150, render: (row: Character) => policyLabel(memoryPolicyOptions, row.memory_write_policy) },
-  { title: '健康', key: 'health', width: 130, render: (row: Character) => {
+  { title: '会话', key: 'conversation_count', width: 90 },
+  { title: '最近活跃', key: 'last_seen_at', width: 180, render: (row: Character) => row.last_seen_at || '-' },
+  { title: '默认方案', key: 'profile_id', width: 220, ellipsis: { tooltip: true }, render: (row: Character) => profileName(row.profile_id) },
+  { title: '表格模板', key: 'table_template_id', width: 260, ellipsis: { tooltip: true }, render: (row: Character) => tableTemplateName(row.table_template_id) },
+  { title: '长期记忆', key: 'memory_write_policy', width: 220, render: (row: Character) => policyLabel(memoryPolicyOptions, row.memory_write_policy) },
+  { title: '健康', key: 'health', width: 140, render: (row: Character) => {
     const hlt = health(row)
     return h(NTag, { type: hlt.type as any, size: 'small' }, { default: () => hlt.label })
   } },
-  { title: '操作', key: 'actions', width: 190, render: (row: Character) => h(NSpace, { size: 6 }, { default: () => [
+  { title: '操作', key: 'actions', width: 220, fixed: 'right' as const, render: (row: Character) => h(NSpace, { size: 6 }, { default: () => [
     h(NButton, { size: 'small', quaternary: true, onClick: () => openCharacter(row) }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }), default: () => '管理' }),
     h(NPopconfirm, { onPositiveClick: () => deleteCharacter(row) }, {
       trigger: () => h(NButton, { size: 'small', type: 'error', quaternary: true }, { default: () => '删除' }),
@@ -385,7 +385,9 @@ onMounted(fetchAll)
 
       <NSpin :show="loading">
         <NCard>
-          <NDataTable v-if="filteredCharacters.length" :columns="columns" :data="filteredCharacters" :pagination="{ pageSize: 12 }" :scroll-x="1040" />
+          <div v-if="filteredCharacters.length" class="characters-table-wrap">
+            <NDataTable class="characters-table" :columns="columns" :data="filteredCharacters" :pagination="{ pageSize: 12 }" :scroll-x="1610" :single-line="false" />
+          </div>
           <NEmpty v-else description="暂无角色或没有匹配结果" />
         </NCard>
       </NSpin>
@@ -441,7 +443,7 @@ onMounted(fetchAll)
                 { title: '会话', key: 'title', minWidth: 240, ellipsis: { tooltip: true }, render: (row: any) => conversationDisplayName(row) },
                 { title: '原始 ID', key: 'conversation_id', minWidth: 180, ellipsis: { tooltip: true } },
                 { title: '客户端', key: 'client_name', width: 120, render: (row: any) => row.client_name || '-' },
-                { title: '最近活跃', key: 'last_seen_at', width: 160 },
+                { title: '最近活跃', key: 'last_seen_at', width: 180 },
                 { title: '当前方案', key: 'config', width: 180, render: (row: any) => profileName(row.config?.profile_id) },
                 { title: '操作', key: 'actions', width: 180, render: (row: any) => h(NSpace, { size: 6 }, { default: () => [
                   h(NButton, { size: 'tiny', quaternary: true, onClick: () => openConversationPreview(row.conversation_id) }, { default: () => '预览' }),
@@ -531,6 +533,15 @@ onMounted(fetchAll)
 <style scoped>
 .characters-page {
   padding: 20px;
+}
+
+.characters-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.characters-table {
+  min-width: 100%;
 }
 
 .hint-text {

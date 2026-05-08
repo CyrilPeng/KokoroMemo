@@ -30,8 +30,10 @@ import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
 import HelpModal from '../components/HelpModal.vue'
 import PageHeader from '../components/PageHeader.vue'
+import StateDefaultConfigDrawer from '../components/state/StateDefaultConfigDrawer.vue'
 import EditableCell from '../components/state/EditableCell.vue'
 import StateDiagnosticsPanel from '../components/state/StateDiagnosticsPanel.vue'
+import StatePolicyCard from '../components/state/StatePolicyCard.vue'
 import StateSessionToolbar from '../components/state/StateSessionToolbar.vue'
 import type { ConversationConfig, StateRow, StateTable } from '../components/state/types'
 
@@ -152,6 +154,9 @@ const conversationOptions = computed(() => conversations.value.map((item) => ({
   value: item.conversation_id,
 })))
 const selectedConversation = computed(() => conversations.value.find((item) => item.conversation_id === conversationId.value.trim()) || null)
+const activeProfile = computed(() => profiles.value.find((item) => item.profile_id === config.value?.profile_id) || null)
+const activeTemplate = computed(() => tableTemplates.value.find((item) => item.template_id === config.value?.table_template_id) || null)
+const activePreset = computed(() => mountPresets.value.find((item) => item.preset_id === config.value?.mount_preset_id) || null)
 const memoryPolicyOptions = [
   { label: '不写入长期记忆', value: 'disabled' },
   { label: '抽取候选，需我审核', value: 'candidate' },
@@ -461,6 +466,16 @@ function applyProfileToDefault(profileId: string) {
     state_update_policy: profile.state_update_policy,
     injection_policy: profile.injection_policy,
   }
+}
+
+function patchCurrentConfig<K extends keyof ConversationConfig>(key: K, value: ConversationConfig[K]) {
+  if (!config.value) return
+  config.value = { ...config.value, [key]: value }
+}
+
+function patchDefaultConfig<K extends keyof ConversationConfig>(key: K, value: ConversationConfig[K]) {
+  if (!defaultConfig.value) return
+  defaultConfig.value = { ...defaultConfig.value, [key]: value }
 }
 
 async function saveDefaultConfig() {
@@ -1082,116 +1097,46 @@ onBeforeUnmount(() => {
         :preview-chars="preview.char_count || 0"
       />
 
-      <NCard v-if="config" title="当前会话策略">
-        <NForm label-placement="top">
-          <NGrid :cols="24" :x-gap="12" :y-gap="12">
-            <NGridItem :span="8">
-              <NFormItem label="会话方案">
-                <NSelect v-model:value="config.profile_id" :options="profileOptions" :render-label="profileRenderLabel" @update:value="applyProfileToConfig" />
-              </NFormItem>
-              <div v-if="selectedProfileHint" class="hint-text">{{ selectedProfileHint }}</div>
-              <NSpace style="margin-top: 6px;">
-                <NButton size="tiny" @click="openProfileModal()">
-                  <template #icon><NIcon :component="AddOutline" size="14" /></template>
-                  {{ $t('state.profile.createNew') }}
-                </NButton>
-                <NButton v-if="profiles.find((item) => item.profile_id === config?.profile_id)?.is_builtin === false" size="tiny" @click="openProfileModal(profiles.find((item) => item.profile_id === config?.profile_id))">
-                  <template #icon><NIcon :component="CreateOutline" size="14" /></template>
-                  {{ $t('state.profile.rename') }}
-                </NButton>
-                <NPopconfirm v-if="profiles.find((item) => item.profile_id === config?.profile_id)?.is_builtin === false" @positive-click="deleteProfile(profiles.find((item) => item.profile_id === config?.profile_id))">
-                  <template #trigger>
-                    <NButton size="tiny" type="error" quaternary>
-                      <template #icon><NIcon :component="TrashOutline" size="14" /></template>
-                      {{ $t('state.actions.delete') }}
-                    </NButton>
-                  </template>
-                  {{ $t('state.profile.deleteConfirm') }}
-                </NPopconfirm>
-              </NSpace>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="状态板表格模板">
-                <NSelect v-model:value="config.table_template_id" filterable :options="tableTemplateOptions" :render-label="templateRenderLabel" />
-              </NFormItem>
-              <NSpace style="margin-top: 6px;">
-                <NButton size="tiny" @click="cloneCurrentTemplate" :disabled="!config.table_template_id">
-                  <template #icon><NIcon :component="AddOutline" size="14" /></template>
-                  {{ $t('state.template.createNew') }}
-                </NButton>
-                <NButton v-if="tableTemplates.find((item) => item.template_id === config?.table_template_id)?.is_builtin === false" size="tiny" @click="openRenameTemplate(tableTemplates.find((item) => item.template_id === config?.table_template_id))">
-                  <template #icon><NIcon :component="CreateOutline" size="14" /></template>
-                  {{ $t('state.template.rename') }}
-                </NButton>
-                <NPopconfirm v-if="tableTemplates.find((item) => item.template_id === config?.table_template_id)?.is_builtin === false" @positive-click="deleteTemplate(tableTemplates.find((item) => item.template_id === config?.table_template_id))">
-                  <template #trigger>
-                    <NButton size="tiny" type="error" quaternary>
-                      <template #icon><NIcon :component="TrashOutline" size="14" /></template>
-                      {{ $t('state.actions.delete') }}
-                    </NButton>
-                  </template>
-                  {{ $t('state.template.deleteConfirm') }}
-                </NPopconfirm>
-              </NSpace>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="挂载组合预设">
-                <NSelect v-model:value="config.mount_preset_id" filterable :options="mountPresetOptions" />
-              </NFormItem>
-              <NSpace>
-                <NButton size="tiny" @click="openPresetModal(mountPresets.find((item) => item.preset_id === config?.mount_preset_id))" :disabled="!config.mount_preset_id">{{ $t('state.actions.edit') }}</NButton>
-                <NPopconfirm v-if="config.mount_preset_id" @positive-click="deletePreset(mountPresets.find((item) => item.preset_id === config?.mount_preset_id))">
-                  <template #trigger><NButton size="tiny" type="error" quaternary>{{ $t('state.actions.delete') }}</NButton></template>
-                  {{ $t('state.messages.confirmDeleteCurrentPreset') }}
-                </NPopconfirm>
-              </NSpace>
-            </NGridItem>
-            <NGridItem :span="16">
-              <NFormItem label="挂载的长期记忆库">
-                <NSelect
-                  multiple
-                  filterable
-                  :value="mountedLibraryIds"
-                  :options="memoryLibraryOptions"
-                  placeholder="选择一个或多个记忆库"
-                  @update:value="onMountedLibrariesChange"
-                />
-              </NFormItem>
-              <div class="hint-text">挂载库决定本会话能召回哪些长期记忆，可用于隔离不同角色或世界观。</div>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="新记忆写入到">
-                <NSelect
-                  v-model:value="writeLibraryId"
-                  :options="writeLibraryOptions"
-                  :disabled="!mountedLibraryIds.length"
-                  placeholder="必须是已挂载的库"
-                />
-              </NFormItem>
-              <NButton size="tiny" :loading="saving" :disabled="!mountedLibraryIds.length" @click="saveMounts">保存挂载</NButton>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="长期记忆写入">
-                <NSelect v-model:value="config.memory_write_policy" :options="memoryPolicyOptions" />
-              </NFormItem>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="状态板更新">
-                <NSelect v-model:value="config.state_update_policy" :options="statePolicyOptions" />
-              </NFormItem>
-            </NGridItem>
-            <NGridItem :span="8">
-              <NFormItem label="注入策略">
-                <NSelect v-model:value="config.injection_policy" :options="injectionPolicyOptions" />
-              </NFormItem>
-            </NGridItem>
-          </NGrid>
-          <NSpace justify="end">
-            <NButton :loading="loading" @click="fetchBoard">重新加载</NButton>
-            <NButton type="primary" :loading="saving" @click="saveConfig">保存会话策略</NButton>
-          </NSpace>
-        </NForm>
-      </NCard>
+      <StatePolicyCard
+        v-if="config"
+        :config="config"
+        :loading="loading"
+        :saving="saving"
+        :profile-options="profileOptions"
+        :profile-render-label="profileRenderLabel"
+        :selected-profile-hint="selectedProfileHint"
+        :table-template-options="tableTemplateOptions"
+        :template-render-label="templateRenderLabel"
+        :mount-preset-options="mountPresetOptions"
+        :memory-library-options="memoryLibraryOptions"
+        :write-library-options="writeLibraryOptions"
+        :mounted-library-ids="mountedLibraryIds"
+        :write-library-id="writeLibraryId"
+        :memory-policy-options="memoryPolicyOptions"
+        :state-policy-options="statePolicyOptions"
+        :injection-policy-options="injectionPolicyOptions"
+        :active-profile="activeProfile"
+        :active-template="activeTemplate"
+        :active-preset="activePreset"
+        @update-profile="applyProfileToConfig"
+        @update-table-template="patchCurrentConfig('table_template_id', $event)"
+        @update-mount-preset="patchCurrentConfig('mount_preset_id', $event)"
+        @update-mounted-libraries="onMountedLibrariesChange"
+        @update-write-library-id="writeLibraryId = $event"
+        @update-memory-write-policy="patchCurrentConfig('memory_write_policy', $event)"
+        @update-state-update-policy="patchCurrentConfig('state_update_policy', $event)"
+        @update-injection-policy="patchCurrentConfig('injection_policy', $event)"
+        @open-profile-modal="openProfileModal"
+        @delete-profile="deleteProfile"
+        @clone-template="cloneCurrentTemplate"
+        @open-rename-template="openRenameTemplate"
+        @delete-template="deleteTemplate"
+        @open-preset-modal="openPresetModal"
+        @delete-preset="deletePreset"
+        @save-mounts="saveMounts"
+        @reload="fetchBoard"
+        @save-config="saveConfig"
+      />
 
       <NAlert v-if="showUndoAlert" type="success" closable style="margin-bottom: 12px;" @close="showUndoAlert = false">
         {{ $t('state.fill.undoHint', { count: lastFillEventIds.length }) }}
@@ -1291,40 +1236,27 @@ onBeforeUnmount(() => {
       </NCard>
     </NSpace>
 
-    <NDrawer v-model:show="showDefaultDrawer" width="min(560px, 96vw)" placement="right">
-      <NDrawerContent title="新会话默认配置" closable>
-        <p class="hint-text" style="margin-bottom: 16px;">
-          这里设置的是<b>未来新出现的会话</b>使用的初始配置（识别到新的 conversation_id 时自动应用）。已有会话不会被覆盖；要修改当前会话请使用页面上的"当前会话策略"。
-        </p>
-        <NForm v-if="defaultConfig" label-placement="top">
-          <NFormItem label="默认会话方案">
-            <NSelect v-model:value="defaultConfig.profile_id" :options="profileOptions" :render-label="profileRenderLabel" @update:value="applyProfileToDefault" />
-          </NFormItem>
-          <div v-if="selectedDefaultProfileHint" class="hint-text" style="margin-bottom: 12px;">{{ selectedDefaultProfileHint }}</div>
-          <NFormItem label="默认表格模板">
-            <NSelect v-model:value="defaultConfig.table_template_id" filterable :options="tableTemplateOptions" :render-label="templateRenderLabel" />
-          </NFormItem>
-          <NFormItem label="默认挂载组合预设">
-            <NSelect v-model:value="defaultConfig.mount_preset_id" filterable :options="mountPresetOptions" />
-          </NFormItem>
-          <NFormItem label="默认长期记忆写入">
-            <NSelect v-model:value="defaultConfig.memory_write_policy" :options="memoryPolicyOptions" />
-          </NFormItem>
-          <NFormItem label="默认状态板更新">
-            <NSelect v-model:value="defaultConfig.state_update_policy" :options="statePolicyOptions" />
-          </NFormItem>
-          <NFormItem label="默认注入策略">
-            <NSelect v-model:value="defaultConfig.injection_policy" :options="injectionPolicyOptions" />
-          </NFormItem>
-        </NForm>
-        <template #footer>
-          <NSpace justify="end">
-            <NButton @click="showDefaultDrawer = false">关闭</NButton>
-            <NButton type="primary" :loading="saving" @click="saveDefaultConfig">保存</NButton>
-          </NSpace>
-        </template>
-      </NDrawerContent>
-    </NDrawer>
+    <StateDefaultConfigDrawer
+      v-model:show="showDefaultDrawer"
+      :saving="saving"
+      :default-config="defaultConfig"
+      :profile-options="profileOptions"
+      :profile-render-label="profileRenderLabel"
+      :selected-default-profile-hint="selectedDefaultProfileHint"
+      :table-template-options="tableTemplateOptions"
+      :template-render-label="templateRenderLabel"
+      :mount-preset-options="mountPresetOptions"
+      :memory-policy-options="memoryPolicyOptions"
+      :state-policy-options="statePolicyOptions"
+      :injection-policy-options="injectionPolicyOptions"
+      @update-profile="applyProfileToDefault"
+      @update-table-template="patchDefaultConfig('table_template_id', $event)"
+      @update-mount-preset="patchDefaultConfig('mount_preset_id', $event)"
+      @update-memory-write-policy="patchDefaultConfig('memory_write_policy', $event)"
+      @update-state-update-policy="patchDefaultConfig('state_update_policy', $event)"
+      @update-injection-policy="patchDefaultConfig('injection_policy', $event)"
+      @save="saveDefaultConfig"
+    />
 
     <NModal v-model:show="showRenameModal" preset="card" title="重命名会话" style="width: min(520px, 96vw)">
       <NSpace vertical>

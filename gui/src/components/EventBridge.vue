@@ -16,9 +16,7 @@ function isMobileBrowser() {
 }
 
 function shouldConnectWebSocket() {
-  // Web UI 由后端同源提供时，实时通知不是首屏必需能力。
-  // Android/Termux 轻量依赖可能没有 WebSocket 支持，浏览器模式下直接跳过，避免 /ws 升级失败导致页面卡住。
-  if (!(window as any).__TAURI_INTERNALS__) return false
+  // 个别移动浏览器 / 轻量 WebView 的 WebSocket 稳定性较差，保留失败重连回退。
   return !isMobileBrowser()
 }
 
@@ -44,10 +42,10 @@ function showNotification(data: any) {
   }
 }
 
-function connect() {
+async function connect() {
   if (stopped) return
   try {
-    ws = createWebSocket((data) => {
+    ws = await createWebSocket((data) => {
       dispatchToWindow(data)
       showNotification(data)
     })

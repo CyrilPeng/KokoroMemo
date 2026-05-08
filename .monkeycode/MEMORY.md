@@ -36,3 +36,11 @@ Agent 在任务执行过程中发现的条目应遵循以下格式：
 - Context: 用户要求开始修复审查问题，并在每个阶段性任务完成后提交
 - Instructions:
   - 每个阶段性任务完成后都需要提交中文 commit
+
+[前端管理密钥持久化约定]
+- Date: 2026-05-08
+- Context: Agent 在执行代码审查问题修复时发现
+- Category: 代码模式
+- Instructions:
+  - 前端管理密钥统一保存在 `localStorage.kokoromemo.adminToken`
+  - 管理页请求通过 `Authorization: Bearer <token>` 发送该密钥

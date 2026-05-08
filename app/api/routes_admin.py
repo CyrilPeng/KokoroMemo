@@ -1883,6 +1883,34 @@ async def add_state_table_template_table(template_id: str, request: Request, dat
     return {"status": "ok", "template": _state_table_template_to_dict(saved)}
 
 
+@router.patch("/admin/state/table-templates/{template_id}/tables/{table_key}")
+async def update_state_table_template_table(template_id: str, table_key: str, request: Request, data: dict = Body(...)):
+    """Update a tab/table in a custom state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    try:
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_table_in_template(template_id, table_key, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "template": _state_table_template_to_dict(saved)}
+
+
+@router.delete("/admin/state/table-templates/{template_id}/tables/{table_key}")
+async def delete_state_table_template_table(template_id: str, table_key: str, request: Request):
+    """Delete a tab/table from a custom state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    try:
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).delete_table_from_template(template_id, table_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "template": _state_table_template_to_dict(saved)}
+
+
 @router.post("/admin/state/table-templates/{template_id}/tables/{table_key}/columns")
 async def add_state_table_template_column(template_id: str, table_key: str, request: Request, data: dict = Body(...)):
     """Add a column to one state board table. Built-ins are cloned automatically."""
@@ -1892,6 +1920,20 @@ async def add_state_table_template_column(template_id: str, table_key: str, requ
 
     try:
         saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).add_column_to_table(template_id, table_key, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "template": _state_table_template_to_dict(saved)}
+
+
+@router.patch("/admin/state/table-templates/{template_id}/tables/{table_key}/columns/{column_key}")
+async def update_state_table_template_column(template_id: str, table_key: str, column_key: str, request: Request, data: dict = Body(...)):
+    """Update a column in a custom state board template."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    try:
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_column_in_table(template_id, table_key, column_key, data)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "ok", "template": _state_table_template_to_dict(saved)}

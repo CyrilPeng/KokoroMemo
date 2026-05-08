@@ -75,7 +75,9 @@ const showHelpModal = ref(false)
 const showRenameModal = ref(false)
 const showDefaultDrawer = ref(false)
 const showAddTabModal = ref(false)
+const showEditTabModal = ref(false)
 const showAddColumnModal = ref(false)
+const showEditColumnModal = ref(false)
 const showPresetModal = ref(false)
 const showProfileModal = ref(false)
 const showRenameTemplateModal = ref(false)
@@ -91,6 +93,8 @@ const fillForm = ref({ user_message: '', assistant_message: '' })
 const renameForm = ref({ title: '' })
 const tabForm = ref({ table_key: '', name: '', description: '' })
 const columnForm = ref({ table_key: '', column_key: '', name: '', description: '', max_chars: 240, required: 0 })
+const editingTabKey = ref('')
+const editingColumnKey = ref('')
 const presetForm = ref({ preset_id: '', name: '', description: '' })
 const profileForm = ref({ profile_id: '', name: '', description: '' })
 const renameTemplateForm = ref({ template_id: '', name: '' })
@@ -530,9 +534,28 @@ function openAddTab() {
   showAddTabModal.value = true
 }
 
+function openEditTab(table: StateTable) {
+  editingTabKey.value = table.table_key
+  tabForm.value = { table_key: table.table_key, name: table.name, description: table.description || '' }
+  showEditTabModal.value = true
+}
+
 function openAddColumn(table: StateTable) {
   columnForm.value = { table_key: table.table_key, column_key: '', name: '', description: '', max_chars: 240, required: 0 }
   showAddColumnModal.value = true
+}
+
+function openEditColumn(table: StateTable, column: any) {
+  editingColumnKey.value = column.column_key
+  columnForm.value = {
+    table_key: table.table_key,
+    column_key: column.column_key,
+    name: column.name,
+    description: column.description || '',
+    max_chars: column.max_chars || 240,
+    required: column.required ? 1 : 0,
+  }
+  showEditColumnModal.value = true
 }
 
 async function cloneCurrentTemplate() {
@@ -578,6 +601,50 @@ async function saveNewTab() {
   }
 }
 
+async function saveEditTab() {
+  if (!template.value?.template_id || !editingTabKey.value || !tabForm.value.name.trim()) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables/${encodeURIComponent(editingTabKey.value)}`, {
+      method: 'PATCH',
+      headers: authHeaders(true),
+      body: JSON.stringify({ name: tabForm.value.name, description: tabForm.value.description }),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存标签页失败')
+    showEditTabModal.value = false
+    message.success('标签页已更新')
+    await applyTemplateUpdate(data.template)
+  } catch (error: any) {
+    message.error(error.message || '保存标签页失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function deleteTab(table: StateTable) {
+  if (!template.value?.template_id) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables/${encodeURIComponent(table.table_key)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '删除标签页失败')
+    if (activeTableKey.value === table.table_key) {
+      activeTableKey.value = data.template.tables?.[0]?.table_key || ''
+      persistActiveTable()
+    }
+    message.success('标签页已删除')
+    await applyTemplateUpdate(data.template)
+  } catch (error: any) {
+    message.error(error.message || '删除标签页失败')
+  } finally {
+    saving.value = false
+  }
+}
+
 async function saveNewColumn() {
   if (!template.value?.template_id || !columnForm.value.table_key || !columnForm.value.name.trim()) return
   saving.value = true
@@ -594,6 +661,27 @@ async function saveNewColumn() {
     await applyTemplateUpdate(data.template)
   } catch (error: any) {
     message.error(error.message || t('state.messages.addColumnFailed'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveEditColumn() {
+  if (!template.value?.template_id || !columnForm.value.table_key || !editingColumnKey.value || !columnForm.value.name.trim()) return
+  saving.value = true
+  try {
+    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables/${encodeURIComponent(columnForm.value.table_key)}/columns/${encodeURIComponent(editingColumnKey.value)}`, {
+      method: 'PATCH',
+      headers: authHeaders(true),
+      body: JSON.stringify(columnForm.value),
+    })
+    const data = await resp.json()
+    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存列失败')
+    showEditColumnModal.value = false
+    message.success('列标题已更新')
+    await applyTemplateUpdate(data.template)
+  } catch (error: any) {
+    message.error(error.message || '保存列失败')
   } finally {
     saving.value = false
   }
@@ -1106,8 +1194,11 @@ onBeforeUnmount(() => {
               :recent-events="recentEvents"
               :admin-token="adminToken"
               @add-tab="openAddTab"
+              @edit-tab="openEditTab"
+              @delete-tab="deleteTab"
               @add-row="openCreate"
               @add-column="openAddColumn"
+              @edit-column="openEditColumn"
               @refresh-preview="fetchPreview"
               @batch-action="batchAction"
               @edit-row="openEdit"
@@ -1212,6 +1303,14 @@ onBeforeUnmount(() => {
       <template #footer><NSpace justify="end"><NButton @click="showAddTabModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" :loading="saving" @click="saveNewTab">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
+    <NModal v-model:show="showEditTabModal" preset="card" title="编辑标签页" style="width: min(560px, 96vw)">
+      <NForm label-placement="top">
+        <NFormItem label="标签页名称"><NInput v-model:value="tabForm.name" /></NFormItem>
+        <NFormItem :label="$t('state.template.description')"><NInput v-model:value="tabForm.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" /></NFormItem>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showEditTabModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" :loading="saving" @click="saveEditTab">{{ $t('common.save') }}</NButton></NSpace></template>
+    </NModal>
+
     <NModal v-model:show="showAddColumnModal" preset="card" :title="$t('state.template.addColumnTitle')" style="width: min(560px, 96vw)">
       <NForm label-placement="top">
         <NFormItem :label="$t('state.template.columnName')"><NInput v-model:value="columnForm.name" :placeholder="$t('state.template.columnNamePlaceholder')" /></NFormItem>
@@ -1223,6 +1322,18 @@ onBeforeUnmount(() => {
         </NGrid>
       </NForm>
       <template #footer><NSpace justify="end"><NButton @click="showAddColumnModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" :loading="saving" @click="saveNewColumn">{{ $t('common.save') }}</NButton></NSpace></template>
+    </NModal>
+
+    <NModal v-model:show="showEditColumnModal" preset="card" title="编辑列" style="width: min(560px, 96vw)">
+      <NForm label-placement="top">
+        <NFormItem label="列标题"><NInput v-model:value="columnForm.name" /></NFormItem>
+        <NFormItem :label="$t('state.template.description')"><NInput v-model:value="columnForm.description" /></NFormItem>
+        <NGrid :cols="2" :x-gap="12">
+          <NGridItem><NFormItem :label="$t('state.template.maxChars')"><NInputNumber v-model:value="columnForm.max_chars" :min="20" :max="2000" /></NFormItem></NGridItem>
+          <NGridItem><NFormItem :label="$t('state.template.required')"><NSelect v-model:value="columnForm.required" :options="[{ label: $t('common.no'), value: 0 }, { label: $t('common.yes'), value: 1 }]" /></NFormItem></NGridItem>
+        </NGrid>
+      </NForm>
+      <template #footer><NSpace justify="end"><NButton @click="showEditColumnModal = false">{{ $t('common.cancel') }}</NButton><NButton type="primary" :loading="saving" @click="saveEditColumn">{{ $t('common.save') }}</NButton></NSpace></template>
     </NModal>
 
     <NModal v-model:show="showPresetModal" preset="card" :title="$t('state.preset.manageTitle')" style="width: min(560px, 96vw)">

@@ -254,6 +254,58 @@ async def test_character_defaults_save_expands_mount_preset_for_display():
 
 
 @pytest.mark.asyncio
+async def test_state_table_template_tab_and_column_editing():
+    test_dir = make_test_dir()
+    try:
+        cfg = AppConfig()
+        cfg.storage.root_dir = str(test_dir)
+        cfg.storage.sqlite.app_db = str(test_dir / "app.sqlite")
+        cfg.storage.sqlite.memory_db = str(test_dir / "memory.sqlite")
+        set_config(cfg)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            base_resp = await client.get("/admin/state/table-templates")
+            assert base_resp.status_code == 200
+            base_id = base_resp.json()["items"][0]["template_id"]
+
+            clone_resp = await client.post(f"/admin/state/table-templates/{base_id}/clone", json={"name": "测试模板"})
+            assert clone_resp.status_code == 200
+            template_id = clone_resp.json()["template"]["template_id"]
+
+            add_resp = await client.post(
+                f"/admin/state/table-templates/{template_id}/tables",
+                json={"name": "任务", "table_key": "quests"},
+            )
+            assert add_resp.status_code == 200
+            added_table = next(table for table in add_resp.json()["template"]["tables"] if table["table_key"] == "quests")
+            assert [column["name"] for column in added_table["columns"]] == ["任务"]
+
+            rename_resp = await client.patch(
+                f"/admin/state/table-templates/{template_id}/tables/quests",
+                json={"name": "任务列表", "description": "主线与支线"},
+            )
+            assert rename_resp.status_code == 200
+            renamed_table = next(table for table in rename_resp.json()["template"]["tables"] if table["table_key"] == "quests")
+            assert renamed_table["name"] == "任务列表"
+
+            column_resp = await client.patch(
+                f"/admin/state/table-templates/{template_id}/tables/quests/columns/quests",
+                json={"name": "任务名称", "max_chars": 500},
+            )
+            assert column_resp.status_code == 200
+            edited_table = next(table for table in column_resp.json()["template"]["tables"] if table["table_key"] == "quests")
+            assert edited_table["columns"][0]["name"] == "任务名称"
+            assert edited_table["columns"][0]["max_chars"] == 500
+
+            delete_resp = await client.delete(f"/admin/state/table-templates/{template_id}/tables/quests")
+            assert delete_resp.status_code == 200
+            assert all(table["table_key"] != "quests" for table in delete_resp.json()["template"]["tables"])
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_cors_allows_vite_dev_origin():
     cfg = AppConfig()
     cfg.server.admin_token = ""

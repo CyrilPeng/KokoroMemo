@@ -5,6 +5,7 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NDropdown,
   NIcon,
   NInputNumber,
   NPopconfirm,
@@ -35,8 +36,11 @@ const emit = defineEmits<{
   'update:checkedRowKeys': [value: string[]]
   'update:batchPriority': [value: number | null]
   addTab: []
+  editTab: [table: StateTable]
+  deleteTab: [table: StateTable]
   addRow: [table: StateTable]
   addColumn: [table: StateTable]
+  editColumn: [table: StateTable, column: any]
   refreshPreview: []
   batchAction: [action: string, value?: any]
   editRow: [table: StateTable, row: StateRow]
@@ -67,7 +71,11 @@ function rowKey(row: StateRow) {
 
 function columnsFor(table: StateTable): DataTableColumns<StateRow> {
   const valueColumns = table.columns.map((column) => ({
-    title: column.name,
+    title: () => h('button', {
+      class: 'column-title-action',
+      title: '编辑列标题',
+      onClick: () => emit('editColumn', table, column),
+    }, column.name),
     key: column.column_key,
     minWidth: 140,
     render: (row: StateRow) => h(EditableCell, {
@@ -101,6 +109,18 @@ function columnsFor(table: StateTable): DataTableColumns<StateRow> {
     },
   ]
 }
+
+function tabDropdownOptions() {
+  return [
+    { label: '编辑标签页', key: 'edit' },
+    { label: '删除标签页', key: 'delete', disabled: props.tables.length <= 1 },
+  ]
+}
+
+function handleTabAction(key: string | number, table: StateTable) {
+  if (key === 'edit') emit('editTab', table)
+  if (key === 'delete') emit('deleteTab', table)
+}
 </script>
 
 <template>
@@ -118,7 +138,12 @@ function columnsFor(table: StateTable): DataTableColumns<StateRow> {
           {{ t('state.template.addTab') }}
         </NButton>
       </template>
-      <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">
+      <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key">
+        <template #tab>
+          <NDropdown trigger="click" :options="tabDropdownOptions()" @select="handleTabAction($event, table)">
+            <span class="tab-title-action">{{ table.name }} ({{ (rowsByTable[table.table_key] || []).length }})</span>
+          </NDropdown>
+        </template>
         <NSpace vertical size="medium">
           <div v-if="table.description" class="hint-text">{{ table.description }}</div>
           <NSpace align="center">
@@ -189,5 +214,24 @@ function columnsFor(table: StateTable): DataTableColumns<StateRow> {
   padding: 6px 10px;
   background: #1a1a2e;
   border-radius: 4px;
+}
+
+.tab-title-action {
+  cursor: pointer;
+}
+
+.column-title-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.column-title-action:hover,
+.tab-title-action:hover {
+  color: #63e2b7;
 }
 </style>

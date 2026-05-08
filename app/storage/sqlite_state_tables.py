@@ -183,9 +183,27 @@ class StateTablesMixin:
                     updated_at = datetime('now', 'localtime')""",
                 (template_id, template.name, template.description, template.scenario_type, template.status, template.version),
             )
+            keep_table_ids = [table.table_id or f"{template_id}__{_slugify_key(table.table_key or table.name, 'tab')}" for table in template.tables]
+            if keep_table_ids:
+                placeholders = ",".join("?" for _ in keep_table_ids)
+                await db.execute(
+                    f"DELETE FROM state_table_columns WHERE table_id IN (SELECT table_id FROM state_table_schemas WHERE template_id = ? AND table_id NOT IN ({placeholders}))",
+                    (template_id, *keep_table_ids),
+                )
+                await db.execute(
+                    f"DELETE FROM state_table_schemas WHERE template_id = ? AND table_id NOT IN ({placeholders})",
+                    (template_id, *keep_table_ids),
+                )
             for table_index, table in enumerate(template.tables):
                 table_key = _slugify_key(table.table_key or table.name, "tab")
                 table_id = table.table_id or f"{template_id}__{table_key}"
+                keep_column_ids = [column.column_id or f"{table_id}__{_slugify_key(column.column_key or column.name, 'col')}" for column in table.columns]
+                if keep_column_ids:
+                    placeholders = ",".join("?" for _ in keep_column_ids)
+                    await db.execute(
+                        f"DELETE FROM state_table_columns WHERE table_id = ? AND column_id NOT IN ({placeholders})",
+                        (table_id, *keep_column_ids),
+                    )
                 await db.execute(
                     """INSERT INTO state_table_schemas
                        (table_id, template_id, table_key, name, description, sort_order,
@@ -291,20 +309,11 @@ class StateTablesMixin:
                 StateTableColumn(
                     column_id=None,
                     table_id=f"{template_id}__{table_key}",
-                    column_key="name",
-                    name="??",
-                    description="状态项名称",
+                    column_key=table_key,
+                    name=data.get("name") or table_key,
+                    description=data.get("description", ""),
                     required=True,
                     sort_order=0,
-                    max_chars=120,
-                ),
-                StateTableColumn(
-                    column_id=None,
-                    table_id=f"{template_id}__{table_key}",
-                    column_key="value",
-                    name="??",
-                    description="状态内容",
-                    sort_order=1,
                     max_chars=360,
                 ),
             ],
@@ -336,6 +345,65 @@ class StateTablesMixin:
             include_in_prompt=bool(data.get("include_in_prompt", True)),
             max_chars=int(data.get("max_chars", 240)),
         ))
+        return await self.save_table_template(template)
+
+    async def update_table_in_template(self, template_id: str, table_key: str, data: dict[str, Any]) -> StateTableTemplate:
+        template = await self.get_table_template(template_id)
+        if not template:
+            raise ValueError("template not found")
+        if template.is_builtin:
+            raise ValueError("builtin templates cannot be modified; clone it first")
+        table = next((item for item in template.tables if item.table_key == table_key), None)
+        if not table:
+            raise ValueError("table not found")
+        if "name" in data and str(data.get("name") or "").strip():
+            table.name = str(data["name"]).strip()
+        if "description" in data:
+            table.description = str(data.get("description") or "")
+        if "max_prompt_rows" in data:
+            table.max_prompt_rows = int(data.get("max_prompt_rows") or table.max_prompt_rows)
+        if "prompt_priority" in data:
+            table.prompt_priority = int(data.get("prompt_priority") or table.prompt_priority)
+        return await self.save_table_template(template)
+
+    async def delete_table_from_template(self, template_id: str, table_key: str) -> StateTableTemplate:
+        template = await self.get_table_template(template_id)
+        if not template:
+            raise ValueError("template not found")
+        if template.is_builtin:
+            raise ValueError("builtin templates cannot be modified; clone it first")
+        table = next((item for item in template.tables if item.table_key == table_key), None)
+        if not table:
+            raise ValueError("table not found")
+        if len(template.tables) <= 1:
+            raise ValueError("template must keep at least one table")
+        template.tables = [item for item in template.tables if item.table_key != table_key]
+        for index, item in enumerate(template.tables):
+            item.sort_order = index
+        return await self.save_table_template(template)
+
+    async def update_column_in_table(self, template_id: str, table_key: str, column_key: str, data: dict[str, Any]) -> StateTableTemplate:
+        template = await self.get_table_template(template_id)
+        if not template:
+            raise ValueError("template not found")
+        if template.is_builtin:
+            raise ValueError("builtin templates cannot be modified; clone it first")
+        table = next((item for item in template.tables if item.table_key == table_key), None)
+        if not table:
+            raise ValueError("table not found")
+        column = next((item for item in table.columns if item.column_key == column_key), None)
+        if not column:
+            raise ValueError("column not found")
+        if "name" in data and str(data.get("name") or "").strip():
+            column.name = str(data["name"]).strip()
+        if "description" in data:
+            column.description = str(data.get("description") or "")
+        if "required" in data:
+            column.required = bool(data.get("required"))
+        if "include_in_prompt" in data:
+            column.include_in_prompt = bool(data.get("include_in_prompt"))
+        if "max_chars" in data:
+            column.max_chars = int(data.get("max_chars") or column.max_chars)
         return await self.save_table_template(template)
 
     async def delete_table_template(self, template_id: str) -> bool:

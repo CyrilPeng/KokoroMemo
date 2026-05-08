@@ -139,25 +139,23 @@ const summaryTags = computed<SummaryTag[]>(() => ([
                       <template #icon><NIcon :component="AddOutline" size="14" /></template>
                       新建模板
                     </NButton>
+                    <NButton v-if="activeTemplate?.is_builtin === false" size="tiny" tertiary @click="emit('openRenameTemplate', activeTemplate)">
+                      <template #icon><NIcon :component="CreateOutline" size="14" /></template>
+                      重命名
+                    </NButton>
+                    <NPopconfirm v-if="activeTemplate?.is_builtin === false" @positive-click="emit('deleteTemplate', activeTemplate)">
+                      <template #trigger>
+                        <NButton size="tiny" type="error" quaternary>
+                          <template #icon><NIcon :component="TrashOutline" size="14" /></template>
+                          删除
+                        </NButton>
+                      </template>
+                      删除当前自定义模板？
+                    </NPopconfirm>
                   </div>
                 </template>
                 <NSelect :value="config.table_template_id" filterable :options="tableTemplateOptions" :render-label="templateRenderLabel" @update:value="emit('updateTableTemplate', $event)" />
               </NFormItem>
-              <NSpace v-if="activeTemplate?.is_builtin === false" size="small">
-                <NButton size="tiny" @click="emit('openRenameTemplate', activeTemplate)">
-                  <template #icon><NIcon :component="CreateOutline" size="14" /></template>
-                  重命名
-                </NButton>
-                <NPopconfirm @positive-click="emit('deleteTemplate', activeTemplate)">
-                  <template #trigger>
-                    <NButton size="tiny" type="error" quaternary>
-                      <template #icon><NIcon :component="TrashOutline" size="14" /></template>
-                      删除
-                    </NButton>
-                  </template>
-                  删除当前自定义模板？
-                </NPopconfirm>
-              </NSpace>
             </NGridItem>
           </NGrid>
         </section>

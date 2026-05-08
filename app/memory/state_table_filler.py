@@ -42,9 +42,10 @@ async def fill_conversation_state_tables(
     lang: str = "zh",
     turn_id: str | None = None,
     dry_run: bool = False,
+    preset_operations: list[StateTableOperation] | None = None,
 ) -> StateTableFillResult:
     result = StateTableFillResult()
-    if not config.base_url or not config.model or not assistant_message:
+    if preset_operations is None and (not config.base_url or not config.model or not assistant_message):
         result.notes.append("state_table_filler_not_configured")
         return result
 
@@ -55,37 +56,41 @@ async def fill_conversation_state_tables(
         return result
 
     current_rows = await store.list_table_rows(conversation_id, template.template_id)
-    prompt = _build_table_prompt(config.prompt, template, current_rows, lang=lang)
-    user_content = (
-        "请根据本轮用户与助手对话，输出需要写入状态表格的 JSON 操作。\n"
-        f"用户消息：{user_message}\n\n助手回复：{assistant_message}"
-    )
-
-    provider = create_llm_provider(
-        provider=config.provider,
-        base_url=config.base_url,
-        api_key=config.api_key,
-        model=config.model,
-    )
-    try:
-        response = await provider.chat(
-            {
-                "model": config.model,
-                "temperature": config.temperature,
-                "messages": [
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": user_content},
-                ],
-            },
-            config.timeout_seconds,
+    text = ""
+    if preset_operations is not None:
+        operations = preset_operations
+    else:
+        prompt = _build_table_prompt(config.prompt, template, current_rows, lang=lang)
+        user_content = (
+            "请根据本轮用户与助手对话，输出需要写入状态表格的 JSON 操作。\n"
+            f"用户消息：{user_message}\n\n助手回复：{assistant_message}"
         )
-    except Exception as exc:
-        result.notes.append(f"llm_error:{exc}")
-        return result
 
-    text = _extract_response_text(response)
-    payload = parse_json_object(text, fallback={"operations": []})
-    operations = _parse_operations(payload)
+        provider = create_llm_provider(
+            provider=config.provider,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            model=config.model,
+        )
+        try:
+            response = await provider.chat(
+                {
+                    "model": config.model,
+                    "temperature": config.temperature,
+                    "messages": [
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": user_content},
+                    ],
+                },
+                config.timeout_seconds,
+            )
+        except Exception as exc:
+            result.notes.append(f"llm_error:{exc}")
+            return result
+
+        text = _extract_response_text(response)
+        payload = parse_json_object(text, fallback={"operations": []})
+        operations = _parse_operations(payload)
     if not operations:
         result.notes.append("no_operations")
         return result

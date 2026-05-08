@@ -2048,7 +2048,7 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
     _require_admin(request)
     from app.core.state import get_config
     from app.memory.state_filler import StateFillerConfigView
-    from app.memory.state_table_filler import fill_conversation_state_tables
+    from app.memory.state_table_filler import _parse_operations, fill_conversation_state_tables
 
     cfg = get_config()
     filler_config = StateFillerConfigView(
@@ -2061,6 +2061,17 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
         min_confidence=float(data.get("min_confidence") if data.get("min_confidence") is not None else cfg.memory.state_updater.min_confidence),
         prompt=data.get("prompt") or cfg.memory.state_updater.prompt,
     )
+    operations = None
+    if isinstance(data.get("operations"), list):
+        raw_operations = []
+        for item in data.get("operations"):
+            if not isinstance(item, dict):
+                continue
+            raw = dict(item)
+            if "values" not in raw and isinstance(raw.get("after"), dict):
+                raw["values"] = raw.get("after")
+            raw_operations.append(raw)
+        operations = _parse_operations({"operations": raw_operations})
     table_result = await fill_conversation_state_tables(
         db_path=cfg.storage.sqlite.memory_db,
         conversation_id=conversation_id,
@@ -2069,6 +2080,7 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
         config=filler_config,
         lang=cfg.language,
         dry_run=bool(data.get("preview")),
+        preset_operations=operations,
     )
     return {
         "status": "ok",
@@ -2289,7 +2301,8 @@ async def import_conversation_state_bundle(request: Request, data: dict = Body(.
     raw_rows = data.get("table_rows") or []
 
     store = SQLiteStateStore(db_path)
-    table_template_id = config.get("table_template_id")
+    exported_template = data.get("template") if isinstance(data.get("template"), dict) else {}
+    table_template_id = config.get("table_template_id") or exported_template.get("template_id")
     if table_template_id and not await store.get_table_template(table_template_id):
         table_template_id = None
 
@@ -2320,8 +2333,12 @@ async def import_conversation_state_bundle(request: Request, data: dict = Body(.
             table = table_by_key.get(table_key)
             if not table:
                 continue
-            cells = raw.get("cells") or {}
-            values = {key: (cell or {}).get("value", "") for key, cell in cells.items() if isinstance(cell, dict)}
+            raw_values = raw.get("values") if isinstance(raw.get("values"), dict) else None
+            if raw_values is not None:
+                values = {str(key): "" if value is None else str(value) for key, value in raw_values.items()}
+            else:
+                cells = raw.get("cells") or {}
+                values = {key: (cell or {}).get("value", "") for key, cell in cells.items() if isinstance(cell, dict)}
             row = StateTableRow(
                 row_id=None,
                 conversation_id=target_conversation_id,

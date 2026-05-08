@@ -885,7 +885,7 @@ async function runFillConfirm() {
     const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/fill`, {
       method: 'POST',
       headers: authHeaders(true),
-      body: JSON.stringify({ ...fillForm.value, table_only: true }),
+      body: JSON.stringify({ ...fillForm.value, table_only: true, operations: fillPreviewOps.value }),
     })
     const data = await resp.json()
     if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.fillFailed'))
@@ -1007,6 +1007,7 @@ function columnsFor(table: StateTable) {
     }),
   }))
   return [
+    { type: 'selection', width: 48 },
     ...valueColumns,
     { title: '来源', key: 'source', width: 110, render: (row: StateRow) => h(NTag, { size: 'small' }, { default: () => row.source || 'manual' }) },
     { title: '更新时间', key: 'updated_at', width: 170, render: (row: StateRow) => row.updated_at || '-' },

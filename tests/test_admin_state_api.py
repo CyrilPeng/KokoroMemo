@@ -159,6 +159,101 @@ async def test_conversation_config_mount_preset_updates_write_library():
 
 
 @pytest.mark.asyncio
+async def test_apply_character_defaults_expands_mount_preset():
+    test_dir = make_test_dir()
+    try:
+        cfg = AppConfig()
+        cfg.storage.root_dir = str(test_dir)
+        cfg.storage.sqlite.app_db = str(test_dir / "app.sqlite")
+        cfg.storage.sqlite.memory_db = str(test_dir / "memory.sqlite")
+        set_config(cfg)
+
+        from app.storage.sqlite_app import init_app_db, upsert_character, upsert_conversation, set_character_defaults
+        from app.storage.sqlite_cards import create_memory_library, create_mount_preset, get_conversation_mounts
+
+        character_id = "char_preset"
+        await init_app_db(cfg.storage.sqlite.app_db)
+        await upsert_character(cfg.storage.sqlite.app_db, character_id, "default")
+        await upsert_conversation(
+            cfg.storage.sqlite.app_db,
+            "conv_char_preset",
+            "default",
+            character_id,
+            "test",
+            str(test_dir / "conversations" / "conv_char_preset"),
+        )
+        lib_id = await create_memory_library(cfg.storage.sqlite.memory_db, "角色库", "")
+        preset_id = await create_mount_preset(
+            cfg.storage.sqlite.memory_db,
+            "角色挂载",
+            ["lib_default", lib_id],
+            write_library_id=lib_id,
+        )
+        await set_character_defaults(
+            cfg.storage.sqlite.app_db,
+            character_id,
+            mount_preset_id=preset_id,
+            library_ids=["lib_default"],
+            write_library_id="lib_default",
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(f"/admin/characters/{character_id}/apply-defaults", json={"apply_mounts": True})
+        assert resp.status_code == 200
+        assert resp.json()["updated"] == 1
+
+        mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, "conv_char_preset")
+        assert [mount["library_id"] for mount in mounts] == [lib_id, "lib_default"]
+        assert next(mount["library_id"] for mount in mounts if mount["is_write_target"]) == lib_id
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_character_defaults_save_expands_mount_preset_for_display():
+    test_dir = make_test_dir()
+    try:
+        cfg = AppConfig()
+        cfg.storage.root_dir = str(test_dir)
+        cfg.storage.sqlite.app_db = str(test_dir / "app.sqlite")
+        cfg.storage.sqlite.memory_db = str(test_dir / "memory.sqlite")
+        set_config(cfg)
+
+        from app.storage.sqlite_app import init_app_db
+        from app.storage.sqlite_cards import create_memory_library, create_mount_preset
+
+        await init_app_db(cfg.storage.sqlite.app_db)
+        lib_id = await create_memory_library(cfg.storage.sqlite.memory_db, "展示库", "")
+        preset_id = await create_mount_preset(
+            cfg.storage.sqlite.memory_db,
+            "展示挂载",
+            ["lib_default", lib_id],
+            write_library_id=lib_id,
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            save_resp = await client.put(
+                "/admin/characters/char_display/defaults",
+                json={
+                    "mount_preset_id": preset_id,
+                    "library_ids": ["lib_default"],
+                    "write_library_id": "lib_default",
+                },
+            )
+            get_resp = await client.get("/admin/characters/char_display/defaults")
+        assert save_resp.status_code == 200
+        assert get_resp.status_code == 200
+        data = get_resp.json()
+        assert data["mount_preset_id"] == preset_id
+        assert data["library_ids"] == ["lib_default", lib_id]
+        assert data["write_library_id"] == lib_id
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_cors_allows_vite_dev_origin():
     cfg = AppConfig()
     cfg.server.admin_token = ""

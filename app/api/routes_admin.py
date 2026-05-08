@@ -192,9 +192,8 @@ async def update_conversation_config_api(conversation_id: str, request: Request,
     """Update policy config for a conversation."""
     _require_admin(request)
     from app.core.state import get_config
-    from app.storage.sqlite_cards import get_mount_preset, set_conversation_mounts
+    from app.storage.sqlite_cards import set_conversation_mounts
     from app.storage.sqlite_state import SQLiteStateStore
-    import json as json_mod
 
     payload = dict(data)
     payload["conversation_id"] = conversation_id
@@ -203,30 +202,16 @@ async def update_conversation_config_api(conversation_id: str, request: Request,
     store = SQLiteStateStore(db_path)
     if payload.get("table_template_id") and not await store.get_table_template(payload["table_template_id"]):
         raise HTTPException(status_code=404, detail="State table template not found")
-    library_ids = payload.get("library_ids") or payload.get("mounted_library_ids") or []
+    library_ids, write_library_id = await _resolve_mount_selection(db_path, payload)
     if library_ids:
         await set_conversation_mounts(
             db_path,
             conversation_id=conversation_id,
             library_ids=library_ids,
-            write_library_id=payload.get("write_library_id"),
+            write_library_id=write_library_id,
             user_id=payload.get("user_id"),
             character_id=payload.get("character_id"),
         )
-    elif payload.get("mount_preset_id"):
-        preset = await get_mount_preset(db_path, payload["mount_preset_id"])
-        if not preset:
-            raise HTTPException(status_code=404, detail="Memory mount preset not found")
-        preset_library_ids = json_mod.loads(preset.get("library_ids_json") or "[]")
-        if preset_library_ids:
-            await set_conversation_mounts(
-                db_path,
-                conversation_id=conversation_id,
-                library_ids=preset_library_ids,
-                write_library_id=preset.get("write_library_id") or preset_library_ids[0],
-                user_id=payload.get("user_id"),
-                character_id=payload.get("character_id"),
-            )
     config = await store.set_conversation_config(payload)
     return {"status": "ok", "config": config.to_dict()}
 
@@ -234,6 +219,23 @@ async def update_conversation_config_api(conversation_id: str, request: Request,
 @router.post("/admin/conversations/{conversation_id}/config")
 async def post_conversation_config_api(conversation_id: str, request: Request, data: dict = Body(...)):
     return await update_conversation_config_api(conversation_id, request, data)
+
+
+async def _resolve_mount_selection(db_path: str, data: dict) -> tuple[list[str], str | None]:
+    """Resolve explicit library selection or a mount preset into concrete mounts."""
+    from app.storage.sqlite_cards import get_mount_preset
+    import json as json_mod
+
+    mount_preset_id = data.get("mount_preset_id")
+    if mount_preset_id:
+        preset = await get_mount_preset(db_path, mount_preset_id)
+        if not preset:
+            raise HTTPException(status_code=404, detail="Memory mount preset not found")
+        preset_library_ids = json_mod.loads(preset.get("library_ids_json") or "[]")
+        return preset_library_ids, preset.get("write_library_id") or (preset_library_ids[0] if preset_library_ids else None)
+
+    library_ids = data.get("library_ids") or data.get("mounted_library_ids") or []
+    return library_ids, data.get("write_library_id")
 
 
 def _is_loopback(client_host: str | None) -> bool:
@@ -931,6 +933,7 @@ async def set_character_defaults_api(character_id: str, request: Request, data: 
     from app.storage.sqlite_app import set_character_defaults
 
     cfg = get_config()
+    library_ids, write_library_id = await _resolve_mount_selection(cfg.storage.sqlite.memory_db, data)
     await set_character_defaults(
         cfg.storage.sqlite.app_db,
         character_id,
@@ -941,8 +944,8 @@ async def set_character_defaults_api(character_id: str, request: Request, data: 
         memory_write_policy=data.get("memory_write_policy"),
         state_update_policy=data.get("state_update_policy"),
         injection_policy=data.get("injection_policy"),
-        library_ids=data.get("library_ids"),
-        write_library_id=data.get("write_library_id"),
+        library_ids=library_ids or data.get("library_ids"),
+        write_library_id=write_library_id or data.get("write_library_id"),
         auto_apply=data.get("auto_apply", True),
     )
     return {"status": "ok", "character_id": character_id}
@@ -977,15 +980,15 @@ async def apply_character_defaults_api(character_id: str, request: Request, data
     overwrite_existing = data.get("overwrite_existing", True)
     store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
     updated = 0
+    library_ids, write_library_id = await _resolve_mount_selection(cfg.storage.sqlite.memory_db, defaults)
     for conv in conversations:
         conversation_id = conv["conversation_id"]
-        if apply_mounts:
-            library_ids = defaults.get("library_ids") or ["lib_default"]
+        if apply_mounts and library_ids:
             await set_conversation_mounts(
                 cfg.storage.sqlite.memory_db,
                 conversation_id,
                 library_ids,
-                defaults.get("write_library_id") or library_ids[0],
+                write_library_id or library_ids[0],
             )
         if apply_policy:
             existing = await store.get_conversation_config(conversation_id)

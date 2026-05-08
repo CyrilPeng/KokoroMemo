@@ -55,7 +55,6 @@ const emit = defineEmits<{
   deleteTemplate: [template: any]
   openPresetModal: [preset?: any]
   deletePreset: [preset: any]
-  saveMounts: []
   reload: []
   saveConfig: []
 }>()
@@ -173,18 +172,29 @@ const summaryTags = computed<SummaryTag[]>(() => ([
                 <template #label>
                   <div class="field-label">
                     <span>挂载组合预设</span>
-                    <NButton size="tiny" tertiary @click="emit('openPresetModal')">新建预设</NButton>
+                    <NSpace size="small">
+                      <NButton size="tiny" tertiary @click="emit('openPresetModal')">
+                        <template #icon><NIcon :component="AddOutline" size="14" /></template>
+                        新建预设
+                      </NButton>
+                      <NButton v-if="config.mount_preset_id" size="tiny" tertiary :disabled="!activePreset" @click="emit('openPresetModal', activePreset)">
+                        <template #icon><NIcon :component="CreateOutline" size="14" /></template>
+                        编辑
+                      </NButton>
+                      <NPopconfirm v-if="config.mount_preset_id" @positive-click="activePreset && emit('deletePreset', activePreset)">
+                        <template #trigger>
+                          <NButton size="tiny" type="error" quaternary :disabled="!activePreset">
+                            <template #icon><NIcon :component="TrashOutline" size="14" /></template>
+                            删除
+                          </NButton>
+                        </template>
+                        删除当前挂载预设？
+                      </NPopconfirm>
+                    </NSpace>
                   </div>
                 </template>
                 <NSelect :value="config.mount_preset_id" filterable :options="mountPresetOptions" @update:value="emit('updateMountPreset', $event)" />
               </NFormItem>
-              <NSpace v-if="config.mount_preset_id" size="small">
-                <NButton size="tiny" :disabled="!config.mount_preset_id" @click="emit('openPresetModal', activePreset)">编辑</NButton>
-                <NPopconfirm @positive-click="activePreset && emit('deletePreset', activePreset)">
-                  <template #trigger><NButton size="tiny" type="error" quaternary>删除</NButton></template>
-                  删除当前挂载预设？
-                </NPopconfirm>
-              </NSpace>
             </NGridItem>
             <NGridItem :span="10">
               <NFormItem label="挂载的长期记忆库">
@@ -202,7 +212,6 @@ const summaryTags = computed<SummaryTag[]>(() => ([
               <NFormItem label="新记忆写入到">
                 <NSelect :value="writeLibraryId" :options="writeLibraryOptions" :disabled="!mountedLibraryIds.length" placeholder="必须是已挂载的库" @update:value="emit('updateWriteLibraryId', $event)" />
               </NFormItem>
-              <NButton size="tiny" :loading="saving" :disabled="!mountedLibraryIds.length" @click="emit('saveMounts')">保存挂载</NButton>
             </NGridItem>
           </NGrid>
         </section>

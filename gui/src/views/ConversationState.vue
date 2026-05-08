@@ -314,7 +314,6 @@ async function saveMounts() {
     })
     const data = await resp.json()
     if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存挂载失败')
-    message.success('挂载已保存')
     await fetchMounts()
   } catch (error: any) {
     message.error(error.message || '保存挂载失败')
@@ -323,13 +322,19 @@ async function saveMounts() {
   }
 }
 
-function onMountedLibrariesChange(ids: string[]) {
+async function onMountedLibrariesChange(ids: string[]) {
   mountedLibraryIds.value = ids
   if (writeLibraryId.value && !ids.includes(writeLibraryId.value)) {
     writeLibraryId.value = ids[0] || null
   } else if (!writeLibraryId.value && ids.length) {
     writeLibraryId.value = ids[0]
   }
+  await saveMounts()
+}
+
+async function onWriteLibraryChange(id: string | null) {
+  writeLibraryId.value = id
+  await saveMounts()
 }
 
 async function fetchConversations() {
@@ -1068,7 +1073,7 @@ onBeforeUnmount(() => {
         @update-table-template="patchCurrentConfig('table_template_id', $event)"
         @update-mount-preset="patchCurrentConfig('mount_preset_id', $event)"
         @update-mounted-libraries="onMountedLibrariesChange"
-        @update-write-library-id="writeLibraryId = $event"
+        @update-write-library-id="onWriteLibraryChange"
         @update-memory-write-policy="patchCurrentConfig('memory_write_policy', $event)"
         @update-state-update-policy="patchCurrentConfig('state_update_policy', $event)"
         @update-injection-policy="patchCurrentConfig('injection_policy', $event)"
@@ -1079,7 +1084,6 @@ onBeforeUnmount(() => {
         @delete-template="deleteTemplate"
         @open-preset-modal="openPresetModal"
         @delete-preset="deletePreset"
-        @save-mounts="saveMounts"
         @reload="fetchBoard"
         @save-config="saveConfig"
       />

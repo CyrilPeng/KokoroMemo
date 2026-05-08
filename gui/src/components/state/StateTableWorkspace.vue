@@ -105,11 +105,6 @@ function columnsFor(table: StateTable): DataTableColumns<StateRow> {
 
 <template>
   <NCard title="状态表格">
-    <template #header-extra>
-      <NSpace>
-        <NButton size="tiny" type="primary" :disabled="!template" @click="emit('addTab')">{{ t('state.template.addTab') }}</NButton>
-      </NSpace>
-    </template>
     <NTabs
       v-if="tables.length"
       :value="activeTableKey"
@@ -117,6 +112,12 @@ function columnsFor(table: StateTable): DataTableColumns<StateRow> {
       animated
       @update:value="emit('update:activeTableKey', String($event))"
     >
+      <template #suffix>
+        <NButton size="tiny" tertiary class="add-tab-inline" :disabled="!template" @click="emit('addTab')">
+          <template #icon><NIcon :component="AddOutline" size="14" /></template>
+          {{ t('state.template.addTab') }}
+        </NButton>
+      </template>
       <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">
         <NSpace vertical size="medium">
           <div v-if="table.description" class="hint-text">{{ table.description }}</div>
@@ -167,6 +168,10 @@ function columnsFor(table: StateTable): DataTableColumns<StateRow> {
 <style scoped>
 .state-data-table {
   width: 100%;
+}
+
+.add-tab-inline {
+  margin-top: 2px;
 }
 
 .state-data-table :deep(.n-data-table-base-table-body) {

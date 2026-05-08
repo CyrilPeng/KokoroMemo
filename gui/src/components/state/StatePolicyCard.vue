@@ -109,25 +109,23 @@ const summaryTags = computed<SummaryTag[]>(() => ([
                       <template #icon><NIcon :component="AddOutline" size="14" /></template>
                       新建方案
                     </NButton>
+                    <NButton v-if="activeProfile?.is_builtin === false" size="tiny" tertiary @click="emit('openProfileModal', activeProfile)">
+                      <template #icon><NIcon :component="CreateOutline" size="14" /></template>
+                      重命名
+                    </NButton>
+                    <NPopconfirm v-if="activeProfile?.is_builtin === false" @positive-click="emit('deleteProfile', activeProfile)">
+                      <template #trigger>
+                        <NButton size="tiny" type="error" quaternary>
+                          <template #icon><NIcon :component="TrashOutline" size="14" /></template>
+                          删除
+                        </NButton>
+                      </template>
+                      删除当前自定义方案？
+                    </NPopconfirm>
                   </div>
                 </template>
                 <NSelect :value="config.profile_id" :options="profileOptions" :render-label="profileRenderLabel" @update:value="emit('updateProfile', $event)" />
               </NFormItem>
-              <NSpace v-if="activeProfile?.is_builtin === false" size="small">
-                <NButton size="tiny" @click="emit('openProfileModal', activeProfile)">
-                  <template #icon><NIcon :component="CreateOutline" size="14" /></template>
-                  重命名
-                </NButton>
-                <NPopconfirm @positive-click="emit('deleteProfile', activeProfile)">
-                  <template #trigger>
-                    <NButton size="tiny" type="error" quaternary>
-                      <template #icon><NIcon :component="TrashOutline" size="14" /></template>
-                      删除
-                    </NButton>
-                  </template>
-                  删除当前自定义方案？
-                </NPopconfirm>
-              </NSpace>
             </NGridItem>
 
             <NGridItem :span="12">

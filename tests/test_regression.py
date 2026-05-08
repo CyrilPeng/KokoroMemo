@@ -12,7 +12,8 @@ from httpx import ASGITransport, AsyncClient
 from app.core.config import AppConfig
 from app.core.state import set_config
 from app.main import app
-from app.storage.sqlite_cards import init_cards_db, insert_card
+from app.storage.sqlite_cards import create_memory_library, create_mount_preset, get_conversation_mounts, init_cards_db, insert_card
+from app.storage.sqlite_state import SQLiteStateStore
 from app.storage.sqlite_state import SQLiteStateStore
 
 
@@ -171,6 +172,39 @@ async def test_raw_request_persisted(monkeypatch):
             assert count >= 1
         finally:
             conn.close()
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_new_conversation_default_mount_preset_is_applied(monkeypatch):
+    test_dir = make_test_dir()
+    try:
+        cfg = configure_app(test_dir)
+        lib_id = await create_memory_library(cfg.storage.sqlite.memory_db, "剧情库", "")
+        preset_id = await create_mount_preset(
+            cfg.storage.sqlite.memory_db,
+            "剧情挂载",
+            ["lib_default", lib_id],
+            write_library_id=lib_id,
+        )
+        await SQLiteStateStore(cfg.storage.sqlite.memory_db).set_default_conversation_config({
+            "mount_preset_id": preset_id,
+        })
+        provider = FakeChatProvider()
+        monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post("/v1/chat/completions", json={
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "新会话"}],
+                "metadata": {"conversation_id": "conv_default_preset"},
+            })
+        assert resp.status_code == 200
+
+        mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, "conv_default_preset")
+        assert [mount["library_id"] for mount in mounts] == [lib_id, "lib_default"]
+        assert next(mount["library_id"] for mount in mounts if mount["is_write_target"]) == lib_id
     finally:
         cleanup_test_dir(test_dir)
 

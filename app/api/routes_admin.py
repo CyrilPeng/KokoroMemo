@@ -192,8 +192,9 @@ async def update_conversation_config_api(conversation_id: str, request: Request,
     """Update policy config for a conversation."""
     _require_admin(request)
     from app.core.state import get_config
-    from app.storage.sqlite_cards import set_conversation_mounts
+    from app.storage.sqlite_cards import get_mount_preset, set_conversation_mounts
     from app.storage.sqlite_state import SQLiteStateStore
+    import json as json_mod
 
     payload = dict(data)
     payload["conversation_id"] = conversation_id
@@ -212,6 +213,20 @@ async def update_conversation_config_api(conversation_id: str, request: Request,
             user_id=payload.get("user_id"),
             character_id=payload.get("character_id"),
         )
+    elif payload.get("mount_preset_id"):
+        preset = await get_mount_preset(db_path, payload["mount_preset_id"])
+        if not preset:
+            raise HTTPException(status_code=404, detail="Memory mount preset not found")
+        preset_library_ids = json_mod.loads(preset.get("library_ids_json") or "[]")
+        if preset_library_ids:
+            await set_conversation_mounts(
+                db_path,
+                conversation_id=conversation_id,
+                library_ids=preset_library_ids,
+                write_library_id=preset.get("write_library_id") or preset_library_ids[0],
+                user_id=payload.get("user_id"),
+                character_id=payload.get("character_id"),
+            )
     config = await store.set_conversation_config(payload)
     return {"status": "ok", "config": config.to_dict()}
 

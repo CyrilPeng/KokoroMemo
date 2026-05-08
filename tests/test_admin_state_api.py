@@ -124,6 +124,41 @@ async def test_import_conversation_state_bundle_accepts_exported_rows_shape():
 
 
 @pytest.mark.asyncio
+async def test_conversation_config_mount_preset_updates_write_library():
+    test_dir = make_test_dir()
+    try:
+        cfg = AppConfig()
+        cfg.storage.root_dir = str(test_dir)
+        cfg.storage.sqlite.app_db = str(test_dir / "app.sqlite")
+        cfg.storage.sqlite.memory_db = str(test_dir / "memory.sqlite")
+        set_config(cfg)
+
+        from app.storage.sqlite_cards import create_memory_library, create_mount_preset, get_conversation_mounts
+
+        lib_id = await create_memory_library(cfg.storage.sqlite.memory_db, "剧情库", "")
+        preset_id = await create_mount_preset(
+            cfg.storage.sqlite.memory_db,
+            "剧情挂载",
+            ["lib_default", lib_id],
+            write_library_id=lib_id,
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.put(
+                "/admin/conversations/conv_preset/config",
+                json={"mount_preset_id": preset_id, "memory_write_policy": "candidate"},
+            )
+        assert resp.status_code == 200
+
+        mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, "conv_preset")
+        assert [mount["library_id"] for mount in mounts] == [lib_id, "lib_default"]
+        assert next(mount["library_id"] for mount in mounts if mount["is_write_target"]) == lib_id
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_cors_allows_vite_dev_origin():
     cfg = AppConfig()
     cfg.server.admin_token = ""

@@ -279,6 +279,48 @@ async def test_extraction_disabled_without_judge_config():
 
 
 @pytest.mark.asyncio
+async def test_extraction_writes_to_conversation_write_library(monkeypatch):
+    class FakeProvider:
+        async def chat(self, body, timeout):
+            return {
+                "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户喜欢蓝色茶杯","importance":0.9,"confidence":0.9,"risk_level":"low","suggested_action":"auto_approve","tags":["preference"]}]}'}}]
+            }
+
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        lib_id = await create_memory_library(str(memory_db), "自定义库", "")
+        await set_conversation_mounts(
+            str(memory_db),
+            "conv_write_target",
+            [DEFAULT_MEMORY_LIBRARY_ID, lib_id],
+            write_library_id=lib_id,
+        )
+        monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
+
+        await extract_and_route(
+            db_path=str(memory_db),
+            user_message="我喜欢蓝色茶杯",
+            assistant_message="我记住了。",
+            user_id="u1",
+            character_id="c1",
+            conversation_id="conv_write_target",
+            judge_config=MemoryJudgeConfigView("openai_compatible", "http://judge", "key", "cheap-model"),
+        )
+
+        with sqlite3.connect(memory_db) as conn:
+            row = conn.execute(
+                "SELECT library_id FROM memory_cards WHERE content = ?",
+                ("用户喜欢蓝色茶杯",),
+            ).fetchone()
+        assert row is not None
+        assert row[0] == lib_id
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_llm_memory_judge_extracts_addressing(monkeypatch):
     class FakeProvider:
         async def chat(self, body, timeout):

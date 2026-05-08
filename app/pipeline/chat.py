@@ -334,6 +334,7 @@ async def _persist_request(cfg, ctx: RequestContext, raw_body: dict) -> None:
                 cfg.storage.sqlite.app_db, ctx.character_id, ctx.user_id,
             )
         await _apply_character_defaults_if_new(cfg, ctx)
+        await _apply_default_mount_preset_if_new(cfg, ctx)
         await save_raw_request(
             ctx.chat_db_path, ctx.request_id, ctx.conversation_id,
             json.dumps(raw_body, ensure_ascii=False),
@@ -348,8 +349,9 @@ async def _apply_character_defaults_if_new(cfg, ctx: RequestContext) -> None:
         return
     try:
         from app.storage.sqlite_app import get_character_defaults
-        from app.storage.sqlite_cards import get_conversation_mounts, set_conversation_mounts
+        from app.storage.sqlite_cards import get_conversation_mounts, get_mount_preset, set_conversation_mounts
         from app.storage.sqlite_state import SQLiteStateStore
+        import json as json_mod
 
         mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, ctx.conversation_id)
         if mounts and any(m.get("library_id") != "lib_default" for m in mounts):
@@ -359,8 +361,13 @@ async def _apply_character_defaults_if_new(cfg, ctx: RequestContext) -> None:
         if not defaults or not defaults.get("auto_apply"):
             return
 
-        library_ids = defaults.get("library_ids") or ["lib_default"]
-        write_library_id = defaults.get("write_library_id") or library_ids[0]
+        preset = await get_mount_preset(cfg.storage.sqlite.memory_db, defaults.get("mount_preset_id")) if defaults.get("mount_preset_id") else None
+        if preset:
+            library_ids = json_mod.loads(preset.get("library_ids_json") or "[]") or ["lib_default"]
+            write_library_id = preset.get("write_library_id") or library_ids[0]
+        else:
+            library_ids = defaults.get("library_ids") or ["lib_default"]
+            write_library_id = defaults.get("write_library_id") or library_ids[0]
         await set_conversation_mounts(cfg.storage.sqlite.memory_db, ctx.conversation_id, library_ids, write_library_id)
 
         store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
@@ -376,6 +383,35 @@ async def _apply_character_defaults_if_new(cfg, ctx: RequestContext) -> None:
         })
     except Exception as e:
         logger.debug("Character defaults auto-apply skipped: %s", e)
+
+
+async def _apply_default_mount_preset_if_new(cfg, ctx: RequestContext) -> None:
+    """Auto-apply the global default mount preset to conversations without custom mounts."""
+    try:
+        from app.storage.sqlite_cards import get_conversation_mounts, get_mount_preset, set_conversation_mounts
+        from app.storage.sqlite_state import SQLiteStateStore
+        import json as json_mod
+
+        mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, ctx.conversation_id)
+        if mounts and any(mount.get("library_id") != "lib_default" for mount in mounts):
+            return
+
+        default_config = await SQLiteStateStore(cfg.storage.sqlite.memory_db).get_default_conversation_config()
+        if not default_config.mount_preset_id:
+            return
+
+        preset = await get_mount_preset(cfg.storage.sqlite.memory_db, default_config.mount_preset_id)
+        if not preset:
+            return
+        library_ids = json_mod.loads(preset.get("library_ids_json") or "[]") or ["lib_default"]
+        await set_conversation_mounts(
+            cfg.storage.sqlite.memory_db,
+            ctx.conversation_id,
+            library_ids,
+            preset.get("write_library_id") or library_ids[0],
+        )
+    except Exception as e:
+        logger.debug("Default mount preset auto-apply skipped: %s", e)
 
 
 async def _persist_response_turn(

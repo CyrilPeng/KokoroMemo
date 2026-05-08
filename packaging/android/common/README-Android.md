@@ -51,7 +51,16 @@ Web UI: http://127.0.0.1:14514
 OpenAI Base URL: http://127.0.0.1:14514/v1
 ```
 
-如果首选端口不可用，请以启动脚本输出的实际端口为准。
+Android 包默认固定使用 `127.0.0.1:14514`。如果端口被占用，启动脚本会直接失败并在 `server.log` 提示原因；请先停止占用端口的旧进程，再重新执行 `bash start.sh`。
+
+AIRP / 其他 OpenAI-compatible 客户端请填写：
+
+```text
+Base URL: http://127.0.0.1:14514/v1
+API Key: 任意非空字符串，除非你在 config.yaml 配置了 admin_token
+```
+
+如果 Web UI 在 Android 浏览器中操作很慢，先执行 `bash doctor.sh` 确认 `/health` 正常；同时建议在系统设置中将 Termux 电池策略设为“不受限制”。
 
 ## 常用命令
 

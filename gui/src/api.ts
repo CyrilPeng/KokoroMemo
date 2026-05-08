@@ -1,5 +1,6 @@
 const DEFAULT_SERVER_URL = 'http://127.0.0.1:14514'
-const DEFAULT_TIMEOUT_MS = 8000
+const DEFAULT_TIMEOUT_MS = 12000
+const MOBILE_TIMEOUT_MS = 20000
 const PROBE_TIMEOUT_MS = 1200
 
 let _resolvedUrl: string | null = null
@@ -7,6 +8,10 @@ let _resolvingUrl: Promise<string> | null = null
 
 function isWebMode() {
   return !(window as any).__TAURI_INTERNALS__
+}
+
+function isMobileBrowser() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
 }
 
 function sameOriginUrl() {
@@ -136,7 +141,7 @@ async function resolveBackendUrlInner(): Promise<string> {
 
 export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number }) {
   let base = getServerUrl()
-  const timeoutMs = init?.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const timeoutMs = init?.timeoutMs ?? (isWebMode() && isMobileBrowser() ? MOBILE_TIMEOUT_MS : DEFAULT_TIMEOUT_MS)
   const externalSignal = init?.signal
   const { timeoutMs: _timeoutMs, signal: _signal, ...fetchInit } = init || {}
 

@@ -54,6 +54,10 @@ from app.core.state import set_config
 from app.core.time_util import set_configured_timezone
 
 
+def _android_compat_enabled() -> bool:
+    return os.getenv("KOKOROMEMO_ANDROID_COMPAT", "0").lower() in {"1", "true", "yes"}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     load_dotenv()
@@ -100,7 +104,8 @@ def create_app() -> FastAPI:
     app.include_router(openai_router)
     app.include_router(ws_router)
 
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
+    if not _android_compat_enabled():
+        app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     class CacheStaticFiles(StaticFiles):
         def file_response(self, *args, **kwargs) -> Response:
@@ -175,6 +180,7 @@ def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
     """优先使用配置端口；不可用时选择 20000 以上的随机端口。"""
     import errno
     import socket
+    strict_port = os.getenv("KOKOROMEMO_STRICT_PORT", "0").lower() in {"1", "true", "yes"}
 
     def _try_bind(port: int) -> tuple[bool, OSError | None]:
         try:
@@ -187,6 +193,11 @@ def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
     ok, preferred_error = _try_bind(preferred)
     if ok:
         return preferred, None
+    if strict_port:
+        raise RuntimeError(
+            f"Configured server port {host}:{preferred} is not available: "
+            f"{_describe_port_unavailable(preferred_error)}"
+        ) from preferred_error
     if preferred_error and preferred_error.errno not in {errno.EADDRINUSE, errno.EACCES}:
         raise RuntimeError(
             f"Failed to bind configured server address {host}:{preferred}: {preferred_error}"

@@ -84,8 +84,27 @@ fi
 export KOKOROMEMO_WEB_DIST="$ROOT_DIR/webui/dist"
 export KOKOROMEMO_CONFIG="$ROOT_DIR/config.yaml"
 export KOKOROMEMO_CONFIG_PATH="$ROOT_DIR/config.yaml"
+export KOKOROMEMO_ANDROID_COMPAT=1
+export KOKOROMEMO_STRICT_PORT=1
 export KOKOROMEMO_RELOAD=0
 export PYTHONPATH="$APP_DIR${PYTHONPATH:+:$PYTHONPATH}"
+
+"$VENV_DIR/bin/python" - "$ROOT_DIR/config.yaml" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+path = Path(sys.argv[1])
+try:
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+except FileNotFoundError:
+    data = {}
+server = data.setdefault("server", {})
+server["host"] = "127.0.0.1"
+server["port"] = 14514
+server["allow_remote_access"] = False
+path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+PY
 
 rm -f "$ROOT_DIR/.port" "$APP_DIR/.port"
 : > "$LOG_FILE"

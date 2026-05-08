@@ -35,3 +35,35 @@ for mod in mods:
 PY
 fi
 
+if [[ -x "$VENV_DIR/bin/python" ]]; then
+  "$VENV_DIR/bin/python" - "$ROOT_DIR/config.yaml" <<'PY'
+from pathlib import Path
+import socket
+import sys
+import urllib.request
+import yaml
+
+config_path = Path(sys.argv[1])
+try:
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+except Exception as exc:
+    print(f"[FAIL] Read config: {exc}")
+    raise SystemExit(0)
+
+server = data.get("server") or {}
+host = server.get("host", "127.0.0.1")
+port = int(server.get("port", 14514))
+print(f"[INFO] Configured listen: {host}:{port}")
+try:
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1.5) as response:
+        print(f"[OK] Health: http://127.0.0.1:{port}/health -> {response.status}")
+except Exception as exc:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        in_use = sock.connect_ex(("127.0.0.1", port)) == 0
+    if in_use:
+        print(f"[WARN] Port {port} is occupied but KokoroMemo /health is not ready: {exc}")
+    else:
+        print(f"[INFO] Port {port} is free; run bash start.sh to start KokoroMemo")
+PY
+fi
+

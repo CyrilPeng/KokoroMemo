@@ -16,7 +16,7 @@ function isMobileBrowser() {
 }
 
 function shouldConnectWebSocket() {
-  // 个别移动浏览器 / 轻量 WebView 的 WebSocket 稳定性较差，保留失败重连回退。
+  // Android WebUI 以手动刷新为主，避免后台 WebSocket 重连占用 Termux 的事件循环与电量。
   return !isMobileBrowser()
 }
 

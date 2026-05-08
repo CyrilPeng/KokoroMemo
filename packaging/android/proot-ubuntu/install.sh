@@ -40,6 +40,20 @@ if [[ ! -f "$ROOT_DIR/config.yaml" ]]; then
   cp "$ROOT_DIR/config.example.yaml" "$ROOT_DIR/config.yaml"
 fi
 
+"$VENV_DIR/bin/python" - "$ROOT_DIR/config.yaml" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+path = Path(sys.argv[1])
+data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+server = data.setdefault("server", {})
+server["host"] = "127.0.0.1"
+server["port"] = 14514
+server["allow_remote_access"] = False
+path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+PY
+
 chmod +x "$ROOT_DIR"/*.sh
 bash "$ROOT_DIR/doctor.sh"
 

@@ -13,6 +13,7 @@ import {
   NTabs,
   NTag,
 } from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
 import { AddOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 import EditableCell from './EditableCell.vue'
@@ -60,7 +61,11 @@ function rowClassName(row: StateRow) {
   return ''
 }
 
-function columnsFor(table: StateTable) {
+function rowKey(row: StateRow) {
+  return row.row_id
+}
+
+function columnsFor(table: StateTable): DataTableColumns<StateRow> {
   const valueColumns = table.columns.map((column) => ({
     title: column.name,
     key: column.column_key,
@@ -148,7 +153,7 @@ function columnsFor(table: StateTable) {
             :pagination="{ pageSize: 8 }"
             :scroll-x="tableScrollX(table)"
             :row-class-name="rowClassName"
-            row-key="row_id"
+            :row-key="rowKey"
             :checked-row-keys="checkedRowKeys"
             @update:checked-row-keys="emit('update:checkedRowKeys', $event as string[])"
           />

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AddOutline, RefreshOutline, SettingsOutline } from '@vicons/ionicons5'
+import { RefreshOutline, SettingsOutline } from '@vicons/ionicons5'
 import {
   NButton,
   NCard,

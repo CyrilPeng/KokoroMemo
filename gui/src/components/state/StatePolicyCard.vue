@@ -60,11 +60,13 @@ const emit = defineEmits<{
   saveConfig: []
 }>()
 
-const summaryTags = computed(() => ([
+type SummaryTag = { label: string, type: 'default' | 'info' | 'success' | 'warning' | 'error' }
+
+const summaryTags = computed<SummaryTag[]>(() => ([
   props.activeProfile?.name ? { label: `方案：${props.activeProfile.name}`, type: 'info' as const } : null,
   props.activeTemplate?.name ? { label: `模板：${props.activeTemplate.name}`, type: 'success' as const } : null,
   props.activePreset?.name ? { label: `挂载预设：${props.activePreset.name}`, type: 'warning' as const } : null,
-]).filter(Boolean))
+].filter((item): item is NonNullable<typeof item> => item !== null)))
 </script>
 
 <template>

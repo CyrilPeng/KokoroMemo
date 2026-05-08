@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   NAlert,
   NButton,
-  NDrawer,
-  NDrawerContent,
   NForm,
   NFormItem,
   NGrid,
   NGridItem,
-  NIcon,
   NInput,
   NInputNumber,
   NModal,
@@ -20,7 +17,6 @@ import {
   NTag,
   useMessage,
 } from 'naive-ui'
-import { AddOutline, CreateOutline, RefreshOutline, SettingsOutline, TrashOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 import { apiFetch } from '../api'
 import { saveJsonExport } from '../export'
@@ -758,8 +754,9 @@ async function deleteTemplate(tmpl: any) {
     if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.templateDeleteFailed'))
     message.success(t('state.messages.templateDeleted'))
     await fetchOptions()
-    if (config.value?.table_template_id === tmpl.template_id) {
-      config.value.table_template_id = null
+    const currentConfig = config.value
+    if (currentConfig && currentConfig.table_template_id === tmpl.template_id) {
+      currentConfig.table_template_id = null
     }
   } catch (error: any) {
     message.error(error.message || t('state.messages.templateDeleteFailed'))
@@ -1153,6 +1150,8 @@ onBeforeUnmount(() => {
           </NGridItem>
         </NGrid>
       </NSpin>
+
+    </NSpace>
 
     <StateDefaultConfigDrawer
       v-model:show="showDefaultDrawer"

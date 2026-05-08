@@ -13,7 +13,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.core.background import spawn_background
-from app.core.conversation_locks import get_conversation_lock, wait_for_conversation_idle
+from app.core.conversation_locks import conversation_lock
 from app.core.ids import generate_id
 from app.core.services import ServiceRegistry, get_service_registry
 from app.core.state import get_config
@@ -86,7 +86,6 @@ class ChatPipeline:
         raw_body: dict[str, Any] = await request.json()
         ctx = await resolve_context(request, raw_body, cfg.storage.root_dir, cfg)
         await _persist_request(cfg, ctx, deepcopy(raw_body))
-        await wait_for_conversation_idle(ctx.conversation_id)
 
         messages = deepcopy(raw_body.get("messages", []))
         self._resolve_system_variables(cfg, ctx, messages)
@@ -418,11 +417,8 @@ async def _schedule_post_process_turn(
     *,
     name: str,
 ) -> None:
-    lock = await get_conversation_lock(ctx.conversation_id)
-    await lock.acquire()
     task = spawn_background(
-        _post_process_turn_with_acquired_lock(
-            lock,
+        _post_process_turn(
             ctx,
             cfg,
             services,
@@ -433,12 +429,9 @@ async def _schedule_post_process_turn(
         ),
         name=name,
     )
-    if task is None:
-        lock.release()
 
 
-async def _post_process_turn_with_acquired_lock(
-    lock,
+async def _post_process_turn(
     ctx: RequestContext,
     cfg,
     services: ServiceRegistry,
@@ -447,7 +440,7 @@ async def _post_process_turn_with_acquired_lock(
     turn_id: str | None,
     turn_index: int | None,
 ) -> None:
-    try:
+    async with conversation_lock(ctx.conversation_id):
         await _update_state_and_extract_memories(
             ctx,
             cfg,
@@ -457,8 +450,6 @@ async def _post_process_turn_with_acquired_lock(
             turn_id,
             turn_index,
         )
-    finally:
-        lock.release()
 
 
 async def _update_state_and_extract_memories(

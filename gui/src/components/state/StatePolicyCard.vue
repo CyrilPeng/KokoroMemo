@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AddOutline, CreateOutline, TrashOutline } from '@vicons/ionicons5'
+import { AddOutline, CreateOutline, HelpCircleOutline, TrashOutline } from '@vicons/ionicons5'
 import {
   NButton,
   NCard,
@@ -11,6 +11,7 @@ import {
   NGridItem,
   NIcon,
   NPopconfirm,
+  NPopover,
   NSelect,
   NSpace,
   NTag,
@@ -23,7 +24,6 @@ const props = defineProps<{
   saving: boolean
   profileOptions: any[]
   profileRenderLabel: ((option: any) => any) | undefined
-  selectedProfileHint: string
   tableTemplateOptions: any[]
   templateRenderLabel: ((option: any) => any) | undefined
   mountPresetOptions: any[]
@@ -73,10 +73,25 @@ const summaryTags = computed<SummaryTag[]>(() => ([
 <template>
   <NCard>
     <template #header>
-      <NSpace align="center" :wrap="true" size="small">
-        <span class="policy-title">当前会话策略</span>
-        <NTag v-for="item in summaryTags" :key="item.label" :type="item.type" size="small" round>{{ item.label }}</NTag>
-      </NSpace>
+      <div class="policy-header">
+        <NSpace align="center" :wrap="true" size="small">
+          <span class="policy-title">当前会话策略</span>
+          <NTag v-for="item in summaryTags" :key="item.label" :type="item.type" size="small" round>{{ item.label }}</NTag>
+        </NSpace>
+        <NPopover trigger="click" placement="bottom-end" style="max-width: 360px;">
+          <template #trigger>
+            <NButton size="tiny" quaternary circle aria-label="查看当前会话策略说明">
+              <template #icon><NIcon :component="HelpCircleOutline" /></template>
+            </NButton>
+          </template>
+          <div class="policy-help">
+            <p><b>会话方案</b>：一组策略预设，用来快速切换角色扮演、模拟器、纯代理等使用方式。</p>
+            <p><b>表格模板</b>：决定状态板追踪哪些字段，例如场景、关系、资源、任务进度。</p>
+            <p><b>挂载记忆库</b>：决定本会话能召回哪些长期记忆；写入库决定新记忆保存到哪里。</p>
+            <p><b>自动化策略</b>：控制长期记忆写入、状态板自动更新，以及是否注入到模型上下文。</p>
+          </div>
+        </NPopover>
+      </div>
     </template>
 
     <NForm label-placement="top">
@@ -228,6 +243,25 @@ const summaryTags = computed<SummaryTag[]>(() => ([
 <style scoped>
 .policy-title {
   font-weight: 700;
+}
+
+.policy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.policy-help {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.policy-help p {
+  margin: 0;
 }
 
 .policy-section {

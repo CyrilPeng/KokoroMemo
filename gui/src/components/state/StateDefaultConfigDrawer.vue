@@ -16,7 +16,6 @@ defineProps<{
   defaultConfig: ConversationConfig | null
   profileOptions: any[]
   profileRenderLabel: ((option: any) => any) | undefined
-  selectedDefaultProfileHint: string
   tableTemplateOptions: any[]
   templateRenderLabel: ((option: any) => any) | undefined
   mountPresetOptions: any[]
@@ -47,7 +46,6 @@ const emit = defineEmits<{
         <NFormItem label="默认会话方案">
           <NSelect :value="defaultConfig.profile_id" :options="profileOptions" :render-label="profileRenderLabel" @update:value="emit('updateProfile', $event)" />
         </NFormItem>
-        <div v-if="selectedDefaultProfileHint" class="hint-text" style="margin-bottom: 12px;">{{ selectedDefaultProfileHint }}</div>
         <NFormItem label="默认表格模板">
           <NSelect :value="defaultConfig.table_template_id" filterable :options="tableTemplateOptions" :render-label="templateRenderLabel" @update:value="emit('updateTableTemplate', $event)" />
         </NFormItem>

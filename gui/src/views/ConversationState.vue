@@ -95,13 +95,6 @@ const presetForm = ref({ preset_id: '', name: '', description: '' })
 const profileForm = ref({ profile_id: '', name: '', description: '' })
 const renameTemplateForm = ref({ template_id: '', name: '' })
 
-const profileDescriptions: Record<string, string> = {
-  airp_roleplay: '日常角色扮演与陪伴聊天，AI 抽取的记忆候选会进入待审核',
-  rimtalk_colony: '殖民地/模拟类游戏，仅维护状态板，避免污染长期记忆',
-  ttrpg_story: '跑团与长线剧情，状态板优先，仅稳定设定进入长期记忆',
-  memory_only: '普通助手或偏好记录，只用长期记忆，不维护状态板',
-  proxy_only: '纯透传代理，不注入、不写入、不维护任何状态',
-}
 const profileOptions = computed(() => profiles.value.map((item) => ({
   label: item.name,
   value: item.profile_id,
@@ -113,14 +106,6 @@ const profileRenderLabel = (option: any) => {
   }
   return option.label
 }
-const selectedProfileHint = computed(() => {
-  const id = config.value?.profile_id || ''
-  return profileDescriptions[id] || profiles.value.find((item) => item.profile_id === id)?.description || ''
-})
-const selectedDefaultProfileHint = computed(() => {
-  const id = defaultConfig.value?.profile_id || ''
-  return profileDescriptions[id] || profiles.value.find((item) => item.profile_id === id)?.description || ''
-})
 const tableTemplateOptions = computed(() => [
   { label: t('state.template.noTemplate'), value: null },
   ...tableTemplates.value.map((item) => ({ label: item.name, value: item.template_id, is_builtin: item.is_builtin })),
@@ -1066,7 +1051,6 @@ onBeforeUnmount(() => {
         :saving="saving"
         :profile-options="profileOptions"
         :profile-render-label="profileRenderLabel"
-        :selected-profile-hint="selectedProfileHint"
         :table-template-options="tableTemplateOptions"
         :template-render-label="templateRenderLabel"
         :mount-preset-options="mountPresetOptions"
@@ -1159,7 +1143,6 @@ onBeforeUnmount(() => {
       :default-config="defaultConfig"
       :profile-options="profileOptions"
       :profile-render-label="profileRenderLabel"
-      :selected-default-profile-hint="selectedDefaultProfileHint"
       :table-template-options="tableTemplateOptions"
       :template-render-label="templateRenderLabel"
       :mount-preset-options="mountPresetOptions"

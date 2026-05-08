@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   NAlert,
   NButton,
-  NCard,
-  NDataTable,
   NDrawer,
   NDrawerContent,
   NForm,
@@ -19,8 +17,6 @@ import {
   NSelect,
   NSpace,
   NSpin,
-  NTabPane,
-  NTabs,
   NTag,
   useMessage,
 } from 'naive-ui'
@@ -31,10 +27,11 @@ import { saveJsonExport } from '../export'
 import HelpModal from '../components/HelpModal.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StateDefaultConfigDrawer from '../components/state/StateDefaultConfigDrawer.vue'
-import EditableCell from '../components/state/EditableCell.vue'
+import StateBoardSidePanel from '../components/state/StateBoardSidePanel.vue'
 import StateDiagnosticsPanel from '../components/state/StateDiagnosticsPanel.vue'
 import StatePolicyCard from '../components/state/StatePolicyCard.vue'
 import StateSessionToolbar from '../components/state/StateSessionToolbar.vue'
+import StateTableWorkspace from '../components/state/StateTableWorkspace.vue'
 import type { ConversationConfig, StateRow, StateTable } from '../components/state/types'
 
 const stateHelpSections = [
@@ -225,6 +222,11 @@ function updateAdminToken(value: string) {
 
 function persistActiveTable() {
   localStorage.setItem(STATE_ACTIVE_TABLE_STORAGE_KEY, activeTableKey.value)
+}
+
+function updateActiveTable(value: string) {
+  activeTableKey.value = value
+  persistActiveTable()
 }
 
 function reconcileActiveTable() {
@@ -981,57 +983,6 @@ async function importBoard() {
   input.click()
 }
 
-function tableScrollX(table: StateTable) {
-  return Math.max(760, table.columns.length * 180 + 430)
-}
-
-function columnsFor(table: StateTable) {
-  const valueColumns = table.columns.map((column) => ({
-    title: column.name,
-    key: column.column_key,
-    minWidth: 140,
-    render: (row: StateRow) => h(EditableCell, {
-      value: row.values?.[column.column_key] || '',
-      rowId: row.row_id,
-      columnKey: column.column_key,
-      maxChars: column.max_chars || 360,
-      adminToken: adminToken.value,
-      onSaved: (_key: string, newValue: string) => {
-        if (row.values) row.values[column.column_key] = newValue
-      },
-    }),
-  }))
-  return [
-    { type: 'selection', width: 48 },
-    ...valueColumns,
-    { title: '来源', key: 'source', width: 110, render: (row: StateRow) => h(NTag, { size: 'small' }, { default: () => row.source || 'manual' }) },
-    { title: '更新时间', key: 'updated_at', width: 170, render: (row: StateRow) => row.updated_at || '-' },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 220,
-      render: (row: StateRow) => h(NSpace, { size: 6 }, {
-        default: () => [
-          h(NButton, { size: 'tiny', onClick: () => openEdit(table, row) }, { default: () => '编辑' }),
-          h(NButton, { size: 'tiny', quaternary: true, onClick: () => duplicateRow(table, row) }, { default: () => '复制' }),
-          h(NPopconfirm, { onPositiveClick: () => deleteRow(row) }, {
-            trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => '删除' }),
-            default: () => '删除该状态行？',
-          }),
-        ],
-      }),
-    },
-  ]
-}
-
-function rowClassName(row: StateRow) {
-  const evt = recentEvents.value.find((e: any) => e.row_id === row.row_id)
-  if (!evt) return ''
-  if (evt.event_type === 'insert_row') return 'row-inserted'
-  if (evt.event_type === 'update_row' || evt.event_type === 'manual_cell_edit' || evt.event_type === 'manual_upsert_row') return 'row-updated'
-  return ''
-}
-
 async function batchAction(action: string, value?: any) {
   if (!checkedRowKeys.value.length) return
   saving.value = true
@@ -1051,6 +1002,10 @@ async function batchAction(action: string, value?: any) {
   } finally {
     saving.value = false
   }
+}
+
+function onCellSaved(row: StateRow, columnKey: string, value: string) {
+  if (row.values) row.values[columnKey] = value
 }
 
 function onWsEvent(e: any) {
@@ -1156,97 +1111,48 @@ onBeforeUnmount(() => {
       <NSpin :show="loading">
         <NGrid :cols="24" :x-gap="16" :y-gap="16">
           <NGridItem :span="16">
-            <NCard title="状态表格">
-              <template #header-extra>
-                <NSpace>
-                  <NButton size="tiny" type="primary" :disabled="!template" @click="openAddTab">{{ $t('state.template.addTab') }}</NButton>
-                </NSpace>
-              </template>
-              <NTabs v-if="tables.length" v-model:value="activeTableKey" type="line" animated @update:value="persistActiveTable">
-                <NTabPane v-for="table in tables" :key="table.table_key" :name="table.table_key" :tab="`${table.name} (${(rowsByTable[table.table_key] || []).length})`">
-                  <NSpace vertical size="medium">
-                    <div v-if="table.description" class="hint-text">{{ table.description }}</div>
-                    <NSpace align="center">
-                      <NButton type="primary" size="small" @click="openCreate(table)">
-                        <template #icon><NIcon :component="AddOutline" /></template>
-                        新增状态行
-                      </NButton>
-                      <NButton size="small" @click="openAddColumn(table)">{{ $t('state.template.addColumn') }}</NButton>
-                      <NButton size="small" @click="fetchPreview">刷新注入预览</NButton>
-                    </NSpace>
-                    <NSpace v-if="checkedRowKeys.length" align="center" size="small" style="padding: 6px 10px; background: #1a1a2e; border-radius: 4px;">
-                      <span style="font-size: 12px; color: #a1a1aa;">{{ $t('state.batch.selected', { count: checkedRowKeys.length }) }}</span>
-                      <NInputNumber v-model:value="batchPriority" size="small" :min="0" :max="100" style="width: 110px;" placeholder="优先级" />
-                      <NButton size="tiny" quaternary :disabled="batchPriority == null" @click="batchAction('set_priority', batchPriority)">设优先级</NButton>
-                      <NPopconfirm @positive-click="batchAction('delete')">
-                        <template #trigger><NButton size="tiny" type="error" quaternary>{{ $t('state.batch.deleteSelected') }}</NButton></template>
-                        {{ $t('state.batch.deleteConfirm', { count: checkedRowKeys.length }) }}
-                      </NPopconfirm>
-                      <NButton size="tiny" quaternary @click="checkedRowKeys = []">{{ $t('state.batch.clearSelection') }}</NButton>
-                    </NSpace>
-                    </NSpace>
-                    <NDataTable class="state-data-table" :columns="columnsFor(table)" :data="rowsByTable[table.table_key] || []" :pagination="{ pageSize: 8 }" :scroll-x="tableScrollX(table)" :row-class-name="rowClassName" row-key="row_id" v-model:checked-row-keys="checkedRowKeys" />
-                  </NSpace>
-                </NTabPane>
-              </NTabs>
-              <NAlert v-else type="warning">暂无表格模板，请先确认后端数据库初始化正常。</NAlert>
-            </NCard>
+            <StateTableWorkspace
+              v-model:active-table-key="activeTableKey"
+              v-model:checked-row-keys="checkedRowKeys"
+              v-model:batch-priority="batchPriority"
+              :template="template"
+              :tables="tables"
+              :rows-by-table="rowsByTable"
+              :recent-events="recentEvents"
+              :admin-token="adminToken"
+              @add-tab="openAddTab"
+              @add-row="openCreate"
+              @add-column="openAddColumn"
+              @refresh-preview="fetchPreview"
+              @batch-action="batchAction"
+              @edit-row="openEdit"
+              @duplicate-row="duplicateRow"
+              @delete-row="deleteRow"
+              @cell-saved="onCellSaved"
+              @update:active-table-key="updateActiveTable"
+            />
           </NGridItem>
 
           <NGridItem :span="8">
-            <NSpace vertical size="medium">
-              <NCard title="注入预览">
-                <template #header-extra>
-                  <NButton size="tiny" :loading="previewLoading" @click="fetchPreview">刷新</NButton>
-                </template>
-                <NSpace vertical>
-                  <NTag size="small">{{ preview.char_count }} / {{ preview.max_chars }} 字符，{{ preview.item_count }} 行，≈{{ Math.ceil(preview.char_count / 2.5) }} tokens</NTag>
-                  <NInput :value="preview.preview" type="textarea" readonly :autosize="{ minRows: 12, maxRows: 24 }" placeholder="加载后显示注入到模型的状态板文本" />
-                  <div v-if="tables.length" style="font-size: 12px; color: #a1a1aa;">
-                    <div v-for="table in tables" :key="table.table_key">
-                      {{ table.name }}: {{ (rowsByTable[table.table_key] || []).length }} 行
-                    </div>
-                  </div>
-                </NSpace>
-              </NCard>
-
-              <NCard title="AI 填充调试">
-                <NSpace vertical>
-                  <NInput v-model:value="fillForm.user_message" type="textarea" placeholder="用户消息" :autosize="{ minRows: 3, maxRows: 6 }" />
-                  <NInput v-model:value="fillForm.assistant_message" type="textarea" placeholder="助手回复" :autosize="{ minRows: 3, maxRows: 8 }" />
-                  <NSpace>
-                    <NButton type="primary" :loading="saving" :disabled="!conversationId.trim()" @click="runFillPreview">{{ $t('state.fill.previewBtn') }}</NButton>
-                    <NButton :loading="saving" :disabled="!conversationId.trim()" @click="runFillConfirm">{{ $t('state.fill.directBtn') }}</NButton>
-                  </NSpace>
-                </NSpace>
-              </NCard>
-            </NSpace>
+            <StateBoardSidePanel
+              v-model:fill-form="fillForm"
+              :preview="preview"
+              :preview-loading="previewLoading"
+              :tables="tables"
+              :rows-by-table="rowsByTable"
+              :saving="saving"
+              :can-fill="!!conversationId.trim()"
+              :show-history="!!conversationId.trim()"
+              :history-events="historyEvents"
+              :history-loading="historyLoading"
+              @refresh-preview="fetchPreview"
+              @preview-fill="runFillPreview"
+              @direct-fill="runFillConfirm"
+              @refresh-history="fetchHistory"
+            />
           </NGridItem>
         </NGrid>
       </NSpin>
-
-      <NCard v-if="conversationId.trim()" :title="$t('state.history.title')" style="margin-top: 16px;">
-        <template #header-extra>
-          <NButton size="tiny" :loading="historyLoading" @click="fetchHistory">{{ $t('common.refresh') }}</NButton>
-        </template>
-        <div v-if="!historyEvents.length" class="hint-text">{{ $t('state.history.empty') }}</div>
-        <div v-else style="max-height: 400px; overflow-y: auto;">
-          <div v-for="evt in historyEvents" :key="evt.event_id" style="padding: 6px 0; border-bottom: 1px solid #333; font-size: 12px;">
-            <NSpace align="center" size="small">
-              <NTag size="tiny" :type="evt.event_type.includes('insert') ? 'success' : evt.event_type.includes('delete') || evt.event_type.includes('resolve') ? 'error' : evt.event_type === 'revert' ? 'warning' : 'info'">
-                {{ evt.event_type }}
-              </NTag>
-              <span style="color: #a1a1aa;">{{ evt.table_key || '-' }}</span>
-              <span style="color: #666;">{{ evt.created_at }}</span>
-            </NSpace>
-            <div v-if="evt.reason" style="margin-top: 2px; color: #888;">{{ evt.reason }}</div>
-            <div v-if="evt.after && Object.keys(evt.after).length" style="margin-top: 2px; color: #63e2b7;">
-              <span v-for="(val, key) in evt.after" :key="key" style="margin-right: 8px;">{{ key }}={{ val }}</span>
-            </div>
-          </div>
-        </div>
-      </NCard>
-    </NSpace>
 
     <StateDefaultConfigDrawer
       v-model:show="showDefaultDrawer"

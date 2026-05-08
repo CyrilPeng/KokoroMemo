@@ -63,6 +63,7 @@ const template = ref<any | null>(null)
 const rows = ref<StateRow[]>([])
 const recentEvents = ref<any[]>([])
 const checkedRowKeys = ref<string[]>([])
+const batchPriority = ref<number | null>(80)
 const historyEvents = ref<any[]>([])
 const historyLoading = ref(false)
 const config = ref<ConversationConfig | null>(null)
@@ -798,6 +799,14 @@ function openEdit(table: StateTable, row: StateRow) {
   showEditModal.value = true
 }
 
+function duplicateRow(table: StateTable, row: StateRow) {
+  editingTable.value = table
+  editingRow.value = null
+  editValues.value = Object.fromEntries(table.columns.map((column) => [column.column_key, row.values?.[column.column_key] || '']))
+  editMeta.value = { priority: row.priority ?? table.prompt_priority ?? 80, confidence: row.confidence ?? 0.9 }
+  showEditModal.value = true
+}
+
 async function saveRow() {
   if (!editingTable.value) return
   saving.value = true
@@ -930,7 +939,7 @@ async function fetchHistory() {
 
 async function exportBoard() {
   if (!template.value) return
-  const payload = { conversation_id: conversationId.value.trim(), template: template.value, rows: rows.value }
+  const payload = { conversation_id: conversationId.value.trim(), config: config.value, template: template.value, rows: rows.value }
   const savedPath = await saveJsonExport(`state_board_${conversationId.value.trim()}.json`, payload)
   message.success(savedPath ? `已导出到 ${savedPath}` : '已导出')
 }
@@ -1000,10 +1009,11 @@ function columnsFor(table: StateTable) {
     {
       title: '操作',
       key: 'actions',
-      width: 150,
+      width: 220,
       render: (row: StateRow) => h(NSpace, { size: 6 }, {
         default: () => [
           h(NButton, { size: 'tiny', onClick: () => openEdit(table, row) }, { default: () => '编辑' }),
+          h(NButton, { size: 'tiny', quaternary: true, onClick: () => duplicateRow(table, row) }, { default: () => '复制' }),
           h(NPopconfirm, { onPositiveClick: () => deleteRow(row) }, {
             trigger: () => h(NButton, { size: 'tiny', type: 'error', quaternary: true }, { default: () => '删除' }),
             default: () => '删除该状态行？',
@@ -1166,6 +1176,8 @@ onBeforeUnmount(() => {
                     </NSpace>
                     <NSpace v-if="checkedRowKeys.length" align="center" size="small" style="padding: 6px 10px; background: #1a1a2e; border-radius: 4px;">
                       <span style="font-size: 12px; color: #a1a1aa;">{{ $t('state.batch.selected', { count: checkedRowKeys.length }) }}</span>
+                      <NInputNumber v-model:value="batchPriority" size="small" :min="0" :max="100" style="width: 110px;" placeholder="优先级" />
+                      <NButton size="tiny" quaternary :disabled="batchPriority == null" @click="batchAction('set_priority', batchPriority)">设优先级</NButton>
                       <NPopconfirm @positive-click="batchAction('delete')">
                         <template #trigger><NButton size="tiny" type="error" quaternary>{{ $t('state.batch.deleteSelected') }}</NButton></template>
                         {{ $t('state.batch.deleteConfirm', { count: checkedRowKeys.length }) }}

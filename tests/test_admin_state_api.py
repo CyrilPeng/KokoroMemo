@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 from httpx import ASGITransport, AsyncClient
+from starlette.testclient import TestClient
 
 from app.core.config import AppConfig
 from app.core.state import set_config
@@ -50,6 +51,20 @@ async def test_admin_state_api_requires_token_when_configured():
             assert "rows" in data
     finally:
         cleanup_test_dir(test_dir)
+
+
+def test_websocket_requires_token_when_configured():
+    cfg = AppConfig()
+    cfg.server.admin_token = "secret"
+    set_config(cfg)
+
+    with TestClient(app) as client:
+        with pytest.raises(Exception):
+            with client.websocket_connect("/ws"):
+                pass
+
+        with client.websocket_connect("/ws?token=secret") as ws:
+            assert ws is not None
 
 
 @pytest.mark.asyncio

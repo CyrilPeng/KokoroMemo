@@ -155,13 +155,18 @@ async def get_conversation_config_api(conversation_id: str, request: Request):
     """Get conversation policy config with mount summary."""
     _require_admin(request)
     from app.core.state import get_config
-    from app.storage.sqlite_cards import get_conversation_mounts
     from app.storage.sqlite_state import SQLiteStateStore
 
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
     store = SQLiteStateStore(db_path)
     config = await store.ensure_conversation_config(conversation_id)
+    return await _build_conversation_config_response(db_path, store, conversation_id, config)
+
+
+async def _build_conversation_config_response(db_path: str, store, conversation_id: str, config):
+    from app.storage.sqlite_cards import get_conversation_mounts
+
     mounts = await get_conversation_mounts(db_path, conversation_id)
     mounted_library_ids = [mount["library_id"] for mount in mounts]
     write_library_id = next(
@@ -213,7 +218,8 @@ async def update_conversation_config_api(conversation_id: str, request: Request,
             character_id=payload.get("character_id"),
         )
     config = await store.set_conversation_config(payload)
-    return {"status": "ok", "config": config.to_dict()}
+    config_data = await _build_conversation_config_response(db_path, store, conversation_id, config)
+    return {"status": "ok", "config": config_data}
 
 
 @router.post("/admin/conversations/{conversation_id}/config")

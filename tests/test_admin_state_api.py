@@ -150,6 +150,9 @@ async def test_conversation_config_mount_preset_updates_write_library():
                 json={"mount_preset_id": preset_id, "memory_write_policy": "candidate"},
             )
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["config"]["mounted_library_ids"] == [lib_id, "lib_default"]
+        assert data["config"]["write_library_id"] == lib_id
 
         mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, "conv_preset")
         assert [mount["library_id"] for mount in mounts] == [lib_id, "lib_default"]

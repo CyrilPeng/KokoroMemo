@@ -508,6 +508,8 @@ async function saveConfig() {
     const data = await resp.json()
     if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存会话策略失败')
     config.value = data.config
+    mountedLibraryIds.value = data.config.mounted_library_ids || []
+    writeLibraryId.value = data.config.write_library_id || mountedLibraryIds.value[0] || null
     message.success('会话策略已保存')
     await fetchBoard()
   } catch (error: any) {

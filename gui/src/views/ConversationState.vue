@@ -4,8 +4,6 @@ import {
   NAlert,
   NButton,
   NCard,
-  NCollapse,
-  NCollapseItem,
   NDataTable,
   NDrawer,
   NDrawerContent,
@@ -33,6 +31,9 @@ import { saveJsonExport } from '../export'
 import HelpModal from '../components/HelpModal.vue'
 import PageHeader from '../components/PageHeader.vue'
 import EditableCell from '../components/state/EditableCell.vue'
+import StateDiagnosticsPanel from '../components/state/StateDiagnosticsPanel.vue'
+import StateSessionToolbar from '../components/state/StateSessionToolbar.vue'
+import type { ConversationConfig, StateRow, StateTable } from '../components/state/types'
 
 const stateHelpSections = [
   { title: '这是什么', body: '状态板用于追踪当前会话的"热信息"——场景、角色情绪、规则、关系等会随对话演变的内容。它会和长期记忆一起注入到 AI 的 system prompt，帮助 AI 维持连续性。' },
@@ -45,46 +46,6 @@ const stateHelpSections = [
     '注入预览有内容但状态表格为空：可能是旧版字段兼容兜底，编辑后会迁移到新表格',
   ] },
 ]
-
-type StateColumn = {
-  column_id: string
-  column_key: string
-  name: string
-  description?: string
-  required?: boolean
-  max_chars?: number
-}
-
-type StateTable = {
-  table_id: string
-  table_key: string
-  name: string
-  description?: string
-  max_prompt_rows: number
-  prompt_priority: number
-  columns: StateColumn[]
-}
-
-type StateRow = {
-  row_id: string
-  table_key: string
-  values: Record<string, string>
-  priority: number
-  confidence: number
-  source: string
-  updated_at?: string
-}
-
-type ConversationConfig = {
-  conversation_id: string
-  profile_id: string
-  table_template_id?: string | null
-  mount_preset_id?: string | null
-  memory_write_policy: string
-  state_update_policy: string
-  injection_policy: string
-  created_from_default?: boolean
-}
 
 const STATE_CONVERSATION_STORAGE_KEY = 'kokoromemo.stateConversationId'
 const STATE_ACTIVE_TABLE_STORAGE_KEY = 'kokoromemo.stateActiveTableKey'
@@ -244,6 +205,16 @@ function authHeaders(json = false) {
 function persistInputs() {
   localStorage.setItem(STATE_CONVERSATION_STORAGE_KEY, conversationId.value.trim())
   localStorage.setItem('kokoromemo.adminToken', adminToken.value.trim())
+}
+
+function updateConversationId(value: string) {
+  conversationId.value = value
+  persistInputs()
+}
+
+function updateAdminToken(value: string) {
+  adminToken.value = value
+  persistInputs()
 }
 
 function persistActiveTable() {
@@ -1085,70 +1056,31 @@ onBeforeUnmount(() => {
   <div class="state-page">
     <PageHeader :title="$t('state.title')" :subtitle="$t('state.subtitle')" show-help @help="showHelpModal = true" />
     <NSpace vertical size="large">
-      <NCard>
-        <template #header>
-          <NSpace align="center" justify="space-between" style="width:100%">
-            <NSpace align="center">
-              <span>当前会话</span>
-              <NTag v-if="template" size="small" type="info">模板：{{ template.name }}</NTag>
-              <NTag v-if="rows.length" size="small">{{ rows.length }} 条状态</NTag>
-            </NSpace>
-            <NSpace align="center">
-              <NButton size="small" @click="showDefaultDrawer = true">
-                <template #icon><NIcon :component="SettingsOutline" /></template>
-                新会话默认配置
-              </NButton>
-            </NSpace>
-          </NSpace>
-        </template>
-        <NGrid :cols="24" :x-gap="12" :y-gap="12">
-          <NGridItem :span="10">
-            <NSelect
-              v-model:value="conversationId"
-              filterable
-              clearable
-              :options="conversationOptions"
-              :placeholder="conversationOptions.length ? '选择会话' : '无数据'"
-              :disabled="!conversationOptions.length"
-              @update:value="persistInputs"
-            />
-          </NGridItem>
-          <NGridItem :span="8">
-            <NInput v-model:value="adminToken" type="password" show-password-on="click" placeholder="Admin Token（可选）" />
-          </NGridItem>
-          <NGridItem :span="6">
-            <NSpace>
-              <NButton type="primary" :loading="loading" @click="fetchBoard">
-                <template #icon><NIcon :component="RefreshOutline" /></template>
-                加载
-              </NButton>
-              <NButton :disabled="!template" @click="exportBoard">导出</NButton>
-              <NButton @click="importBoard">导入</NButton>
-              <NButton :disabled="!selectedConversation" @click="openRenameConversation">重命名</NButton>
-              <NPopconfirm
-                :disabled="!conversationId.trim()"
-                positive-text="删除"
-                negative-text="取消"
-                @positive-click="deleteSelectedConversation"
-              >
-                <template #trigger>
-                  <NButton type="error" quaternary :disabled="!conversationId.trim()" :loading="saving">删除会话</NButton>
-                </template>
-                删除当前会话记录？此操作会从会话列表移除该 ID，但不会删除磁盘上的聊天文件。
-              </NPopconfirm>
-            </NSpace>
-          </NGridItem>
-        </NGrid>
-      </NCard>
+      <StateSessionToolbar
+        :conversation-id="conversationId"
+        :admin-token="adminToken"
+        :conversation-options="conversationOptions"
+        :template-name="template?.name || ''"
+        :row-count="rows.length"
+        :loading="loading"
+        :saving="saving"
+        :has-template="Boolean(template)"
+        :can-rename-conversation="Boolean(selectedConversation)"
+        @update:conversation-id="updateConversationId"
+        @update:admin-token="updateAdminToken"
+        @load="fetchBoard"
+        @export="exportBoard"
+        @import="importBoard"
+        @rename="openRenameConversation"
+        @delete="deleteSelectedConversation"
+        @open-defaults="showDefaultDrawer = true"
+      />
 
-      <NCollapse>
-        <NCollapseItem title="健康诊断" name="diag">
-          <NSpace align="center" :wrap="true">
-            <NTag v-for="item in boardDiagnostics" :key="item.label" :type="item.type">{{ item.label }}</NTag>
-            <span style="color: #a1a1aa; font-size: 13px;">当前状态行 {{ rows.length }} 条，注入预览 {{ preview.char_count || 0 }} 字符。</span>
-          </NSpace>
-        </NCollapseItem>
-      </NCollapse>
+      <StateDiagnosticsPanel
+        :issues="boardDiagnostics"
+        :row-count="rows.length"
+        :preview-chars="preview.char_count || 0"
+      />
 
       <NCard v-if="config" title="当前会话策略">
         <NForm label-placement="top">

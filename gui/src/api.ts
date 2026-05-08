@@ -13,6 +13,14 @@ function sameOriginUrl() {
   return window.location.origin.replace(/\/$/, '')
 }
 
+function getAdminToken() {
+  return localStorage.getItem('kokoromemo.adminToken')?.trim() || ''
+}
+
+function toWebSocketBaseUrl(base: string) {
+  return base.replace(/^http/, 'ws').replace(/\/$/, '')
+}
+
 export function getServerUrl() {
   const stored = localStorage.getItem('kokoromemo.serverUrl')
   // Web 模式由后端提供前端页面，直接使用同源地址。
@@ -162,9 +170,11 @@ export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: 
   return resp
 }
 
-export function createWebSocket(onMessage: (data: any) => void): WebSocket {
-  const base = getServerUrl().replace(/^http/, 'ws')
-  const ws = new WebSocket(`${base}/ws`)
+export async function createWebSocket(onMessage: (data: any) => void): Promise<WebSocket> {
+  const base = toWebSocketBaseUrl(await resolveBackendUrl())
+  const token = getAdminToken()
+  const url = token ? `${base}/ws?token=${encodeURIComponent(token)}` : `${base}/ws`
+  const ws = new WebSocket(url)
   ws.onmessage = (event) => {
     try {
       onMessage(JSON.parse(event.data))

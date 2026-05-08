@@ -2298,7 +2298,7 @@ async def import_conversation_state_bundle(request: Request, data: dict = Body(.
         or source_conversation_id
     )
     config = data.get("config") or {}
-    raw_rows = data.get("table_rows") or []
+    raw_rows = data.get("table_rows") or data.get("rows") or []
 
     store = SQLiteStateStore(db_path)
     exported_template = data.get("template") if isinstance(data.get("template"), dict) else {}

@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 from httpx import ASGITransport, AsyncClient
+from starlette.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.core.config import AppConfig
 from app.core.state import set_config
@@ -48,6 +50,75 @@ async def test_admin_state_api_requires_token_when_configured():
             assert data["conversation_id"] == "conv1"
             assert data["source"] == "table"
             assert "rows" in data
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+def test_websocket_requires_token_when_configured(monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "secret")
+    set_config(AppConfig())
+
+    with TestClient(app) as client:
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            with client.websocket_connect("/ws"):
+                pass
+        assert exc_info.value.code == 1008
+
+
+def test_websocket_accepts_query_token_when_configured(monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "secret")
+    set_config(AppConfig())
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws?token=secret") as ws:
+            assert ws is not None
+
+
+def test_websocket_accepts_bearer_token_when_configured(monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "secret")
+    set_config(AppConfig())
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws", headers={"Authorization": "Bearer secret"}) as ws:
+            assert ws is not None
+
+
+@pytest.mark.asyncio
+async def test_import_conversation_state_bundle_accepts_exported_rows_shape():
+    test_dir = make_test_dir()
+    try:
+        cfg = AppConfig()
+        cfg.storage.root_dir = str(test_dir)
+        cfg.storage.sqlite.app_db = str(test_dir / "app.sqlite")
+        cfg.storage.sqlite.memory_db = str(test_dir / "memory.sqlite")
+        set_config(cfg)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            base_resp = await client.get("/admin/conversations/export_src/state/tables")
+            assert base_resp.status_code == 200
+            template = base_resp.json()["template"]
+            table = template["tables"][0]
+            first_col = next(c["column_key"] for c in table["columns"] if c["include_in_prompt"])
+
+            resp = await client.post("/admin/conversations/import", json={
+                "conversation_id": "export_src",
+                "target_conversation_id": "export_dst",
+                "template": template,
+                "rows": [{
+                    "table_key": table["table_key"],
+                    "values": {first_col: "测试导入值"},
+                    "priority": 70,
+                    "confidence": 0.8,
+                }],
+            })
+            assert resp.status_code == 200
+            assert resp.json()["imported_rows"] == 1
+
+            verify = await client.get("/admin/conversations/export_dst/state/tables")
+            assert verify.status_code == 200
+            rows = verify.json()["rows"]
+            assert any(row["values"].get(first_col) == "测试导入值" for row in rows)
     finally:
         cleanup_test_dir(test_dir)
 

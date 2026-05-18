@@ -355,6 +355,8 @@ async def test_admin_config_returns_direct_config_keys(monkeypatch):
     cfg.llm.api_key = "config-llm-key"
     cfg.embedding.api_key = "config-embedding-key"
     cfg.rerank.api_key = "config-rerank-key"
+    cfg.memory.judge.api_key = "config-judge-key"
+    cfg.memory.state_updater.api_key = "config-state-key"
     cfg.memory.judge.user_rules = ["称呼变化生成 preference"]
     set_config(cfg)
     transport = ASGITransport(app=app)
@@ -362,12 +364,19 @@ async def test_admin_config_returns_direct_config_keys(monkeypatch):
         resp = await client.get("/admin/config")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["llm"]["api_key"] == "config-llm-key"
-    assert data["embedding"]["api_key"] == "config-embedding-key"
-    assert data["rerank"]["api_key"] == "config-rerank-key"
+    assert data["llm"]["api_key"] == ""
+    assert data["llm"]["api_key_set"] is True
+    assert data["embedding"]["api_key"] == ""
+    assert data["embedding"]["api_key_set"] is True
+    assert data["rerank"]["api_key"] == ""
+    assert data["rerank"]["api_key_set"] is True
     assert data["memory"]["judge"]["enabled"] is True
+    assert data["memory"]["judge"]["api_key"] == ""
+    assert data["memory"]["judge"]["api_key_set"] is True
     assert data["memory"]["judge"]["mode"] == "model_only"
     assert data["memory"]["judge"]["user_rules"] == ["称呼变化生成 preference"]
+    assert data["memory"]["state_updater"]["api_key"] == ""
+    assert data["memory"]["state_updater"]["api_key_set"] is True
 
 
 @pytest.mark.asyncio

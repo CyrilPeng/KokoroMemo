@@ -114,6 +114,7 @@ class OpenAICompatibleProvider(LLMProvider):
         body["stream"] = True
         client = get_llm_http_client()
         async with client.stream("POST", url, json=body, headers=headers, timeout=timeout) as resp:
+                resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if line:
                         yield line
@@ -187,6 +188,7 @@ class OpenAIResponsesProvider(LLMProvider):
         model = body.get("model", self.model)
         client = get_llm_http_client()
         async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
+                resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -298,6 +300,7 @@ class AnthropicProvider(LLMProvider):
         model = body.get("model", self.model)
         client = get_llm_http_client()
         async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
+                resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line.startswith("data: "):
                         continue
@@ -391,6 +394,7 @@ class GeminiProvider(LLMProvider):
 
         client = get_llm_http_client()
         async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
+                resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line.startswith("data: "):
                         continue

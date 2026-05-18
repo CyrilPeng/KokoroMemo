@@ -1,7 +1,8 @@
 ﻿import pytest
+import httpx
 
 from app.proxy import llm_providers
-from app.proxy.llm_providers import GeminiProvider, close_llm_http_client, get_llm_http_client
+from app.proxy.llm_providers import GeminiProvider, OpenAICompatibleProvider, close_llm_http_client, get_llm_http_client
 
 
 class FakeResponse:
@@ -47,3 +48,20 @@ async def test_llm_http_client_is_reused_and_closable():
     assert first is second
     await close_llm_http_client()
     assert first.is_closed
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_raises_for_upstream_http_error(monkeypatch):
+    async def handler(request):
+        return httpx.Response(401, json={"error": {"message": "bad key"}})
+
+    await close_llm_http_client()
+    fake_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(llm_providers, "_shared_http_client", fake_client)
+
+    provider = OpenAICompatibleProvider("https://example.test/v1", "bad-key", "test-model")
+    with pytest.raises(httpx.HTTPStatusError):
+        async for _ in provider.stream_chat({"messages": []}, timeout=5):
+            pass
+
+    await close_llm_http_client()

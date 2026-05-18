@@ -54,6 +54,27 @@ async def test_admin_state_api_requires_token_when_configured():
         cleanup_test_dir(test_dir)
 
 
+@pytest.mark.asyncio
+async def test_admin_middleware_rejects_remote_without_token():
+    test_dir = make_test_dir()
+    try:
+        cfg = AppConfig()
+        cfg.server.host = "0.0.0.0"
+        cfg.server.allow_remote_access = False
+        cfg.storage.root_dir = str(test_dir)
+        cfg.storage.sqlite.app_db = str(test_dir / "app.sqlite")
+        cfg.storage.sqlite.memory_db = str(test_dir / "memory.sqlite")
+        set_config(cfg)
+
+        transport = ASGITransport(app=app, client=("203.0.113.10", 12345))
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/admin/config")
+
+        assert resp.status_code == 403
+    finally:
+        cleanup_test_dir(test_dir)
+
+
 def test_websocket_requires_token_when_configured(monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "secret")
     set_config(AppConfig())

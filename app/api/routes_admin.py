@@ -2533,8 +2533,10 @@ async def export_memory_library(library_id: str):
 async def import_memory_library(data: dict = Body(...)):
     """Import a memory library from exported JSON."""
     from app.core.ids import generate_id
+    from app.core.services import get_embedding_provider, get_lancedb_store
     from app.core.state import get_config
     from app.storage.sqlite_cards import create_memory_library, insert_card, insert_card_version
+    from app.storage.vector_sync import enqueue_card_vector_sync, sync_card_vector
 
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
@@ -2567,6 +2569,23 @@ async def import_memory_library(data: dict = Body(...)):
             is_pinned=int(card.get("is_pinned", 0)),
             evidence_text=card.get("evidence_text"),
         )
+        await insert_card_version(
+            db_path,
+            card_id=card_id,
+            content=card.get("content", ""),
+            card_type=card.get("card_type", "preference"),
+            summary=card.get("summary"),
+            importance=float(card.get("importance", 0.5)),
+            confidence=float(card.get("confidence", 0.7)),
+        )
+        if card.get("status", "approved") == "approved":
+            ep = get_embedding_provider(cfg)
+            store = get_lancedb_store(cfg)
+            if ep and store:
+                try:
+                    await sync_card_vector(db_path, card_id, ep, store)
+                except Exception as exc:
+                    await enqueue_card_vector_sync(db_path, card_id, str(exc))
         imported += 1
 
     return {"status": "ok", "library_id": new_library_id, "imported_cards": imported}

@@ -186,7 +186,9 @@ async def _build_conversation_config_response(db_path: str, store, conversation_
         "mounts": mounts,
         "table_template_id": data.get("table_template_id") or (table_template.template_id if table_template else None),
         "table_template_name": table_template.name if table_template else None,
+        "template_name": table_template.name if table_template else None,
         "state_row_count": active_row_count,
+        "state_item_count": active_row_count,
         "is_new_session": active_row_count == 0 and mounted_library_ids == ["lib_default"],
     })
     return data

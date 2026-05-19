@@ -174,6 +174,8 @@ async def test_conversation_config_mount_preset_updates_write_library():
         data = resp.json()
         assert data["config"]["mounted_library_ids"] == [lib_id, "lib_default"]
         assert data["config"]["write_library_id"] == lib_id
+        assert data["config"]["template_name"] == data["config"]["table_template_name"]
+        assert data["config"]["state_item_count"] == data["config"]["state_row_count"]
 
         mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, "conv_preset")
         assert [mount["library_id"] for mount in mounts] == [lib_id, "lib_default"]

@@ -391,7 +391,7 @@ GUI 入口：记忆库页"导入 SillyTavern"按钮，导入完成后弹窗确�
 
 ## 8. 会话状态板设计
 
-会话状态板负责维护“当前正在发生什么”，默认每轮注入到模型上下文。v0.6.0 起主路径为表格化状态板，旧字段式状态板保留为兼容兜底。
+会话状态板负责维护“当前正在发生什么”，默认每轮注入到模型上下文。v0.6.0 起主路径为表格化状态板。旧字段式状态板仅保留历史数据展示、迁移和 API 兼容用途，不再作为注入回退路径；表格状态为空时直接跳过状态注入。
 
 ### v2 表格模型
 
@@ -568,8 +568,10 @@ GUI `/state` 是表格工作台：
 | `mounted_library_ids` | 当前会话挂载的记忆库 ID 列表，兼容旧状态板和 GUI 读取逻辑 |
 | `write_library_id` | 当前会话长期记忆写入目标库 |
 | `mounts` | 完整挂载记录，包含是否写入目标等元数据 |
-| `template_name` | 当前旧字段式状态板模板名称，用于兼容展示 |
-| `state_item_count` | 当前会话旧字段式 active 状态项数量 |
+| `table_template_name` | 当前表格状态板模板名称 |
+| `state_row_count` | 当前会话 v2 表格 active 状态行数量 |
+| `template_name` | 兼容字段，当前等同于 `table_template_name` |
+| `state_item_count` | 兼容字段，当前等同于 `state_row_count` |
 | `is_new_session` | 判断是否仍是默认空会话，便于 GUI 提示用户先选择方案 |
 
 `PUT/POST` 保存时同时接受 `library_ids` 与 `mounted_library_ids`，并根据 `write_library_id` 更新会话挂载，保证 v0.7 之后的新策略字段与旧挂载字段可以在同一个入口内保存。

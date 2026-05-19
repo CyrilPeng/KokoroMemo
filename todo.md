@@ -43,7 +43,7 @@
 
 ### 子任务
 
-- [ ] 新增 `MountResolver`：统一解析显式记忆库、挂载预设、角色默认配置、会话配置和默认配置。
+- [x] 新增 `MountResolver`：统一解析显式记忆库、挂载预设、角色默认配置、会话配置和默认配置。
 - [ ] 新增 `MemoryEngine`：封装记忆写入、候选创建、审核状态转换、写入库选择。
 - [ ] 新增 `RetrievalEngine`：封装 retrieval gate、query build、card retrieval、rerank、过滤和结果归一化。
 - [ ] 新增 `StateBoardEngine`：封装状态板模板解析、表格读取、AI 填表、手动更新和注入渲染。
@@ -251,7 +251,7 @@
 
 ### P0：必须优先
 
-- [ ] `MountResolver` 内部抽象。
+- [x] `MountResolver` 内部抽象。
 - [ ] 会话配置、角色默认配置、新会话默认配置统一使用挂载解析。
 - [ ] 检索 trace 最小闭环：记录最终注入记忆来源库、来源会话、入选原因。
 - [ ] AIRP benchmark 最小样例：多角色隔离、记忆库隔离、称呼记忆。

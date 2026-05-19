@@ -231,19 +231,13 @@ async def post_conversation_config_api(conversation_id: str, request: Request, d
 
 async def _resolve_mount_selection(db_path: str, data: dict) -> tuple[list[str], str | None]:
     """Resolve explicit library selection or a mount preset into concrete mounts."""
-    from app.storage.sqlite_cards import get_mount_preset
-    import json as json_mod
+    from app.services.mount_resolver import MountResolutionError, MountResolver
 
-    mount_preset_id = data.get("mount_preset_id")
-    if mount_preset_id:
-        preset = await get_mount_preset(db_path, mount_preset_id)
-        if not preset:
-            raise HTTPException(status_code=404, detail="Memory mount preset not found")
-        preset_library_ids = json_mod.loads(preset.get("library_ids_json") or "[]")
-        return preset_library_ids, preset.get("write_library_id") or (preset_library_ids[0] if preset_library_ids else None)
-
-    library_ids = data.get("library_ids") or data.get("mounted_library_ids") or []
-    return library_ids, data.get("write_library_id")
+    try:
+        resolved = await MountResolver(db_path).resolve_selection(data)
+    except MountResolutionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return resolved.mounted_library_ids, resolved.write_library_id
 
 
 def _is_loopback(client_host: str | None) -> bool:

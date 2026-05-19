@@ -1,0 +1,29 @@
+{
+  "id": "nickname_memory",
+  "description": "用户称呼偏好应在后续对话中召回。",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_yuki",
+    "conversation_id": "conv_nickname",
+    "mounted_library_ids": ["lib_default"],
+    "write_library_id": "lib_default"
+  },
+  "libraries": [
+    { "library_id": "lib_default", "name": "默认记忆库" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_nickname",
+      "library_id": "lib_default",
+      "scope": "global",
+      "card_type": "preference",
+      "content": "用户希望被称呼为小凛。",
+      "importance": 0.9,
+      "confidence": 0.95
+    }
+  ],
+  "query": "你还记得怎么称呼我吗？",
+  "expect_injected": ["card_nickname"],
+  "expect_not_injected": []
+}
+

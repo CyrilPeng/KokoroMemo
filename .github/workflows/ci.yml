@@ -32,6 +32,9 @@ jobs:
       - name: Run pytest
         run: pytest tests/ -q
 
+      - name: Run AIRP benchmark smoke
+        run: python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports
+
   frontend:
     name: Frontend (vue-tsc + vite build)
     runs-on: ubuntu-latest

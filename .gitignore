@@ -33,3 +33,4 @@ config.yaml
 
 # 项目临时文件
 .port
+.test_tmp/

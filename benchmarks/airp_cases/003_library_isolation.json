@@ -1,0 +1,39 @@
+{
+  "id": "library_isolation",
+  "description": "只挂载奇幻世界库时，不应召回赛博世界库。",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_lina",
+    "conversation_id": "conv_fantasy",
+    "mounted_library_ids": ["lib_fantasy"],
+    "write_library_id": "lib_fantasy"
+  },
+  "libraries": [
+    { "library_id": "lib_fantasy", "name": "奇幻世界" },
+    { "library_id": "lib_cyber", "name": "赛博世界" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_fantasy_quest",
+      "library_id": "lib_fantasy",
+      "scope": "global",
+      "card_type": "world_state",
+      "content": "奇幻世界中，队伍正在寻找月井的封印碎片。",
+      "importance": 0.85,
+      "confidence": 0.9
+    },
+    {
+      "card_id": "card_cyber_quest",
+      "library_id": "lib_cyber",
+      "scope": "global",
+      "card_type": "world_state",
+      "content": "赛博世界中，用户正在追踪失控的城市 AI。",
+      "importance": 0.85,
+      "confidence": 0.9
+    }
+  ],
+  "query": "我们现在的主线任务是什么？",
+  "expect_injected": ["card_fantasy_quest"],
+  "expect_not_injected": ["card_cyber_quest"]
+}
+

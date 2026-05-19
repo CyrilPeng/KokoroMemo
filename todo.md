@@ -175,17 +175,17 @@
 
 ### 子任务
 
-- [ ] 设计 benchmark case JSON 格式。
+- [x] 设计 benchmark case JSON 格式。
 - [ ] 编写 10 个最小 AIRP case，覆盖称呼、偏好、多角色隔离和状态板。
-- [ ] 编写 benchmark runner，支持使用 fake LLM / mock embedding 保证可重复。
-- [ ] 输出 markdown 报告和 JSON 报告。
-- [ ] 在 CI 中加入轻量 benchmark smoke test。
+- [x] 编写 benchmark runner，支持使用 fake LLM / mock embedding 保证可重复。
+- [x] 输出 markdown 报告和 JSON 报告。
+- [x] 在 CI 中加入轻量 benchmark smoke test。
 - [ ] 发布前手动运行完整 benchmark，记录版本间变化。
 
 ### 验收标准
 
-- [ ] 本地可以一条命令运行 benchmark。
-- [ ] benchmark 不依赖真实外部 API 即可跑 smoke test。
+- [x] 本地可以一条命令运行 benchmark。
+- [x] benchmark 不依赖真实外部 API 即可跑 smoke test。
 - [ ] 报告能显示本次版本相对上次版本的指标变化。
 - [ ] 当跨角色污染率或挂载库污染率升高时，测试能失败或给出警告。
 
@@ -254,13 +254,13 @@
 - [x] `MountResolver` 内部抽象。
 - [ ] 会话配置、角色默认配置、新会话默认配置统一使用挂载解析。
 - [x] 检索 trace 最小闭环：记录最终注入记忆来源库、来源会话、入选原因。
-- [ ] AIRP benchmark 最小样例：多角色隔离、记忆库隔离、称呼记忆。
+- [x] AIRP benchmark 最小样例：多角色隔离、记忆库隔离、称呼记忆。
 
 ### P1：强烈建议
 
 - [ ] GUI 检索解释面板。
 - [ ] 状态板 trace。
-- [ ] benchmark markdown 报告。
+- [x] benchmark markdown 报告。
 - [ ] 召回策略 profile。
 
 ### P2：后续增强

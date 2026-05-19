@@ -1,0 +1,40 @@
+{
+  "id": "character_isolation",
+  "description": "角色 A 的角色级记忆不应污染角色 B。",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_b",
+    "conversation_id": "conv_char_b",
+    "mounted_library_ids": ["lib_default"],
+    "write_library_id": "lib_default"
+  },
+  "libraries": [
+    { "library_id": "lib_default", "name": "默认记忆库" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_char_a_secret",
+      "library_id": "lib_default",
+      "character_id": "char_a",
+      "scope": "character",
+      "card_type": "event",
+      "content": "角色 A 知道用户藏起了一枚银色钥匙。",
+      "importance": 0.9,
+      "confidence": 0.9
+    },
+    {
+      "card_id": "card_char_b_fact",
+      "library_id": "lib_default",
+      "character_id": "char_b",
+      "scope": "character",
+      "card_type": "relationship",
+      "content": "角色 B 与用户约定在钟楼见面。",
+      "importance": 0.85,
+      "confidence": 0.9
+    }
+  ],
+  "query": "我们之前约在哪里见面？",
+  "expect_injected": ["card_char_b_fact"],
+  "expect_not_injected": ["card_char_a_secret"]
+}
+

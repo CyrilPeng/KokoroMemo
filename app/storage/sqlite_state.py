@@ -81,6 +81,51 @@ CREATE TABLE IF NOT EXISTS retrieval_decisions (
 CREATE INDEX IF NOT EXISTS idx_retrieval_decisions_conversation
 ON retrieval_decisions(conversation_id, created_at);
 
+CREATE TABLE IF NOT EXISTS retrieval_traces (
+  trace_id TEXT PRIMARY KEY,
+  request_id TEXT,
+  gate_decision_id TEXT,
+  conversation_id TEXT NOT NULL,
+  user_id TEXT,
+  character_id TEXT,
+  query_text TEXT,
+  should_retrieve INTEGER NOT NULL DEFAULT 0,
+  trigger_reason TEXT,
+  mounted_library_ids_json TEXT,
+  allowed_scopes_json TEXT,
+  final_injected_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(gate_decision_id) REFERENCES retrieval_decisions(decision_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_retrieval_traces_conversation
+ON retrieval_traces(conversation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS retrieval_trace_candidates (
+  candidate_id TEXT PRIMARY KEY,
+  trace_id TEXT NOT NULL,
+  card_id TEXT,
+  library_id TEXT,
+  source_conversation_id TEXT,
+  source_character_id TEXT,
+  route TEXT,
+  vector_score REAL,
+  importance_score REAL,
+  recency_score REAL,
+  scope_score REAL,
+  confidence_score REAL,
+  final_score REAL,
+  selected INTEGER NOT NULL DEFAULT 0,
+  filtered_reason TEXT,
+  injection_reason TEXT,
+  content_preview TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  FOREIGN KEY(trace_id) REFERENCES retrieval_traces(trace_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_retrieval_trace_candidates_trace
+ON retrieval_trace_candidates(trace_id, final_score);
+
 CREATE TABLE IF NOT EXISTS state_table_templates (
   template_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -249,13 +294,22 @@ async def delete_conversation_state_data(db_path: str, conversation_id: str) -> 
             table_cells = cursor.rowcount
         deletes = []
         for table in [
+            "retrieval_trace_candidates",
             "conversation_configs",
+            "retrieval_traces",
             "retrieval_decisions",
             "state_table_events",
             "state_table_debug_runs",
             "state_table_rows",
         ]:
-            cursor = await db.execute(f"DELETE FROM {table} WHERE conversation_id = ?", (conversation_id,))
+            if table == "retrieval_trace_candidates":
+                cursor = await db.execute(
+                    """DELETE FROM retrieval_trace_candidates
+                       WHERE trace_id IN (SELECT trace_id FROM retrieval_traces WHERE conversation_id = ?)""",
+                    (conversation_id,),
+                )
+            else:
+                cursor = await db.execute(f"DELETE FROM {table} WHERE conversation_id = ?", (conversation_id,))
             deletes.append((table, cursor.rowcount))
         await db.commit()
         result = {table: count for table, count in deletes}

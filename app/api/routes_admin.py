@@ -2080,6 +2080,37 @@ async def get_retrieval_decisions(
     return {"items": decisions, "total": total, "limit": limit, "offset": offset}
 
 
+@router.get("/admin/conversations/{conversation_id}/retrieval-traces")
+async def get_retrieval_traces(
+    conversation_id: str,
+    request: Request,
+    limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """List memory retrieval and injection traces for a conversation."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    traces, total = await store.list_retrieval_traces(conversation_id, limit=limit, offset=offset)
+    return {"items": traces, "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/admin/retrieval-traces/{trace_id}")
+async def get_retrieval_trace(trace_id: str, request: Request):
+    """Get one retrieval trace with its candidate rows."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
+    trace = await store.get_retrieval_trace(trace_id)
+    if not trace:
+        raise HTTPException(status_code=404, detail="Retrieval trace not found")
+    return trace
+
+
 @router.get("/admin/conversations/{conversation_id}/state/preview")
 async def preview_state_board(conversation_id: str, request: Request):
     """Return the rendered state board text as it would be injected into the LLM prompt."""

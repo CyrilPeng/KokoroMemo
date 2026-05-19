@@ -37,6 +37,13 @@ class MemoryCandidate:
     vector_score: float
     final_score: float
     source: str  # 'pinned' | 'vector' | 'recent' | 'graph'
+    library_id: str = ""
+    source_conversation_id: str | None = None
+    source_character_id: str | None = None
+    importance_score: float = 0.0
+    recency_score: float = 0.0
+    scope_score: float = 0.0
+    confidence_score: float = 0.0
 
 
 def _recency_score(created_at: str | None) -> float:
@@ -123,6 +130,13 @@ async def retrieve_cards(
                 vector_score=1.0,  # 置顶卡片始终保持高优先级
                 final_score=1.0,
                 source="pinned",
+                library_id=card.get("library_id", ""),
+                source_conversation_id=card.get("conversation_id"),
+                source_character_id=card.get("character_id"),
+                importance_score=card["importance"],
+                recency_score=_recency_score(card.get("created_at")),
+                scope_score=_scope_score(card["scope"]),
+                confidence_score=card["confidence"],
             ))
     except Exception as e:
         logger.warning("Pinned cards retrieval failed: %s", e)
@@ -187,6 +201,13 @@ async def retrieve_cards(
                 vector_score=vs,
                 final_score=final,
                 source="vector",
+                library_id=card.get("library_id", ""),
+                source_conversation_id=card.get("conversation_id"),
+                source_character_id=card.get("character_id"),
+                importance_score=imp,
+                recency_score=rec,
+                scope_score=sc,
+                confidence_score=conf,
             ))
     except Exception as e:
         logger.warning("Vector retrieval failed (degraded): %s", e)
@@ -211,6 +232,13 @@ async def retrieve_cards(
                 vector_score=0.5,
                 final_score=card["importance"] * 0.8,
                 source="recent",
+                library_id=card.get("library_id", ""),
+                source_conversation_id=card.get("conversation_id"),
+                source_character_id=card.get("character_id"),
+                importance_score=card["importance"],
+                recency_score=_recency_score(card.get("created_at")),
+                scope_score=_scope_score(card["scope"]),
+                confidence_score=card["confidence"],
             ))
     except Exception as e:
         logger.warning("Recent cards retrieval failed: %s", e)
@@ -268,6 +296,13 @@ async def retrieve_cards(
                     vector_score=0.6,
                     final_score=max(0.75, card["importance"] * 0.9),
                     source="graph",
+                    library_id=card.get("library_id", ""),
+                    source_conversation_id=card.get("conversation_id"),
+                    source_character_id=card.get("character_id"),
+                    importance_score=card["importance"],
+                    recency_score=_recency_score(card.get("created_at")),
+                    scope_score=_scope_score(card["scope"]),
+                    confidence_score=card["confidence"],
                 ))
     except Exception as e:
         logger.warning("Graph expansion failed: %s", e)

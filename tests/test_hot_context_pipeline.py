@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.config import AppConfig
 from app.core.state import set_config
 from app.main import app
+from app.memory.card_retriever import MemoryCandidate
 from app.memory.state_schema import StateTableRow
 from app.storage.sqlite_state import SQLiteStateStore
 
@@ -185,6 +186,66 @@ async def test_keyword_triggers_vector_retrieval(monkeypatch):
             })
         assert resp.status_code == 200
         assert called == {"embedding": True, "retrieve": True}
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_retrieval_trace_records_selected_candidates(monkeypatch):
+    test_dir = make_test_dir()
+    try:
+        cfg = configure_app(test_dir)
+        provider = FakeChatProvider()
+        monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
+
+        def fake_embedding(_self, _cfg):
+            return object()
+
+        async def fake_retrieve_cards(*args, **kwargs):
+            return [MemoryCandidate(
+                card_id="card_trace_1",
+                content="用户喜欢热茶",
+                scope="global",
+                card_type="preference",
+                importance=0.8,
+                confidence=0.9,
+                vector_score=0.88,
+                final_score=0.86,
+                source="vector",
+                library_id="lib_default",
+                source_conversation_id="conv_source",
+                source_character_id="char_source",
+                importance_score=0.8,
+                recency_score=0.7,
+                scope_score=0.7,
+                confidence_score=0.9,
+            )]
+
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_embedding_provider", fake_embedding)
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_lancedb_store", lambda _self, _cfg: object())
+        monkeypatch.setattr("app.memory.card_retriever.retrieve_cards", fake_retrieve_cards)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post("/v1/chat/completions", json={
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "你还记得我的偏好吗"}],
+                "metadata": {"conversation_id": "conv_trace", "character_id": "char_trace"},
+            })
+            assert resp.status_code == 200
+
+            traces_resp = await client.get("/admin/conversations/conv_trace/retrieval-traces")
+            assert traces_resp.status_code == 200
+            traces = traces_resp.json()["items"]
+            assert len(traces) == 1
+            assert traces[0]["final_injected_count"] == 1
+
+            detail_resp = await client.get(f"/admin/retrieval-traces/{traces[0]['trace_id']}")
+            assert detail_resp.status_code == 200
+            candidates = detail_resp.json()["candidates"]
+            assert len(candidates) == 1
+            assert candidates[0]["card_id"] == "card_trace_1"
+            assert candidates[0]["library_id"] == "lib_default"
+            assert candidates[0]["selected"] == 1
+            assert candidates[0]["injection_reason"] == "selected_for_injection"
     finally:
         cleanup_test_dir(test_dir)
 

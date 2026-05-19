@@ -175,9 +175,31 @@ class ChatPipeline:
                     )
                 )
                 should_retrieve = decision.should_retrieve
-                await self._record_retrieval_decision(prepared, query, decision, turn_index)
+                decision_id = await self._record_retrieval_decision(prepared, query, decision, turn_index)
+            else:
+                decision = None
+                decision_id = None
+
+            allowed_scopes = {
+                scope for scope, enabled in (
+                    ("global", cfg.memory.scopes.include_global),
+                    ("character", cfg.memory.scopes.include_character),
+                    ("conversation", cfg.memory.scopes.include_conversation),
+                ) if enabled
+            }
+            mounted_library_ids = await self._get_mounted_library_ids(prepared)
 
             if not should_retrieve:
+                await self._record_retrieval_trace(
+                    prepared,
+                    query,
+                    should_retrieve=False,
+                    trigger_reason=decision.reason if decision else "retrieval_gate_disabled",
+                    gate_decision_id=decision_id,
+                    mounted_library_ids=mounted_library_ids,
+                    allowed_scopes=allowed_scopes,
+                    candidates=[],
+                )
                 return
 
             ep = self.services.get_embedding_provider(cfg)
@@ -187,13 +209,6 @@ class ChatPipeline:
 
             from app.memory.card_retriever import retrieve_cards
 
-            allowed_scopes = {
-                scope for scope, enabled in (
-                    ("global", cfg.memory.scopes.include_global),
-                    ("character", cfg.memory.scopes.include_character),
-                    ("conversation", cfg.memory.scopes.include_conversation),
-                ) if enabled
-            }
             candidates = await retrieve_cards(
                 query,
                 ep,
@@ -202,6 +217,16 @@ class ChatPipeline:
                 vector_top_k=cfg.memory.vector_top_k,
                 final_top_k=cfg.memory.final_top_k,
                 allowed_scopes=allowed_scopes,
+            )
+            await self._record_retrieval_trace(
+                prepared,
+                query,
+                should_retrieve=True,
+                trigger_reason=decision.reason if decision else "retrieval_gate_disabled",
+                gate_decision_id=decision_id,
+                mounted_library_ids=mounted_library_ids,
+                allowed_scopes=allowed_scopes,
+                candidates=candidates,
             )
             if candidates:
                 prepared.injected_messages = inject_cards(
@@ -258,13 +283,13 @@ class ChatPipeline:
             )
         return await _non_stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared.ctx, cfg, prepared.messages, self.services)
 
-    async def _record_retrieval_decision(self, prepared: ChatPipelineContext, query, decision, turn_index: int) -> None:
+    async def _record_retrieval_decision(self, prepared: ChatPipelineContext, query, decision, turn_index: int) -> str | None:
         try:
             cfg = prepared.cfg
             ctx = prepared.ctx
             state_store = prepared.state_store or SQLiteStateStore(cfg.storage.sqlite.memory_db)
             prepared.state_store = state_store
-            await state_store.record_retrieval_decision(
+            return await state_store.record_retrieval_decision(
                 request_id=ctx.request_id,
                 conversation_id=ctx.conversation_id,
                 user_id=ctx.user_id,
@@ -280,6 +305,49 @@ class ChatPipeline:
             )
         except Exception as exc:
             logger.warning("Failed to persist retrieval gate decision: %s", exc)
+            return None
+
+    async def _get_mounted_library_ids(self, prepared: ChatPipelineContext) -> list[str]:
+        try:
+            from app.storage.sqlite_cards import get_mounted_library_ids
+
+            return await get_mounted_library_ids(prepared.cfg.storage.sqlite.memory_db, prepared.ctx.conversation_id)
+        except Exception as exc:
+            logger.warning("Failed to load mounted libraries for retrieval trace: %s", exc)
+            return []
+
+    async def _record_retrieval_trace(
+        self,
+        prepared: ChatPipelineContext,
+        query,
+        *,
+        should_retrieve: bool,
+        trigger_reason: str | None,
+        gate_decision_id: str | None,
+        mounted_library_ids: list[str],
+        allowed_scopes: set[str],
+        candidates: list[Any],
+    ) -> None:
+        try:
+            cfg = prepared.cfg
+            ctx = prepared.ctx
+            state_store = prepared.state_store or SQLiteStateStore(cfg.storage.sqlite.memory_db)
+            prepared.state_store = state_store
+            await state_store.record_retrieval_trace(
+                request_id=ctx.request_id,
+                gate_decision_id=gate_decision_id,
+                conversation_id=ctx.conversation_id,
+                user_id=ctx.user_id,
+                character_id=ctx.character_id,
+                query_text=query.query_text,
+                should_retrieve=should_retrieve,
+                trigger_reason=trigger_reason,
+                mounted_library_ids=mounted_library_ids,
+                allowed_scopes=sorted(allowed_scopes),
+                candidates=[_candidate_to_trace_item(candidate) for candidate in candidates],
+            )
+        except Exception as exc:
+            logger.warning("Failed to persist retrieval trace: %s", exc)
 
     def _resolve_system_variables(self, cfg, ctx: RequestContext, messages: list[dict]) -> None:
         from app.core.variables import resolve_variables
@@ -294,6 +362,27 @@ class ChatPipeline:
             if message.get("role") == "system" and "{{" in message.get("content", ""):
                 messages[index] = dict(message)
                 messages[index]["content"] = resolve_variables(message["content"], **var_kwargs)
+
+
+def _candidate_to_trace_item(candidate: Any) -> dict[str, Any]:
+    content = getattr(candidate, "content", "") or ""
+    return {
+        "card_id": getattr(candidate, "card_id", None),
+        "library_id": getattr(candidate, "library_id", None),
+        "source_conversation_id": getattr(candidate, "source_conversation_id", None),
+        "source_character_id": getattr(candidate, "source_character_id", None),
+        "route": getattr(candidate, "source", None),
+        "vector_score": getattr(candidate, "vector_score", None),
+        "importance_score": getattr(candidate, "importance_score", getattr(candidate, "importance", None)),
+        "recency_score": getattr(candidate, "recency_score", None),
+        "scope_score": getattr(candidate, "scope_score", None),
+        "confidence_score": getattr(candidate, "confidence_score", getattr(candidate, "confidence", None)),
+        "final_score": getattr(candidate, "final_score", None),
+        "selected": True,
+        "filtered_reason": None,
+        "injection_reason": "selected_for_injection",
+        "content_preview": content[:240],
+    }
 
 
 async def _persist_injection(ctx: RequestContext, injected_messages: list[dict], candidates: list[Any]) -> None:

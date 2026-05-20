@@ -145,6 +145,44 @@ async def test_import_conversation_state_bundle_accepts_exported_rows_shape():
 
 
 @pytest.mark.asyncio
+async def test_state_preview_returns_injection_summary():
+    test_dir = make_test_dir()
+    try:
+        cfg = AppConfig()
+        cfg.storage.root_dir = str(test_dir)
+        cfg.storage.sqlite.app_db = str(test_dir / "app.sqlite")
+        cfg.storage.sqlite.memory_db = str(test_dir / "memory.sqlite")
+        set_config(cfg)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            base_resp = await client.get("/admin/conversations/preview_summary/state/tables")
+            assert base_resp.status_code == 200
+            template = base_resp.json()["template"]
+            table = template["tables"][0]
+            first_col = next(column["column_key"] for column in table["columns"] if column["include_in_prompt"])
+
+            row_resp = await client.post(
+                f"/admin/conversations/preview_summary/state/tables/{table['table_key']}/rows",
+                json={"values": {first_col: "summary value"}, "priority": 80, "confidence": 0.9},
+            )
+            assert row_resp.status_code == 200
+
+            preview_resp = await client.get("/admin/conversations/preview_summary/state/preview")
+            assert preview_resp.status_code == 200
+            data = preview_resp.json()
+            assert data["summary"]["template_id"] == template["template_id"]
+            assert any(
+                item["table_key"] == table["table_key"]
+                and item["included"]
+                and item["selected_row_count"] == 1
+                for item in data["summary"]["tables"]
+            )
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_conversation_config_mount_preset_updates_write_library():
     test_dir = make_test_dir()
     try:

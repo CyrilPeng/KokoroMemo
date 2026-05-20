@@ -2117,7 +2117,7 @@ async def preview_state_board(conversation_id: str, request: Request):
     _require_admin(request)
     from app.core.state import get_config
     from app.memory.state_schema import StateRenderOptions
-    from app.memory.state_table_renderer import render_state_tables
+    from app.memory.state_table_renderer import render_state_tables, summarize_state_tables
     from app.storage.sqlite_state import SQLiteStateStore
 
     cfg = get_config()
@@ -2127,11 +2127,13 @@ async def preview_state_board(conversation_id: str, request: Request):
     hot = cfg.memory.hot_context
     options = StateRenderOptions(max_chars=hot.max_chars)
     text = render_state_tables(table_template, table_rows, options, lang=cfg.language)
+    summary = summarize_state_tables(table_template, table_rows, options, lang=cfg.language)
     return {
         "preview": text,
         "char_count": len(text),
         "max_chars": hot.max_chars,
         "item_count": len(table_rows),
+        "summary": summary,
     }
 
 

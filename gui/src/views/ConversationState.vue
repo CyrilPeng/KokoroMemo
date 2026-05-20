@@ -69,7 +69,7 @@ const memoryLibraries = ref<any[]>([])
 const mountedLibraryIds = ref<string[]>([])
 const writeLibraryId = ref<string | null>(null)
 const activeTableKey = ref(localStorage.getItem(STATE_ACTIVE_TABLE_STORAGE_KEY) || '')
-const preview = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0 })
+const preview = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0, summary: null as any })
 const retrievalTraces = ref<any[]>([])
 const retrievalTraceDetail = ref<any | null>(null)
 const showEditModal = ref(false)
@@ -423,7 +423,7 @@ async function deleteSelectedConversation() {
     template.value = null
     rows.value = []
     config.value = null
-    preview.value = { preview: '', char_count: 0, max_chars: 0, item_count: 0 }
+    preview.value = { preview: '', char_count: 0, max_chars: 0, item_count: 0, summary: null }
     persistInputs()
     if (conversationId.value) await fetchBoard()
     else persistActiveTable()

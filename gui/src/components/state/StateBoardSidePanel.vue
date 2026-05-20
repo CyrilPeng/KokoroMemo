@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import type { StateRow, StateTable } from './types'
 
 const props = defineProps<{
-  preview: { preview: string, char_count: number, max_chars: number, item_count: number }
+  preview: { preview: string, char_count: number, max_chars: number, item_count: number, summary?: any }
   previewLoading: boolean
   retrievalTraces: any[]
   retrievalTraceDetail: any | null
@@ -32,6 +32,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const estimatedTokens = computed(() => Math.ceil((props.preview.char_count || 0) / 2.5))
+const stateSummaryTables = computed(() => props.preview.summary?.tables || [])
 
 function updateFillForm(key: 'user_message' | 'assistant_message', value: string) {
   emit('update:fillForm', { ...props.fillForm, [key]: value })
@@ -72,6 +73,26 @@ function score(value: any) {
         <div v-if="tables.length" class="hint-text">
           <div v-for="table in tables" :key="table.table_key">
             {{ table.name }}: {{ (rowsByTable[table.table_key] || []).length }} 行
+          </div>
+        </div>
+        <div v-if="stateSummaryTables.length" class="state-source-list">
+          <div class="candidate-title">状态板注入来源</div>
+          <div v-for="table in stateSummaryTables" :key="table.table_key" class="state-source-item">
+            <NSpace align="center" size="small" wrap>
+              <NTag size="tiny" :type="table.included ? 'success' : 'default'">
+                {{ table.included ? '已注入' : '未注入' }}
+              </NTag>
+              <span class="state-source-name">{{ table.table_name }}</span>
+              <span class="candidate-meta">
+                {{ table.selected_row_count }} / {{ table.active_row_count }} 行
+              </span>
+              <NTag v-if="table.truncated_cell_count" size="tiny" type="warning">
+                {{ table.truncated_cell_count }} 个字段截断
+              </NTag>
+            </NSpace>
+          </div>
+          <div v-if="preview.summary?.truncated_by_budget" class="candidate-meta">
+            字符预算已满，后续低优先级表未进入注入文本。
           </div>
         </div>
       </NSpace>
@@ -237,6 +258,22 @@ function score(value: any) {
 .candidate-item {
   padding: 8px 0;
   border-bottom: 1px solid #333;
+}
+
+.state-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.state-source-item {
+  padding: 6px 0;
+  border-top: 1px solid #333;
+}
+
+.state-source-name {
+  color: #e5e7eb;
+  font-size: 12px;
 }
 
 .history-item {

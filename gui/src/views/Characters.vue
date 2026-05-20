@@ -35,6 +35,7 @@ const loading = ref(false)
 const saving = ref(false)
 const characters = ref<Character[]>([])
 const profiles = ref<any[]>([])
+const retrievalProfiles = ref<any[]>([])
 const tableTemplates = ref<any[]>([])
 const libraries = ref<any[]>([])
 const mountPresets = ref<any[]>([])
@@ -54,6 +55,7 @@ const profileFilter = ref<string | null>(null)
 const mergeTargetId = ref<string | null>(null)
 
 const profileOptions = computed(() => profiles.value.map((item) => ({ label: item.name, value: item.profile_id })))
+const retrievalProfileOptions = computed(() => retrievalProfiles.value.map((item) => ({ label: item.name, value: item.profile_id })))
 const filterProfileOptions = computed(() => [{ label: '全部方案', value: null }, ...profileOptions.value])
 const tableTemplateOptions = computed(() => [{ label: '不使用表格模板', value: null }, ...tableTemplates.value.map((item) => ({ label: item.name, value: item.template_id }))])
 const libraryOptions = computed(() => libraries.value.map((item) => ({ label: `${item.name}${item.card_count ? `（${item.card_count}）` : ''}`, value: item.library_id })))
@@ -92,6 +94,7 @@ const form = ref({
   memory_write_policy: 'candidate',
   state_update_policy: 'auto',
   injection_policy: 'mixed',
+  retrieval_profile_id: 'balanced',
   library_ids: ['lib_default'] as string[],
   write_library_id: 'lib_default',
   auto_apply: true,
@@ -117,6 +120,9 @@ function tableTemplateName(templateId?: string | null) {
 function policyLabel(options: any[], value?: string | null) {
   return options.find((item) => item.value === value)?.label || value || '未配置'
 }
+function retrievalProfileName(profileId?: string | null) {
+  return retrievalProfiles.value.find((item) => item.profile_id === profileId)?.name || profileId || '平衡召回'
+}
 function health(row: Character) {
   if (!row.profile_id) return { type: 'warning', label: '未配置' }
   if (row.profile_id === 'rimtalk_colony' && row.memory_write_policy !== 'disabled') return { type: 'error', label: '可能污染记忆' }
@@ -136,6 +142,7 @@ const columns = computed(() => [
   { title: '默认方案', key: 'profile_id', width: 220, ellipsis: { tooltip: true }, render: (row: Character) => profileName(row.profile_id) },
   { title: '表格模板', key: 'table_template_id', width: 260, ellipsis: { tooltip: true }, render: (row: Character) => tableTemplateName(row.table_template_id) },
   { title: '长期记忆', key: 'memory_write_policy', width: 220, render: (row: Character) => policyLabel(memoryPolicyOptions, row.memory_write_policy) },
+  { title: '召回策略', key: 'retrieval_profile_id', width: 140, ellipsis: { tooltip: true }, render: (row: Character) => retrievalProfileName(row.retrieval_profile_id) },
   { title: '健康', key: 'health', width: 140, render: (row: Character) => {
     const hlt = health(row)
     return h(NTag, { type: hlt.type as any, size: 'small' }, { default: () => hlt.label })
@@ -162,12 +169,14 @@ async function fetchAll() {
 
   const results = await Promise.allSettled([
     apiFetch('/admin/conversation-profiles', { timeoutMs: 5000 }),
+    apiFetch('/admin/retrieval-profiles', { timeoutMs: 5000 }),
     apiFetch('/admin/state/table-templates', { timeoutMs: 5000 }),
     apiFetch('/admin/memory-libraries', { timeoutMs: 5000 }),
     apiFetch('/admin/memory-mount-presets', { timeoutMs: 5000 }),
   ])
-  const [profilesResp, tableResp, libResp, presetResp] = results.map((item) => item.status === 'fulfilled' ? item.value : null)
+  const [profilesResp, retrievalProfilesResp, tableResp, libResp, presetResp] = results.map((item) => item.status === 'fulfilled' ? item.value : null)
   if (profilesResp?.ok) profiles.value = (await profilesResp.json()).items || []
+  if (retrievalProfilesResp?.ok) retrievalProfiles.value = (await retrievalProfilesResp.json()).items || []
   if (tableResp?.ok) tableTemplates.value = (await tableResp.json()).items || []
   if (libResp?.ok) libraries.value = (await libResp.json()).items || []
   if (presetResp?.ok) mountPresets.value = (await presetResp.json()).items || []
@@ -181,6 +190,7 @@ async function openCharacter(row: Character) {
     profile_id: row.profile_id || 'airp_roleplay', table_template_id: row.table_template_id ?? null,
     mount_preset_id: row.mount_preset_id ?? null, memory_write_policy: row.memory_write_policy || 'candidate',
     state_update_policy: row.state_update_policy || 'auto', injection_policy: row.injection_policy || 'mixed',
+    retrieval_profile_id: row.retrieval_profile_id || 'balanced',
     library_ids: row.library_ids?.length ? [...row.library_ids] : ['lib_default'], write_library_id: row.write_library_id || 'lib_default',
     auto_apply: row.auto_apply ?? true,
   }
@@ -316,6 +326,7 @@ function applyProfile(profileId: string) {
     memory_write_policy: profile.memory_write_policy,
     state_update_policy: profile.state_update_policy,
     injection_policy: profile.injection_policy,
+    retrieval_profile_id: profile.retrieval_profile_id || form.value.retrieval_profile_id || 'balanced',
   }
 }
 
@@ -386,7 +397,7 @@ onMounted(fetchAll)
       <NSpin :show="loading">
         <NCard>
           <div v-if="filteredCharacters.length" class="characters-table-wrap">
-            <NDataTable class="characters-table" :columns="columns" :data="filteredCharacters" :pagination="{ pageSize: 12 }" :scroll-x="1610" :single-line="false" />
+            <NDataTable class="characters-table" :columns="columns" :data="filteredCharacters" :pagination="{ pageSize: 12 }" :scroll-x="1750" :single-line="false" />
           </div>
           <NEmpty v-else description="暂无角色或没有匹配结果" />
         </NCard>
@@ -422,6 +433,7 @@ onMounted(fetchAll)
                 <NGridItem><NFormItem label="长期记忆写入"><NSelect v-model:value="form.memory_write_policy" :options="memoryPolicyOptions" /></NFormItem></NGridItem>
                 <NGridItem><NFormItem label="状态板更新"><NSelect v-model:value="form.state_update_policy" :options="statePolicyOptions" /></NFormItem></NGridItem>
                 <NGridItem><NFormItem label="注入策略"><NSelect v-model:value="form.injection_policy" :options="injectionPolicyOptions" /></NFormItem></NGridItem>
+                <NGridItem><NFormItem label="召回策略"><NSelect v-model:value="form.retrieval_profile_id" :options="retrievalProfileOptions" /></NFormItem></NGridItem>
                 <NGridItem><NFormItem label="挂载组合预设"><NSelect v-model:value="form.mount_preset_id" filterable :options="mountPresetOptions" /></NFormItem></NGridItem>
               </NGrid>
               <div class="hint-text">该配置影响该角色之后的新会话；如需修改已有会话，请保存后使用「应用到已有会话」。</div>

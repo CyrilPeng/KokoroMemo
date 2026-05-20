@@ -279,6 +279,7 @@ async def test_apply_character_defaults_expands_mount_preset():
             cfg.storage.sqlite.app_db,
             character_id,
             mount_preset_id=preset_id,
+            retrieval_profile_id="high_recall",
             library_ids=["lib_default"],
             write_library_id="lib_default",
         )
@@ -292,6 +293,12 @@ async def test_apply_character_defaults_expands_mount_preset():
         mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, "conv_char_preset")
         assert [mount["library_id"] for mount in mounts] == [lib_id, "lib_default"]
         assert next(mount["library_id"] for mount in mounts if mount["is_write_target"]) == lib_id
+
+        from app.storage.sqlite_state import SQLiteStateStore
+
+        config = await SQLiteStateStore(cfg.storage.sqlite.memory_db).get_conversation_config("conv_char_preset")
+        assert config is not None
+        assert config.retrieval_profile_id == "high_recall"
     finally:
         cleanup_test_dir(test_dir)
 
@@ -324,6 +331,7 @@ async def test_character_defaults_save_expands_mount_preset_for_display():
                 "/admin/characters/char_display/defaults",
                 json={
                     "mount_preset_id": preset_id,
+                    "retrieval_profile_id": "memory_first",
                     "library_ids": ["lib_default"],
                     "write_library_id": "lib_default",
                 },
@@ -333,6 +341,7 @@ async def test_character_defaults_save_expands_mount_preset_for_display():
         assert get_resp.status_code == 200
         data = get_resp.json()
         assert data["mount_preset_id"] == preset_id
+        assert data["retrieval_profile_id"] == "memory_first"
         assert data["library_ids"] == ["lib_default", lib_id]
         assert data["write_library_id"] == lib_id
     finally:

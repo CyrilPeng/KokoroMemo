@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS character_defaults (
   memory_write_policy TEXT,
   state_update_policy TEXT,
   injection_policy TEXT,
+  retrieval_profile_id TEXT,
   library_ids_json TEXT NOT NULL DEFAULT '["lib_default"]',
   write_library_id TEXT,
   auto_apply INTEGER NOT NULL DEFAULT 1,
@@ -78,6 +79,7 @@ _CHARACTER_DEFAULT_COLUMNS = {
     "memory_write_policy": "TEXT",
     "state_update_policy": "TEXT",
     "injection_policy": "TEXT",
+    "retrieval_profile_id": "TEXT",
 }
 
 
@@ -262,6 +264,7 @@ async def get_character_defaults(db_path: str, character_id: str) -> dict | None
             "memory_write_policy": row["memory_write_policy"],
             "state_update_policy": row["state_update_policy"],
             "injection_policy": row["injection_policy"],
+            "retrieval_profile_id": row["retrieval_profile_id"],
             "library_ids": json.loads(row["library_ids_json"]),
             "write_library_id": row["write_library_id"],
             "auto_apply": bool(row["auto_apply"]),
@@ -278,6 +281,7 @@ async def set_character_defaults(
     memory_write_policy: str | None = None,
     state_update_policy: str | None = None,
     injection_policy: str | None = None,
+    retrieval_profile_id: str | None = None,
     library_ids: list[str] | None = None,
     write_library_id: str | None = None,
     auto_apply: bool = True,
@@ -290,15 +294,16 @@ async def set_character_defaults(
     memory_write_policy = memory_write_policy or profile.memory_write_policy
     state_update_policy = state_update_policy or profile.state_update_policy
     injection_policy = injection_policy or profile.injection_policy
+    retrieval_profile_id = retrieval_profile_id or profile.retrieval_profile_id
     library_ids_json = json.dumps(library_ids or ["lib_default"])
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """
             INSERT INTO character_defaults
               (character_id, profile_id, template_id, table_template_id, mount_preset_id,
-               memory_write_policy, state_update_policy, injection_policy,
+               memory_write_policy, state_update_policy, injection_policy, retrieval_profile_id,
                library_ids_json, write_library_id, auto_apply)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(character_id) DO UPDATE SET
               profile_id = excluded.profile_id,
               template_id = excluded.template_id,
@@ -307,6 +312,7 @@ async def set_character_defaults(
               memory_write_policy = excluded.memory_write_policy,
               state_update_policy = excluded.state_update_policy,
               injection_policy = excluded.injection_policy,
+              retrieval_profile_id = excluded.retrieval_profile_id,
               library_ids_json = excluded.library_ids_json,
               write_library_id = excluded.write_library_id,
               auto_apply = excluded.auto_apply,
@@ -321,6 +327,7 @@ async def set_character_defaults(
                 memory_write_policy,
                 state_update_policy,
                 injection_policy,
+                retrieval_profile_id,
                 library_ids_json,
                 write_library_id,
                 int(auto_apply),
@@ -339,7 +346,7 @@ async def list_characters(db_path: str) -> list[dict]:
             SELECT
               c.*,
               cd.profile_id, cd.template_id, cd.table_template_id, cd.mount_preset_id,
-              cd.memory_write_policy, cd.state_update_policy, cd.injection_policy,
+              cd.memory_write_policy, cd.state_update_policy, cd.injection_policy, cd.retrieval_profile_id,
               cd.library_ids_json, cd.write_library_id, cd.auto_apply,
               COUNT(conv.conversation_id) AS conversation_count,
               MIN(conv.first_seen_at) AS first_seen_at,
@@ -368,6 +375,7 @@ async def list_characters(db_path: str) -> list[dict]:
                 "memory_write_policy": row["memory_write_policy"],
                 "state_update_policy": row["state_update_policy"],
                 "injection_policy": row["injection_policy"],
+                "retrieval_profile_id": row["retrieval_profile_id"],
                 "library_ids": json.loads(row["library_ids_json"]) if row["library_ids_json"] else None,
                 "write_library_id": row["write_library_id"],
                 "auto_apply": bool(row["auto_apply"]) if row["auto_apply"] is not None else None,
@@ -410,6 +418,7 @@ async def discover_characters(db_path: str) -> list[dict]:
               cd.memory_write_policy AS memory_write_policy,
               cd.state_update_policy AS state_update_policy,
               cd.injection_policy AS injection_policy,
+              cd.retrieval_profile_id AS retrieval_profile_id,
               cd.library_ids_json AS library_ids_json,
               cd.write_library_id AS write_library_id,
               cd.auto_apply AS auto_apply
@@ -439,6 +448,7 @@ async def discover_characters(db_path: str) -> list[dict]:
                 "memory_write_policy": row["memory_write_policy"],
                 "state_update_policy": row["state_update_policy"],
                 "injection_policy": row["injection_policy"],
+                "retrieval_profile_id": row["retrieval_profile_id"],
                 "library_ids": json.loads(row["library_ids_json"]) if row["library_ids_json"] else None,
                 "write_library_id": row["write_library_id"],
                 "auto_apply": bool(row["auto_apply"]) if row["auto_apply"] is not None else None,

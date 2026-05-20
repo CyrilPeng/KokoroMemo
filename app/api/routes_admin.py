@@ -932,7 +932,14 @@ async def get_character_defaults_api(character_id: str, request: Request):
     cfg = get_config()
     defaults = await get_character_defaults(cfg.storage.sqlite.app_db, character_id)
     if not defaults:
-        return {"character_id": character_id, "template_id": None, "library_ids": None, "write_library_id": None, "auto_apply": True}
+        return {
+            "character_id": character_id,
+            "template_id": None,
+            "library_ids": None,
+            "write_library_id": None,
+            "retrieval_profile_id": "balanced",
+            "auto_apply": True,
+        }
     return defaults
 
 
@@ -955,6 +962,7 @@ async def set_character_defaults_api(character_id: str, request: Request, data: 
         memory_write_policy=data.get("memory_write_policy"),
         state_update_policy=data.get("state_update_policy"),
         injection_policy=data.get("injection_policy"),
+        retrieval_profile_id=data.get("retrieval_profile_id"),
         library_ids=library_ids or data.get("library_ids"),
         write_library_id=write_library_id or data.get("write_library_id"),
         auto_apply=data.get("auto_apply", True),
@@ -1013,6 +1021,7 @@ async def apply_character_defaults_api(character_id: str, request: Request, data
                     "memory_write_policy": defaults.get("memory_write_policy"),
                     "state_update_policy": defaults.get("state_update_policy"),
                     "injection_policy": defaults.get("injection_policy"),
+                    "retrieval_profile_id": defaults.get("retrieval_profile_id") or "balanced",
                     "created_from_default": True,
                 })
         updated += 1
@@ -1073,6 +1082,7 @@ async def import_character_config_api(request: Request, data: dict = Body(...)):
         memory_write_policy=defaults.get("memory_write_policy"),
         state_update_policy=defaults.get("state_update_policy"),
         injection_policy=defaults.get("injection_policy"),
+        retrieval_profile_id=defaults.get("retrieval_profile_id"),
         library_ids=defaults.get("library_ids"),
         write_library_id=defaults.get("write_library_id"),
         auto_apply=defaults.get("auto_apply", True),

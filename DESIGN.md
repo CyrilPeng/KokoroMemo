@@ -543,7 +543,8 @@ GUI `/state` 是表格工作台：
 - 输入 `conversation_id` 加载当前会话状态。
 - 按表查看状态行数量和内容。
 - 支持新增、编辑、删除行。
-- 展示真实注入预览和字符预算。
+- 展示真实注入预览、字符预算和状态板注入摘要。
+- 展示长期记忆注入来源，包括最近 retrieval trace、挂载库、召回策略参数、候选记忆来源和最终注入结果。
 - 支持手动输入一轮用户/助手消息运行表格填充调试。
 
 主要 API：
@@ -560,7 +561,9 @@ GUI `/state` 是表格工作台：
 | `GET /admin/conversations/{conversation_id}/state/tables` | 获取会话 v2 表格状态 |
 | `POST /admin/conversations/{conversation_id}/state/tables/{table_key}/rows` | 新增或更新一行 |
 | `DELETE /admin/state/table-rows/{row_id}` | 删除/完成一行 |
-| `GET /admin/conversations/{conversation_id}/state/preview` | 获取真实注入预览 |
+| `GET /admin/conversations/{conversation_id}/state/preview` | 获取真实注入预览和状态板注入摘要 |
+| `GET /admin/conversations/{conversation_id}/retrieval-traces` | 获取会话最近长期记忆检索 trace |
+| `GET /admin/retrieval-traces/{trace_id}` | 获取某次检索 trace 及候选记忆详情 |
 | `POST /admin/conversations/{conversation_id}/state/fill` | 手动运行 State Filler |
 
 `GET /admin/conversations/{conversation_id}/config` 是新旧会话配置的合并摘要接口。返回值除 `ConversationConfig` 的 `profile_id`、`template_id`、`table_template_id`、`mount_preset_id`、`memory_write_policy`、`state_update_policy`、`injection_policy`、`retrieval_profile_id` 外，还必须包含：
@@ -578,9 +581,19 @@ GUI `/state` 是表格工作台：
 
 `PUT/POST` 保存时同时接受 `library_ids` 与 `mounted_library_ids`，并根据 `write_library_id` 更新会话挂载，保证 v0.7 之后的新策略字段与旧挂载字段可以在同一个入口内保存。
 
-## 9. 检索门控（Retrieval Gate）
+## 9. 检索门控与召回策略
 
-Retrieval Gate 是 v0.2.0 引入的优化机制，避免每轮都执行昂贵的向量检索。
+Retrieval Gate 是 v0.2.0 引入的优化机制，避免每轮都执行昂贵的向量检索。当前会话、新会话默认配置和角色默认策略都可以选择 `retrieval_profile_id`，由内置召回策略控制候选规模、最终注入数量、字符预算、门控模式和周期。
+
+内置召回策略：
+
+| retrieval_profile_id | 用途 |
+|---|---|
+| `conservative` | 减少注入和周期检索，优先降低污染风险 |
+| `balanced` | 默认策略，保持通用召回规模和门控行为 |
+| `high_recall` | 扩大候选和注入数量，适合长剧情回顾 |
+| `state_first` | 状态板优先，长期记忆只补关键事实 |
+| `memory_first` | 长期记忆优先，适合偏好、设定和历史事实密集会话 |
 
 ### 决策逻辑
 
@@ -603,13 +616,18 @@ return False
 
 ### 触发后执行
 
-1. query_builder 从最近 N 轮对话构建检索查询
-2. Embedding 模型向量化查询文本
-3. LanceDB cosine 相似度搜索 top-K
-4. 图扩展（遍历关系边获取关联卡片）
-5. 加权评分（vector 55% + importance 20% + recency 10% + scope 10% + confidence 5%）
-6. 可选 Rerank 重排序
-7. 取 final_top_k 条注入
+1. query_builder 从最近 N 轮对话构建检索查询。
+2. 根据当前 `retrieval_profile_id` 确定 `vector_top_k`、`final_top_k`、`max_injected_chars` 和 `vector_search_every_n_turns`。
+3. Embedding 模型向量化查询文本。
+4. LanceDB cosine 相似度搜索候选卡片。
+5. 合并 pinned、recent、vector 和 graph 路径候选。
+6. 对所有路径结果执行记忆库、scope、角色 ID 和会话 ID 可见性过滤。
+7. 加权评分（vector 55% + importance 20% + recency 10% + scope 10% + confidence 5%）。
+8. 可选 Rerank 重排序。
+9. 按 `final_top_k` 和 `max_injected_chars` 截取最终注入记忆。
+10. 写入 `retrieval_traces` 和 `retrieval_trace_candidates`，记录触发原因、挂载库、召回策略参数、来源库、分数和注入原因。
+
+`retrieval_traces` 是调试与 GUI 注入来源面板的主数据源。trace 写入失败只记录 warning，不影响聊天主链路。
 
 ---
 

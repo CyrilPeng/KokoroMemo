@@ -1,0 +1,39 @@
+{
+  "id": "scene_location_continuity",
+  "description": "The current scene location should be recalled for continuity.",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_ren",
+    "conversation_id": "conv_scene_station",
+    "mounted_library_ids": ["lib_default"],
+    "write_library_id": "lib_default"
+  },
+  "libraries": [
+    { "library_id": "lib_default", "name": "Default memory" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_current_station",
+      "library_id": "lib_default",
+      "conversation_id": "conv_scene_station",
+      "scope": "conversation",
+      "card_type": "world_state",
+      "content": "The current scene moved from the library to the central train station.",
+      "importance": 0.88,
+      "confidence": 0.92
+    },
+    {
+      "card_id": "card_old_library",
+      "library_id": "lib_default",
+      "conversation_id": "conv_scene_library",
+      "scope": "conversation",
+      "card_type": "world_state",
+      "content": "An older conversation took place in the library reading room.",
+      "importance": 0.82,
+      "confidence": 0.9
+    }
+  ],
+  "query": "Where are we right now in the scene?",
+  "expect_injected": ["card_current_station"],
+  "expect_not_injected": ["card_old_library"]
+}

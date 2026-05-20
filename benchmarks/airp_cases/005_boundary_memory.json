@@ -1,0 +1,38 @@
+{
+  "id": "boundary_memory",
+  "description": "A roleplay boundary should be recalled as a high-priority user rule.",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_mira",
+    "conversation_id": "conv_boundary",
+    "mounted_library_ids": ["lib_default"],
+    "write_library_id": "lib_default"
+  },
+  "libraries": [
+    { "library_id": "lib_default", "name": "Default memory" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_boundary_no_horror",
+      "library_id": "lib_default",
+      "scope": "global",
+      "card_type": "preference",
+      "content": "The user asked to avoid graphic horror themes during roleplay.",
+      "importance": 0.95,
+      "confidence": 0.95
+    },
+    {
+      "card_id": "card_other_character_secret",
+      "library_id": "lib_default",
+      "character_id": "char_other",
+      "scope": "character",
+      "card_type": "event",
+      "content": "Another character knows a horror-themed secret ritual.",
+      "importance": 0.85,
+      "confidence": 0.9
+    }
+  ],
+  "query": "Before we continue the scene, remember my content limits.",
+  "expect_injected": ["card_boundary_no_horror"],
+  "expect_not_injected": ["card_other_character_secret"]
+}

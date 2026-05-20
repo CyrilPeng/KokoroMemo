@@ -1,0 +1,39 @@
+{
+  "id": "relationship_stage",
+  "description": "Character relationship state should be recalled for the active character only.",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_mira",
+    "conversation_id": "conv_relationship",
+    "mounted_library_ids": ["lib_default"],
+    "write_library_id": "lib_default"
+  },
+  "libraries": [
+    { "library_id": "lib_default", "name": "Default memory" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_mira_trust",
+      "library_id": "lib_default",
+      "character_id": "char_mira",
+      "scope": "character",
+      "card_type": "relationship",
+      "content": "Mira currently trusts the user after they kept her secret.",
+      "importance": 0.9,
+      "confidence": 0.9
+    },
+    {
+      "card_id": "card_noah_conflict",
+      "library_id": "lib_default",
+      "character_id": "char_noah",
+      "scope": "character",
+      "card_type": "relationship",
+      "content": "Noah is angry because the user broke a promise.",
+      "importance": 0.9,
+      "confidence": 0.9
+    }
+  ],
+  "query": "How does Mira feel about me right now?",
+  "expect_injected": ["card_mira_trust"],
+  "expect_not_injected": ["card_noah_conflict"]
+}

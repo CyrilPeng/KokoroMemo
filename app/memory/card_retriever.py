@@ -117,7 +117,7 @@ async def retrieve_cards(
             cid = card["card_id"]
             if cid in seen_ids:
                 continue
-            if card.get("scope") not in allowed_scopes:
+            if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
                 continue
             seen_ids.add(cid)
             all_candidates.append(MemoryCandidate(
@@ -175,6 +175,8 @@ async def retrieve_cards(
                 continue
             if mounted_library_set and card.get("library_id") not in mounted_library_set:
                 continue
+            if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
+                continue
             seen_ids.add(cid)
 
             vs = 1.0 - row.get("_distance", 0.5)
@@ -219,7 +221,7 @@ async def retrieve_cards(
             cid = card["card_id"]
             if cid in seen_ids:
                 continue
-            if card.get("scope") not in allowed_scopes:
+            if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
                 continue
             seen_ids.add(cid)
             all_candidates.append(MemoryCandidate(
@@ -280,7 +282,7 @@ async def retrieve_cards(
             for card in graph_cards.values():
                 if card.get("status") != "approved":
                     continue
-                if card.get("scope") not in allowed_scopes:
+                if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
                     continue
                 if mounted_library_set and card.get("library_id") not in mounted_library_set:
                     continue
@@ -310,3 +312,21 @@ async def retrieve_cards(
     # 排序：置顶卡片优先（保证 score=1.0），然后按 final_score 排序
     all_candidates.sort(key=lambda c: c.final_score, reverse=True)
     return all_candidates[:final_top_k]
+
+
+def _is_card_visible_for_query(
+    card: dict,
+    allowed_scopes: set[str],
+    character_id: str | None,
+    conversation_id: str | None,
+) -> bool:
+    scope = card.get("scope")
+    if scope not in allowed_scopes:
+        return False
+    if scope == "global":
+        return True
+    if scope == "character":
+        return bool(character_id) and card.get("character_id") == character_id
+    if scope == "conversation":
+        return bool(conversation_id) and card.get("conversation_id") == conversation_id
+    return False

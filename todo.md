@@ -178,7 +178,7 @@
 ### 子任务
 
 - [x] 设计 benchmark case JSON 格式。
-- [ ] 编写 10 个最小 AIRP case，覆盖称呼、偏好、多角色隔离和状态板。
+- [x] 编写 10 个最小 AIRP case，覆盖称呼、偏好、边界、多角色隔离、记忆库隔离和状态/场景连续性。
 - [x] 编写 benchmark runner，支持使用 fake LLM / mock embedding 保证可重复。
 - [x] 输出 markdown 报告和 JSON 报告。
 - [x] 在 CI 中加入轻量 benchmark smoke test。

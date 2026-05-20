@@ -1,0 +1,47 @@
+{
+  "id": "token_budget_priority",
+  "description": "When the final budget is small, higher-importance memories should win.",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_yuki",
+    "conversation_id": "conv_budget",
+    "mounted_library_ids": ["lib_default"],
+    "write_library_id": "lib_default"
+  },
+  "libraries": [
+    { "library_id": "lib_default", "name": "Default memory" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_critical_name",
+      "library_id": "lib_default",
+      "scope": "global",
+      "card_type": "preference",
+      "content": "The user wants to be called Rin during this roleplay.",
+      "importance": 0.98,
+      "confidence": 0.96
+    },
+    {
+      "card_id": "card_critical_boundary",
+      "library_id": "lib_default",
+      "scope": "global",
+      "card_type": "preference",
+      "content": "The user does not want fourth-wall jokes in serious scenes.",
+      "importance": 0.96,
+      "confidence": 0.95
+    },
+    {
+      "card_id": "card_low_priority_snack",
+      "library_id": "lib_default",
+      "scope": "global",
+      "card_type": "preference",
+      "content": "The user once mentioned liking strawberry candy.",
+      "importance": 0.2,
+      "confidence": 0.7
+    }
+  ],
+  "query": "Before this serious scene, what important preferences should you remember?",
+  "final_top_k": 2,
+  "expect_injected": ["card_critical_name", "card_critical_boundary"],
+  "expect_not_injected": ["card_low_priority_snack"]
+}

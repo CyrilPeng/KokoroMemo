@@ -1,0 +1,38 @@
+{
+  "id": "quest_objective",
+  "description": "The active quest objective should be recalled from the mounted world library.",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_party",
+    "conversation_id": "conv_quest",
+    "mounted_library_ids": ["lib_fantasy"],
+    "write_library_id": "lib_fantasy"
+  },
+  "libraries": [
+    { "library_id": "lib_fantasy", "name": "Fantasy campaign" },
+    { "library_id": "lib_scifi", "name": "Sci-fi campaign" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_moon_shard",
+      "library_id": "lib_fantasy",
+      "scope": "global",
+      "card_type": "world_state",
+      "content": "The party's active objective is to recover the moon-seal shard from the ruined observatory.",
+      "importance": 0.92,
+      "confidence": 0.93
+    },
+    {
+      "card_id": "card_orbital_relay",
+      "library_id": "lib_scifi",
+      "scope": "global",
+      "card_type": "world_state",
+      "content": "The crew's active objective is to repair the orbital relay.",
+      "importance": 0.9,
+      "confidence": 0.9
+    }
+  ],
+  "query": "What is our current main objective?",
+  "expect_injected": ["card_moon_shard"],
+  "expect_not_injected": ["card_orbital_relay"]
+}

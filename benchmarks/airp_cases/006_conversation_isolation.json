@@ -1,0 +1,39 @@
+{
+  "id": "conversation_isolation",
+  "description": "Conversation-scoped facts from another conversation should not leak.",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_lina",
+    "conversation_id": "conv_current_plan",
+    "mounted_library_ids": ["lib_default"],
+    "write_library_id": "lib_default"
+  },
+  "libraries": [
+    { "library_id": "lib_default", "name": "Default memory" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_current_meetup",
+      "library_id": "lib_default",
+      "conversation_id": "conv_current_plan",
+      "scope": "conversation",
+      "card_type": "event",
+      "content": "In this conversation, the user and Lina agreed to meet at the clocktower.",
+      "importance": 0.9,
+      "confidence": 0.9
+    },
+    {
+      "card_id": "card_other_meetup",
+      "library_id": "lib_default",
+      "conversation_id": "conv_old_plan",
+      "scope": "conversation",
+      "card_type": "event",
+      "content": "In another conversation, the meetup location was the harbor gate.",
+      "importance": 0.9,
+      "confidence": 0.9
+    }
+  ],
+  "query": "Where did we agree to meet in this thread?",
+  "expect_injected": ["card_current_meetup"],
+  "expect_not_injected": ["card_other_meetup"]
+}

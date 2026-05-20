@@ -1,0 +1,38 @@
+{
+  "id": "preference_memory",
+  "description": "User preference should be recalled while unrelated world memory stays isolated.",
+  "context": {
+    "user_id": "default",
+    "character_id": "char_yuki",
+    "conversation_id": "conv_preference",
+    "mounted_library_ids": ["lib_default"],
+    "write_library_id": "lib_default"
+  },
+  "libraries": [
+    { "library_id": "lib_default", "name": "Default memory" },
+    { "library_id": "lib_world", "name": "World notes" }
+  ],
+  "cards": [
+    {
+      "card_id": "card_prefer_tea",
+      "library_id": "lib_default",
+      "scope": "global",
+      "card_type": "preference",
+      "content": "The user prefers hot tea and does not want coffee recommendations.",
+      "importance": 0.9,
+      "confidence": 0.95
+    },
+    {
+      "card_id": "card_world_cafe",
+      "library_id": "lib_world",
+      "scope": "global",
+      "card_type": "world_state",
+      "content": "The cyber city cafe is famous for black coffee.",
+      "importance": 0.8,
+      "confidence": 0.9
+    }
+  ],
+  "query": "What drink should you prepare for me?",
+  "expect_injected": ["card_prefer_tea"],
+  "expect_not_injected": ["card_world_cafe"]
+}

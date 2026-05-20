@@ -95,14 +95,20 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
     if character_id:
         character_id = sanitize_id(character_id)
 
-    if explicit_conv_id and cfg:
-        existing_character_id = await _existing_character_for_conversation(cfg.storage.sqlite.app_db, sanitize_id(conversation_id))
-        if existing_character_id:
-            character_id = existing_character_id
     if not conversation_id:
         seed = f"{user_id}_{character_id or 'none'}"
         conversation_id = f"conv_{_hash_short(seed)}"
     conversation_id = sanitize_id(conversation_id)
+
+    # Once a conversation already exists in app.sqlite, its manually reassigned
+    # character binding should win over any newly inferred request character.
+    if cfg:
+        existing_character_id = await _existing_character_for_conversation(
+            cfg.storage.sqlite.app_db,
+            conversation_id,
+        )
+        if existing_character_id:
+            character_id = existing_character_id
 
     # 智能会话检测：未显式提供 ID 时，检查是否需要开启新会话
     if not explicit_conv_id and cfg:

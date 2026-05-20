@@ -99,6 +99,7 @@ async def create_conversation_profile_api(request: Request, data: dict = Body(..
 
 @router.put("/admin/conversation-profiles/{profile_id}")
 async def update_conversation_profile_api(profile_id: str, request: Request, data: dict = Body(...)):
+    from app.storage.sqlite_app import list_conversations
     """Update a custom conversation policy profile."""
     _require_admin(request)
     from app.memory.conversation_policy import BUILTIN_CONVERSATION_PROFILES
@@ -1183,6 +1184,7 @@ async def update_conversation_profile_api(conversation_id: str, request: Request
     from app.storage.sqlite_app import update_conversation_profile
 
     cfg = get_config()
+    from app.storage.sqlite_app import list_conversations
     old_item = next((item for item in (await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0, status="all"))[0] if item.get("conversation_id") == conversation_id), None)
     item = await update_conversation_profile(
         cfg.storage.sqlite.app_db,

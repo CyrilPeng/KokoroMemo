@@ -276,9 +276,11 @@ async def test_retrieval_trace_records_selected_candidates(monkeypatch):
             traces = traces_resp.json()["items"]
             assert len(traces) == 1
             assert traces[0]["final_injected_count"] == 1
+            assert traces[0]["retrieval_profile_id"] == "balanced"
 
             detail_resp = await client.get(f"/admin/retrieval-traces/{traces[0]['trace_id']}")
             assert detail_resp.status_code == 200
+            assert '"final_top_k": 6' in detail_resp.json()["retrieval_profile_json"]
             candidates = detail_resp.json()["candidates"]
             assert len(candidates) == 1
             assert candidates[0]["card_id"] == "card_trace_1"

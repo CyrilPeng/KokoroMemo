@@ -94,6 +94,8 @@ CREATE TABLE IF NOT EXISTS retrieval_traces (
   query_text TEXT,
   should_retrieve INTEGER NOT NULL DEFAULT 0,
   trigger_reason TEXT,
+  retrieval_profile_id TEXT,
+  retrieval_profile_json TEXT,
   mounted_library_ids_json TEXT,
   allowed_scopes_json TEXT,
   final_injected_count INTEGER NOT NULL DEFAULT 0,
@@ -268,6 +270,11 @@ _RETRIEVAL_DECISION_COLUMNS = {
     "state_confidence": "REAL",
 }
 
+_RETRIEVAL_TRACE_COLUMNS = {
+    "retrieval_profile_id": "TEXT",
+    "retrieval_profile_json": "TEXT",
+}
+
 _CONVERSATION_PROFILE_COLUMNS = {
     "retrieval_profile_id": "TEXT NOT NULL DEFAULT 'balanced'",
 }
@@ -288,6 +295,7 @@ async def init_state_db(db_path: str) -> None:
     async with aiosqlite.connect(path) as db:
         await db.executescript(_STATE_SCHEMA)
         await _ensure_columns(db, "retrieval_decisions", _RETRIEVAL_DECISION_COLUMNS)
+        await _ensure_columns(db, "retrieval_traces", _RETRIEVAL_TRACE_COLUMNS)
         await _ensure_columns(db, "conversation_profiles", _CONVERSATION_PROFILE_COLUMNS)
         await _ensure_columns(db, "conversation_configs", _CONVERSATION_CONFIG_COLUMNS)
         await _ensure_columns(db, "conversation_default_config", _CONVERSATION_DEFAULT_CONFIG_COLUMNS)

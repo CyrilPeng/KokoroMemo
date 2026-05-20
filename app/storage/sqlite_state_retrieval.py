@@ -124,6 +124,8 @@ class RetrievalDecisionsMixin:
         query_text: str | None = None,
         should_retrieve: bool = False,
         trigger_reason: str | None = None,
+        retrieval_profile_id: str | None = None,
+        retrieval_profile: dict | None = None,
         mounted_library_ids: list[str] | None = None,
         allowed_scopes: list[str] | None = None,
         candidates: list[dict] | None = None,
@@ -135,9 +137,10 @@ class RetrievalDecisionsMixin:
             await db.execute(
                 """INSERT INTO retrieval_traces
                    (trace_id, request_id, gate_decision_id, conversation_id, user_id, character_id,
-                    query_text, should_retrieve, trigger_reason, mounted_library_ids_json,
-                    allowed_scopes_json, final_injected_count)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    query_text, should_retrieve, trigger_reason, retrieval_profile_id,
+                    retrieval_profile_json, mounted_library_ids_json, allowed_scopes_json,
+                    final_injected_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     trace_id,
                     request_id,
@@ -148,6 +151,8 @@ class RetrievalDecisionsMixin:
                     query_text,
                     1 if should_retrieve else 0,
                     trigger_reason,
+                    retrieval_profile_id,
+                    json.dumps(retrieval_profile or {}, ensure_ascii=False),
                     json.dumps(mounted_library_ids or [], ensure_ascii=False),
                     json.dumps(allowed_scopes or [], ensure_ascii=False),
                     sum(1 for item in candidate_rows if item.get("selected")),

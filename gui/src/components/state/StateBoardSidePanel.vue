@@ -56,6 +56,21 @@ function parseList(value: any): string[] {
   }
 }
 
+function parseObject(value: any): Record<string, any> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value
+  if (!value) return {}
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function retrievalProfile(trace: any): Record<string, any> {
+  return parseObject(trace?.retrieval_profile_json)
+}
+
 function score(value: any) {
   return typeof value === 'number' ? value.toFixed(3) : '-'
 }
@@ -118,6 +133,7 @@ function score(value: any) {
                 {{ trace.should_retrieve ? '检索' : '跳过' }}
               </NTag>
               <NTag size="tiny" type="info">{{ trace.final_injected_count || 0 }} 条注入</NTag>
+              <NTag v-if="trace.retrieval_profile_id" size="tiny">{{ retrievalProfile(trace).name || trace.retrieval_profile_id }}</NTag>
               <span class="trace-time">{{ trace.created_at }}</span>
             </NSpace>
             <div class="trace-reason">{{ trace.trigger_reason || '-' }}</div>
@@ -131,6 +147,16 @@ function score(value: any) {
         </div>
 
         <div v-if="retrievalTraceDetail" class="candidate-list">
+          <div v-if="retrievalTraceDetail.retrieval_profile_id" class="profile-summary">
+            <div class="candidate-title">召回策略参数</div>
+            <NSpace size="small" wrap>
+              <NTag size="tiny" type="info">{{ retrievalProfile(retrievalTraceDetail).name || retrievalTraceDetail.retrieval_profile_id }}</NTag>
+              <NTag size="tiny">候选 {{ retrievalProfile(retrievalTraceDetail).vector_top_k ?? '-' }}</NTag>
+              <NTag size="tiny">注入 {{ retrievalProfile(retrievalTraceDetail).final_top_k ?? '-' }}</NTag>
+              <NTag size="tiny">预算 {{ retrievalProfile(retrievalTraceDetail).max_injected_chars ?? '-' }} 字符</NTag>
+              <NTag size="tiny">周期 {{ retrievalProfile(retrievalTraceDetail).vector_search_every_n_turns ?? '-' }} 轮</NTag>
+            </NSpace>
+          </div>
           <div class="candidate-title">候选与最终注入</div>
           <div v-if="!retrievalTraceDetail.candidates?.length" class="hint-text">本次没有候选记忆。</div>
           <div v-for="candidate in retrievalTraceDetail.candidates || []" :key="candidate.candidate_id" class="candidate-item">
@@ -258,6 +284,13 @@ function score(value: any) {
 .candidate-item {
   padding: 8px 0;
   border-bottom: 1px solid #333;
+}
+
+.profile-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 4px;
 }
 
 .state-source-list {

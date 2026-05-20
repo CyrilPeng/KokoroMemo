@@ -83,6 +83,8 @@
 - `InjectionTrace`
 - `StateBoardTrace`
 
+`RetrievalTrace` 还应记录本轮实际使用的 `retrieval_profile_id` 与策略参数快照，例如候选数量、最终注入数量、注入字符预算、门控模式和周期。
+
 ### 建议新增字段
 
 每条候选记忆至少记录：
@@ -216,7 +218,7 @@
 ### 验收标准
 
 - [x] 用户可以在会话策略中选择召回策略。
-- [ ] 每种策略在 trace 中显示实际使用的阈值和 token 预算。
+- [x] 每种策略在 trace 中显示实际使用的召回规模、门控周期和 token/字符预算。
 - [ ] benchmark 能比较不同策略的召回准确率、污染率和 token 成本。
 
 ## 七、Phase E：对外 SDK / 插件化准备

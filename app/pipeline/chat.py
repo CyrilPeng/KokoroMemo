@@ -18,6 +18,7 @@ from app.core.ids import generate_id
 from app.core.services import ServiceRegistry, get_service_registry
 from app.core.state import get_config
 from app.memory.card_injector import inject_cards
+from app.memory.conversation_policy import get_retrieval_profile
 from app.memory.query_builder import build_retrieval_query
 from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
 from app.memory.state_injector import inject_state_board
@@ -156,6 +157,9 @@ class ChatPipeline:
                 ctx.conversation_id,
                 max_recent_turns=cfg.memory.max_recent_turns_for_query,
             )
+            retrieval_profile = get_retrieval_profile(
+                prepared.conversation_config.retrieval_profile_id if prepared.conversation_config else None
+            )
             should_retrieve = True
             if cfg.memory.retrieval_gate.enabled:
                 turn_index = await get_turn_count(ctx.chat_db_path, ctx.conversation_id)
@@ -165,13 +169,13 @@ class ChatPipeline:
                         state_row_count=prepared.state_row_count,
                         avg_state_confidence=prepared.avg_state_confidence,
                         turn_index=turn_index,
-                        mode=cfg.memory.retrieval_gate.mode,
+                        mode=retrieval_profile.gate_mode or cfg.memory.retrieval_gate.mode,
                         vector_search_on_new_session=cfg.memory.retrieval_gate.vector_search_on_new_session,
-                        vector_search_every_n_turns=cfg.memory.retrieval_gate.vector_search_every_n_turns,
+                        vector_search_every_n_turns=retrieval_profile.vector_search_every_n_turns,
                         vector_search_when_state_confidence_below=cfg.memory.retrieval_gate.vector_search_when_state_confidence_below,
                         trigger_keywords=cfg.memory.retrieval_gate.trigger_keywords + _extra_trigger_keywords(cfg),
                         skip_when_latest_user_text_chars_below=cfg.memory.retrieval_gate.skip_when_latest_user_text_chars_below,
-                        skip_when_state_is_sufficient=cfg.memory.retrieval_gate.skip_when_state_is_sufficient,
+                        skip_when_state_is_sufficient=retrieval_profile.skip_when_state_is_sufficient,
                     )
                 )
                 should_retrieve = decision.should_retrieve
@@ -214,8 +218,8 @@ class ChatPipeline:
                 ep,
                 store,
                 cards_db_path=cfg.storage.sqlite.memory_db,
-                vector_top_k=cfg.memory.vector_top_k,
-                final_top_k=cfg.memory.final_top_k,
+                vector_top_k=retrieval_profile.vector_top_k,
+                final_top_k=retrieval_profile.final_top_k,
                 allowed_scopes=allowed_scopes,
             )
             await self._record_retrieval_trace(
@@ -232,8 +236,8 @@ class ChatPipeline:
                 prepared.injected_messages = inject_cards(
                     prepared.injected_messages,
                     candidates,
-                    max_chars=cfg.memory.max_injected_chars,
-                    max_count=cfg.memory.final_top_k,
+                    max_chars=retrieval_profile.max_injected_chars,
+                    max_count=retrieval_profile.final_top_k,
                     username=ctx.user_id,
                     character_name=ctx.character_id,
                     model_name=cfg.llm.model,

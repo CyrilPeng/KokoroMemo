@@ -34,6 +34,7 @@ const props = defineProps<{
   memoryPolicyOptions: Array<{ label: string, value: string }>
   statePolicyOptions: Array<{ label: string, value: string }>
   injectionPolicyOptions: Array<{ label: string, value: string }>
+  retrievalProfileOptions: Array<{ label: string, value: string }>
   activeProfile?: any
   activeTemplate?: any
   activePreset?: any
@@ -48,6 +49,7 @@ const emit = defineEmits<{
   updateMemoryWritePolicy: [value: string]
   updateStateUpdatePolicy: [value: string]
   updateInjectionPolicy: [value: string]
+  updateRetrievalProfile: [value: string]
   openProfileModal: [profile?: any]
   deleteProfile: [profile: any]
   cloneTemplate: []
@@ -230,6 +232,11 @@ const summaryTags = computed<SummaryTag[]>(() => ([
             <NGridItem :span="8">
               <NFormItem label="注入策略">
                 <NSelect :value="config.injection_policy" :options="injectionPolicyOptions" @update:value="emit('updateInjectionPolicy', $event)" />
+              </NFormItem>
+            </NGridItem>
+            <NGridItem :span="8">
+              <NFormItem label="召回策略">
+                <NSelect :value="config.retrieval_profile_id || 'balanced'" :options="retrievalProfileOptions" @update:value="emit('updateRetrievalProfile', $event)" />
               </NFormItem>
             </NGridItem>
           </NGrid>

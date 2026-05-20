@@ -191,6 +191,45 @@ async def test_keyword_triggers_vector_retrieval(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_retrieval_profile_controls_retrieval_limits(monkeypatch):
+    test_dir = make_test_dir()
+    captured: dict[str, object] = {}
+    try:
+        cfg = configure_app(test_dir)
+        provider = FakeChatProvider()
+        monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
+
+        store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+        await store.set_conversation_config({
+            "conversation_id": "conv_high_recall",
+            "profile_id": "airp_roleplay",
+            "retrieval_profile_id": "high_recall",
+        })
+
+        def fake_embedding(_self, _cfg):
+            return object()
+
+        async def fake_retrieve_cards(*args, **kwargs):
+            captured.update(kwargs)
+            return []
+
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_embedding_provider", fake_embedding)
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_lancedb_store", lambda _self, _cfg: object())
+        monkeypatch.setattr("app.memory.card_retriever.retrieve_cards", fake_retrieve_cards)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post("/v1/chat/completions", json={
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "please recall the detailed setting we discussed before"}],
+                "metadata": {"conversation_id": "conv_high_recall"},
+            })
+        assert resp.status_code == 200
+        assert captured["vector_top_k"] == 50
+        assert captured["final_top_k"] == 10
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_retrieval_trace_records_selected_candidates(monkeypatch):
     test_dir = make_test_dir()
     try:

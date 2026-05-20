@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS conversation_profiles (
   memory_write_policy TEXT NOT NULL DEFAULT 'candidate',
   state_update_policy TEXT NOT NULL DEFAULT 'auto',
   injection_policy TEXT NOT NULL DEFAULT 'mixed',
+  retrieval_profile_id TEXT NOT NULL DEFAULT 'balanced',
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS conversation_configs (
   memory_write_policy TEXT NOT NULL DEFAULT 'candidate',
   state_update_policy TEXT NOT NULL DEFAULT 'auto',
   injection_policy TEXT NOT NULL DEFAULT 'mixed',
+  retrieval_profile_id TEXT NOT NULL DEFAULT 'balanced',
   created_from_default INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS conversation_default_config (
   memory_write_policy TEXT NOT NULL DEFAULT 'candidate',
   state_update_policy TEXT NOT NULL DEFAULT 'auto',
   injection_policy TEXT NOT NULL DEFAULT 'mixed',
+  retrieval_profile_id TEXT NOT NULL DEFAULT 'balanced',
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -265,6 +268,18 @@ _RETRIEVAL_DECISION_COLUMNS = {
     "state_confidence": "REAL",
 }
 
+_CONVERSATION_PROFILE_COLUMNS = {
+    "retrieval_profile_id": "TEXT NOT NULL DEFAULT 'balanced'",
+}
+
+_CONVERSATION_CONFIG_COLUMNS = {
+    "retrieval_profile_id": "TEXT NOT NULL DEFAULT 'balanced'",
+}
+
+_CONVERSATION_DEFAULT_CONFIG_COLUMNS = {
+    "retrieval_profile_id": "TEXT NOT NULL DEFAULT 'balanced'",
+}
+
 
 async def init_state_db(db_path: str) -> None:
     """Initialize hot-state tables in memory.sqlite."""
@@ -273,6 +288,9 @@ async def init_state_db(db_path: str) -> None:
     async with aiosqlite.connect(path) as db:
         await db.executescript(_STATE_SCHEMA)
         await _ensure_columns(db, "retrieval_decisions", _RETRIEVAL_DECISION_COLUMNS)
+        await _ensure_columns(db, "conversation_profiles", _CONVERSATION_PROFILE_COLUMNS)
+        await _ensure_columns(db, "conversation_configs", _CONVERSATION_CONFIG_COLUMNS)
+        await _ensure_columns(db, "conversation_default_config", _CONVERSATION_DEFAULT_CONFIG_COLUMNS)
         await _ensure_default_conversation_config(db)
         await _ensure_builtin_table_templates(db)
         await db.commit()
@@ -761,8 +779,8 @@ async def _ensure_default_conversation_config(db: aiosqlite.Connection) -> None:
     await db.execute(
         """INSERT INTO conversation_default_config
            (id, profile_id, table_template_id, mount_preset_id,
-            memory_write_policy, state_update_policy, injection_policy)
-           VALUES ('global', ?, ?, ?, ?, ?, ?)
+            memory_write_policy, state_update_policy, injection_policy, retrieval_profile_id)
+           VALUES ('global', ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO NOTHING""",
         (
             profile.profile_id,
@@ -771,6 +789,7 @@ async def _ensure_default_conversation_config(db: aiosqlite.Connection) -> None:
             profile.memory_write_policy,
             profile.state_update_policy,
             profile.injection_policy,
+            profile.retrieval_profile_id,
         ),
     )
 

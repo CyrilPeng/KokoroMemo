@@ -2,7 +2,7 @@ import pytest
 from pathlib import Path
 from uuid import uuid4
 
-from app.memory.conversation_policy import get_profile, list_profiles
+from app.memory.conversation_policy import get_profile, list_profiles, list_retrieval_profiles
 from app.storage.sqlite_state import SQLiteStateStore
 
 
@@ -20,12 +20,14 @@ async def test_default_conversation_config_creates_new_conversation():
     default_config = await store.get_default_conversation_config()
     assert default_config.profile_id == "airp_roleplay"
     assert default_config.injection_policy == "mixed"
+    assert default_config.retrieval_profile_id == "balanced"
 
     config = await store.ensure_conversation_config("conv_new")
     assert config.conversation_id == "conv_new"
     assert config.created_from_default is True
     assert config.profile_id == default_config.profile_id
     assert config.table_template_id == default_config.table_template_id
+    assert config.retrieval_profile_id == default_config.retrieval_profile_id
 
 
 @pytest.mark.asyncio
@@ -64,3 +66,10 @@ async def test_profile_table_templates_are_available():
 def test_builtin_profiles_cover_required_modes():
     profile_ids = {profile.profile_id for profile in list_profiles()}
     assert {"airp_roleplay", "rimtalk_colony", "ttrpg_story", "memory_only", "proxy_only"} <= profile_ids
+
+
+def test_builtin_retrieval_profiles_cover_required_modes():
+    profiles = {profile.profile_id: profile for profile in list_retrieval_profiles()}
+    assert {"conservative", "balanced", "high_recall", "state_first", "memory_first"} <= set(profiles)
+    assert profiles["balanced"].final_top_k == 6
+    assert profiles["high_recall"].vector_top_k > profiles["balanced"].vector_top_k

@@ -25,6 +25,7 @@ def _row_to_conversation_config(row: aiosqlite.Row) -> ConversationConfig:
         memory_write_policy=row["memory_write_policy"],
         state_update_policy=row["state_update_policy"],
         injection_policy=row["injection_policy"],
+        retrieval_profile_id=row["retrieval_profile_id"],
         created_from_default=bool(row["created_from_default"]),
         updated_at=row["updated_at"],
     )
@@ -51,6 +52,7 @@ class ConversationConfigMixin:
                 memory_write_policy=row["memory_write_policy"],
                 state_update_policy=row["state_update_policy"],
                 injection_policy=row["injection_policy"],
+                retrieval_profile_id=row["retrieval_profile_id"],
             )
             for row in rows
         ]
@@ -63,8 +65,8 @@ class ConversationConfigMixin:
             await db.execute(
                 """INSERT INTO conversation_profiles
                    (profile_id, name, description, table_template_id, mount_preset_id,
-                    memory_write_policy, state_update_policy, injection_policy, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
+                    memory_write_policy, state_update_policy, injection_policy, retrieval_profile_id, status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
                    ON CONFLICT(profile_id) DO UPDATE SET
                     name = excluded.name,
                     description = excluded.description,
@@ -73,6 +75,7 @@ class ConversationConfigMixin:
                     memory_write_policy = excluded.memory_write_policy,
                     state_update_policy = excluded.state_update_policy,
                     injection_policy = excluded.injection_policy,
+                    retrieval_profile_id = excluded.retrieval_profile_id,
                     status = 'active',
                     updated_at = datetime('now', 'localtime')""",
                 (
@@ -84,6 +87,7 @@ class ConversationConfigMixin:
                     data.get("memory_write_policy") or "candidate",
                     data.get("state_update_policy") or "auto",
                     data.get("injection_policy") or "mixed",
+                    data.get("retrieval_profile_id") or "balanced",
                 ),
             )
             await db.commit()
@@ -96,6 +100,7 @@ class ConversationConfigMixin:
             memory_write_policy=data.get("memory_write_policy") or "candidate",
             state_update_policy=data.get("state_update_policy") or "auto",
             injection_policy=data.get("injection_policy") or "mixed",
+            retrieval_profile_id=data.get("retrieval_profile_id") or "balanced",
         )
 
     async def delete_custom_conversation_profile(self, profile_id: str) -> bool:
@@ -123,6 +128,7 @@ class ConversationConfigMixin:
                 memory_write_policy=row["memory_write_policy"],
                 state_update_policy=row["state_update_policy"],
                 injection_policy=row["injection_policy"],
+                retrieval_profile_id=row["retrieval_profile_id"],
                 created_from_default=True,
                 updated_at=row["updated_at"],
             )
@@ -135,6 +141,7 @@ class ConversationConfigMixin:
             memory_write_policy=profile.memory_write_policy,
             state_update_policy=profile.state_update_policy,
             injection_policy=profile.injection_policy,
+            retrieval_profile_id=profile.retrieval_profile_id,
             created_from_default=True,
         )
 
@@ -151,12 +158,13 @@ class ConversationConfigMixin:
         memory_write_policy = payload.get("memory_write_policy") or profile.memory_write_policy
         state_update_policy = payload.get("state_update_policy") or profile.state_update_policy
         injection_policy = payload.get("injection_policy") or profile.injection_policy
+        retrieval_profile_id = payload.get("retrieval_profile_id") or profile.retrieval_profile_id
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 """INSERT INTO conversation_default_config
                    (id, profile_id, table_template_id, mount_preset_id,
-                    memory_write_policy, state_update_policy, injection_policy)
-                   VALUES ('global', ?, ?, ?, ?, ?, ?)
+                    memory_write_policy, state_update_policy, injection_policy, retrieval_profile_id)
+                   VALUES ('global', ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                     profile_id = excluded.profile_id,
                     table_template_id = excluded.table_template_id,
@@ -164,8 +172,9 @@ class ConversationConfigMixin:
                     memory_write_policy = excluded.memory_write_policy,
                     state_update_policy = excluded.state_update_policy,
                     injection_policy = excluded.injection_policy,
+                    retrieval_profile_id = excluded.retrieval_profile_id,
                     updated_at = datetime('now', 'localtime')""",
-                (profile_id, table_template_id, mount_preset_id, memory_write_policy, state_update_policy, injection_policy),
+                (profile_id, table_template_id, mount_preset_id, memory_write_policy, state_update_policy, injection_policy, retrieval_profile_id),
             )
             await db.commit()
         return await self.get_default_conversation_config()
@@ -191,13 +200,14 @@ class ConversationConfigMixin:
         memory_write_policy = payload.get("memory_write_policy") or profile.memory_write_policy
         state_update_policy = payload.get("state_update_policy") or profile.state_update_policy
         injection_policy = payload.get("injection_policy") or profile.injection_policy
+        retrieval_profile_id = payload.get("retrieval_profile_id") or profile.retrieval_profile_id
         created_from_default = 1 if payload.get("created_from_default") else 0
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 """INSERT INTO conversation_configs
                    (conversation_id, profile_id, table_template_id, mount_preset_id,
-                    memory_write_policy, state_update_policy, injection_policy, created_from_default)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    memory_write_policy, state_update_policy, injection_policy, retrieval_profile_id, created_from_default)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(conversation_id) DO UPDATE SET
                     profile_id = excluded.profile_id,
                     table_template_id = excluded.table_template_id,
@@ -205,6 +215,7 @@ class ConversationConfigMixin:
                     memory_write_policy = excluded.memory_write_policy,
                     state_update_policy = excluded.state_update_policy,
                     injection_policy = excluded.injection_policy,
+                    retrieval_profile_id = excluded.retrieval_profile_id,
                     updated_at = datetime('now', 'localtime')""",
                 (
                     conversation_id,
@@ -214,6 +225,7 @@ class ConversationConfigMixin:
                     memory_write_policy,
                     state_update_policy,
                     injection_policy,
+                    retrieval_profile_id,
                     created_from_default,
                 ),
             )
@@ -237,6 +249,7 @@ class ConversationConfigMixin:
                 memory_write_policy=default.memory_write_policy,
                 state_update_policy=default.state_update_policy,
                 injection_policy=default.injection_policy,
+                retrieval_profile_id=default.retrieval_profile_id,
                 created_from_default=True,
             )
         )

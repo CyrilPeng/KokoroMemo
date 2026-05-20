@@ -75,6 +75,28 @@ async def test_admin_middleware_rejects_remote_without_token():
         cleanup_test_dir(test_dir)
 
 
+@pytest.mark.asyncio
+async def test_retrieval_profiles_api_lists_builtin_profiles():
+    test_dir = make_test_dir()
+    try:
+        cfg = AppConfig()
+        cfg.storage.root_dir = str(test_dir)
+        cfg.storage.sqlite.app_db = str(test_dir / "app.sqlite")
+        cfg.storage.sqlite.memory_db = str(test_dir / "memory.sqlite")
+        set_config(cfg)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/admin/retrieval-profiles")
+
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        profile_ids = {item["profile_id"] for item in items}
+        assert {"balanced", "high_recall", "state_first", "memory_first"} <= profile_ids
+        assert all("vector_top_k" in item and "max_injected_chars" in item for item in items)
+    finally:
+        cleanup_test_dir(test_dir)
+
+
 def test_websocket_requires_token_when_configured(monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "secret")
     set_config(AppConfig())

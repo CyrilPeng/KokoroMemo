@@ -22,6 +22,7 @@ defineProps<{
   memoryPolicyOptions: Array<{ label: string, value: string }>
   statePolicyOptions: Array<{ label: string, value: string }>
   injectionPolicyOptions: Array<{ label: string, value: string }>
+  retrievalProfileOptions: Array<{ label: string, value: string }>
 }>()
 
 const emit = defineEmits<{
@@ -32,6 +33,7 @@ const emit = defineEmits<{
   updateMemoryWritePolicy: [value: string]
   updateStateUpdatePolicy: [value: string]
   updateInjectionPolicy: [value: string]
+  updateRetrievalProfile: [value: string]
   save: []
 }>()
 </script>
@@ -60,6 +62,9 @@ const emit = defineEmits<{
         </NFormItem>
         <NFormItem label="默认注入策略">
           <NSelect :value="defaultConfig.injection_policy" :options="injectionPolicyOptions" @update:value="emit('updateInjectionPolicy', $event)" />
+        </NFormItem>
+        <NFormItem label="默认召回策略">
+          <NSelect :value="defaultConfig.retrieval_profile_id || 'balanced'" :options="retrievalProfileOptions" @update:value="emit('updateRetrievalProfile', $event)" />
         </NFormItem>
       </NForm>
       <template #footer>

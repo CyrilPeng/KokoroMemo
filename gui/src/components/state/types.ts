@@ -35,6 +35,7 @@ export type ConversationConfig = {
   memory_write_policy: string
   state_update_policy: string
   injection_policy: string
+  retrieval_profile_id?: string
   created_from_default?: boolean
 }
 

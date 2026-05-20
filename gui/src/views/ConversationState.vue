@@ -66,6 +66,7 @@ const profiles = ref<any[]>([])
 const tableTemplates = ref<any[]>([])
 const mountPresets = ref<any[]>([])
 const memoryLibraries = ref<any[]>([])
+const retrievalProfiles = ref<any[]>([])
 const mountedLibraryIds = ref<string[]>([])
 const writeLibraryId = ref<string | null>(null)
 const activeTableKey = ref(localStorage.getItem(STATE_ACTIVE_TABLE_STORAGE_KEY) || '')
@@ -135,6 +136,10 @@ const writeLibraryOptions = computed(() => mountedLibraryIds.value.map((id) => {
   const lib = memoryLibraries.value.find((item) => item.library_id === id)
   return { label: lib?.name || id, value: id }
 }))
+const retrievalProfileOptions = computed(() => retrievalProfiles.value.map((item) => ({
+  label: item.name,
+  value: item.profile_id,
+})))
 const conversationOptions = computed(() => conversations.value.map((item) => ({
   label: `${conversationDisplayName(item)} · ${item.character_display_name || item.character_id || '未知角色'} · ${item.last_seen_at || item.conversation_id}`,
   value: item.conversation_id,
@@ -311,13 +316,15 @@ async function fetchConfig() {
 
 async function fetchOptions() {
   try {
-    const [profilesResp, tableResp, presetResp, libResp] = await Promise.all([
+    const [profilesResp, retrievalProfilesResp, tableResp, presetResp, libResp] = await Promise.all([
       apiFetch('/admin/conversation-profiles', { headers: authHeaders() }),
+      apiFetch('/admin/retrieval-profiles', { headers: authHeaders() }),
       apiFetch('/admin/state/table-templates', { headers: authHeaders() }),
       apiFetch('/admin/memory-mount-presets', { headers: authHeaders() }),
       apiFetch('/admin/memory-libraries', { headers: authHeaders() }),
     ])
     if (profilesResp.ok) profiles.value = (await profilesResp.json()).items || []
+    if (retrievalProfilesResp.ok) retrievalProfiles.value = (await retrievalProfilesResp.json()).items || []
     if (tableResp.ok) tableTemplates.value = (await tableResp.json()).items || []
     if (presetResp.ok) mountPresets.value = (await presetResp.json()).items || []
     if (libResp.ok) memoryLibraries.value = (await libResp.json()).items || []
@@ -490,6 +497,7 @@ function applyProfileToConfig(profileId: string) {
     memory_write_policy: profile.memory_write_policy,
     state_update_policy: profile.state_update_policy,
     injection_policy: profile.injection_policy,
+    retrieval_profile_id: profile.retrieval_profile_id || 'balanced',
   }
 }
 
@@ -505,6 +513,7 @@ function applyProfileToDefault(profileId: string) {
     memory_write_policy: profile.memory_write_policy,
     state_update_policy: profile.state_update_policy,
     injection_policy: profile.injection_policy,
+    retrieval_profile_id: profile.retrieval_profile_id || 'balanced',
   }
 }
 
@@ -1203,6 +1212,7 @@ onBeforeUnmount(() => {
         :memory-policy-options="memoryPolicyOptions"
         :state-policy-options="statePolicyOptions"
         :injection-policy-options="injectionPolicyOptions"
+        :retrieval-profile-options="retrievalProfileOptions"
         :active-profile="activeProfile"
         :active-template="activeTemplate"
         :active-preset="activePreset"
@@ -1214,6 +1224,7 @@ onBeforeUnmount(() => {
         @update-memory-write-policy="patchCurrentConfig('memory_write_policy', $event)"
         @update-state-update-policy="patchCurrentConfig('state_update_policy', $event)"
         @update-injection-policy="patchCurrentConfig('injection_policy', $event)"
+        @update-retrieval-profile="patchCurrentConfig('retrieval_profile_id', $event)"
         @open-profile-modal="openProfileModal"
         @delete-profile="deleteProfile"
         @clone-template="cloneCurrentTemplate"
@@ -1298,12 +1309,14 @@ onBeforeUnmount(() => {
       :memory-policy-options="memoryPolicyOptions"
       :state-policy-options="statePolicyOptions"
       :injection-policy-options="injectionPolicyOptions"
+      :retrieval-profile-options="retrievalProfileOptions"
       @update-profile="applyProfileToDefault"
       @update-table-template="patchDefaultConfig('table_template_id', $event)"
       @update-mount-preset="patchDefaultConfig('mount_preset_id', $event)"
       @update-memory-write-policy="patchDefaultConfig('memory_write_policy', $event)"
       @update-state-update-policy="patchDefaultConfig('state_update_policy', $event)"
       @update-injection-policy="patchDefaultConfig('injection_policy', $event)"
+      @update-retrieval-profile="patchDefaultConfig('retrieval_profile_id', $event)"
       @save="saveDefaultConfig"
     />
 

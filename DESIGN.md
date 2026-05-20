@@ -430,7 +430,8 @@ ConversationConfig
   ├─ mount_preset_id
   ├─ memory_write_policy: disabled | candidate | stable_only | auto
   ├─ state_update_policy: disabled | manual | auto
-  └─ injection_policy: none | memory_only | state_only | state_first | mixed
+  ├─ injection_policy: none | memory_only | state_only | state_first | mixed
+  └─ retrieval_profile_id: conservative | balanced | high_recall | state_first | memory_first
 ```
 
 请求入口会先执行 `ensure_conversation_config(conversation_id)`：
@@ -552,6 +553,7 @@ GUI `/state` 是表格工作台：
 | `GET /admin/state/table-templates` | 列出 v2 表格模板 |
 | `GET /admin/state/table-templates/{template_id}` | 查看完整 v2 表格模板 |
 | `GET /admin/conversation-profiles` | 获取内置会话方案 |
+| `GET /admin/retrieval-profiles` | 获取内置召回策略 profile |
 | `GET /admin/conversation-defaults` / `PUT /admin/conversation-defaults` | 读取/保存新会话默认策略 |
 | `GET /admin/conversations/{conversation_id}/config` | 读取当前会话策略，并返回旧 GUI 仍需要的挂载库、写入库、状态项数量和新会话标记 |
 | `PUT /admin/conversations/{conversation_id}/config` / `POST /admin/conversations/{conversation_id}/config` | 保存当前会话策略；`POST` 为兼容入口，等价于 `PUT` |
@@ -561,7 +563,7 @@ GUI `/state` 是表格工作台：
 | `GET /admin/conversations/{conversation_id}/state/preview` | 获取真实注入预览 |
 | `POST /admin/conversations/{conversation_id}/state/fill` | 手动运行 State Filler |
 
-`GET /admin/conversations/{conversation_id}/config` 是新旧会话配置的合并摘要接口。返回值除 `ConversationConfig` 的 `profile_id`、`template_id`、`table_template_id`、`mount_preset_id`、`memory_write_policy`、`state_update_policy`、`injection_policy` 外，还必须包含：
+`GET /admin/conversations/{conversation_id}/config` 是新旧会话配置的合并摘要接口。返回值除 `ConversationConfig` 的 `profile_id`、`template_id`、`table_template_id`、`mount_preset_id`、`memory_write_policy`、`state_update_policy`、`injection_policy`、`retrieval_profile_id` 外，还必须包含：
 
 | 字段 | 用途 |
 |---|---|

@@ -49,6 +49,7 @@ const { t } = useI18n()
 const loading = ref(false)
 const saving = ref(false)
 const previewLoading = ref(false)
+const retrievalLoading = ref(false)
 const conversationId = ref(localStorage.getItem(STATE_CONVERSATION_STORAGE_KEY) || '')
 const adminToken = ref(localStorage.getItem('kokoromemo.adminToken') || '')
 const conversations = ref<any[]>([])
@@ -69,6 +70,8 @@ const mountedLibraryIds = ref<string[]>([])
 const writeLibraryId = ref<string | null>(null)
 const activeTableKey = ref(localStorage.getItem(STATE_ACTIVE_TABLE_STORAGE_KEY) || '')
 const preview = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0 })
+const retrievalTraces = ref<any[]>([])
+const retrievalTraceDetail = ref<any | null>(null)
 const showEditModal = ref(false)
 const showFillModal = ref(false)
 const showHelpModal = ref(false)
@@ -245,10 +248,54 @@ async function fetchBoard() {
     reconcileActiveTable()
     await fetchPreview()
     await fetchMounts()
+    await fetchRetrievalTraces()
   } catch (error: any) {
     message.error(error.message || '加载失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchRetrievalTraces() {
+  if (!conversationId.value.trim()) {
+    retrievalTraces.value = []
+    retrievalTraceDetail.value = null
+    return
+  }
+  retrievalLoading.value = true
+  try {
+    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/retrieval-traces?limit=10`, {
+      headers: authHeaders(),
+    })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.detail || data.message || '加载检索解释失败')
+    retrievalTraces.value = data.items || []
+    if (!retrievalTraces.value.length) {
+      retrievalTraceDetail.value = null
+    } else if (!retrievalTraceDetail.value || !retrievalTraces.value.some((item) => item.trace_id === retrievalTraceDetail.value?.trace_id)) {
+      await fetchRetrievalTraceDetail(retrievalTraces.value[0].trace_id)
+    }
+  } catch (error: any) {
+    message.error(error.message || '加载检索解释失败')
+  } finally {
+    retrievalLoading.value = false
+  }
+}
+
+async function fetchRetrievalTraceDetail(traceId: string) {
+  if (!traceId) return
+  retrievalLoading.value = true
+  try {
+    const resp = await apiFetch(`/admin/retrieval-traces/${encodeURIComponent(traceId)}`, {
+      headers: authHeaders(),
+    })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error(data.detail || data.message || '加载检索详情失败')
+    retrievalTraceDetail.value = data
+  } catch (error: any) {
+    message.error(error.message || '加载检索详情失败')
+  } finally {
+    retrievalLoading.value = false
   }
 }
 
@@ -1216,6 +1263,9 @@ onBeforeUnmount(() => {
               v-model:fill-form="fillForm"
               :preview="preview"
               :preview-loading="previewLoading"
+              :retrieval-traces="retrievalTraces"
+              :retrieval-trace-detail="retrievalTraceDetail"
+              :retrieval-loading="retrievalLoading"
               :tables="tables"
               :rows-by-table="rowsByTable"
               :saving="saving"
@@ -1224,6 +1274,8 @@ onBeforeUnmount(() => {
               :history-events="historyEvents"
               :history-loading="historyLoading"
               @refresh-preview="fetchPreview"
+              @refresh-retrieval-traces="fetchRetrievalTraces"
+              @select-retrieval-trace="fetchRetrievalTraceDetail"
               @preview-fill="runFillPreview"
               @direct-fill="runFillConfirm"
               @refresh-history="fetchHistory"

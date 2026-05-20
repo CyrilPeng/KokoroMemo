@@ -7,6 +7,9 @@ import type { StateRow, StateTable } from './types'
 const props = defineProps<{
   preview: { preview: string, char_count: number, max_chars: number, item_count: number }
   previewLoading: boolean
+  retrievalTraces: any[]
+  retrievalTraceDetail: any | null
+  retrievalLoading: boolean
   tables: StateTable[]
   rowsByTable: Record<string, StateRow[]>
   fillForm: { user_message: string, assistant_message: string }
@@ -19,6 +22,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   refreshPreview: []
+  refreshRetrievalTraces: []
+  selectRetrievalTrace: [traceId: string]
   previewFill: []
   directFill: []
   refreshHistory: []
@@ -38,6 +43,21 @@ function eventTagType(eventType: string) {
   if (eventType === 'revert') return 'warning'
   return 'info'
 }
+
+function parseList(value: any): string[] {
+  if (Array.isArray(value)) return value
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function score(value: any) {
+  return typeof value === 'number' ? value.toFixed(3) : '-'
+}
 </script>
 
 <template>
@@ -52,6 +72,59 @@ function eventTagType(eventType: string) {
         <div v-if="tables.length" class="hint-text">
           <div v-for="table in tables" :key="table.table_key">
             {{ table.name }}: {{ (rowsByTable[table.table_key] || []).length }} 行
+          </div>
+        </div>
+      </NSpace>
+    </NCard>
+
+    <NCard title="注入来源">
+      <template #header-extra>
+        <NButton size="tiny" :loading="retrievalLoading" @click="emit('refreshRetrievalTraces')">刷新</NButton>
+      </template>
+      <NSpace vertical>
+        <div v-if="!retrievalTraces.length" class="hint-text">暂无检索与注入记录。完成一次聊天后会显示本轮长期记忆来源。</div>
+        <div v-else class="trace-list">
+          <button
+            v-for="trace in retrievalTraces"
+            :key="trace.trace_id"
+            class="trace-item"
+            :class="{ active: retrievalTraceDetail?.trace_id === trace.trace_id }"
+            type="button"
+            @click="emit('selectRetrievalTrace', trace.trace_id)"
+          >
+            <NSpace align="center" size="small" wrap>
+              <NTag size="tiny" :type="trace.should_retrieve ? 'success' : 'warning'">
+                {{ trace.should_retrieve ? '检索' : '跳过' }}
+              </NTag>
+              <NTag size="tiny" type="info">{{ trace.final_injected_count || 0 }} 条注入</NTag>
+              <span class="trace-time">{{ trace.created_at }}</span>
+            </NSpace>
+            <div class="trace-reason">{{ trace.trigger_reason || '-' }}</div>
+            <div class="trace-query">{{ trace.query_text || '-' }}</div>
+            <div class="trace-libraries">
+              <NTag v-for="libraryId in parseList(trace.mounted_library_ids_json)" :key="libraryId" size="tiny">
+                {{ libraryId }}
+              </NTag>
+            </div>
+          </button>
+        </div>
+
+        <div v-if="retrievalTraceDetail" class="candidate-list">
+          <div class="candidate-title">候选与最终注入</div>
+          <div v-if="!retrievalTraceDetail.candidates?.length" class="hint-text">本次没有候选记忆。</div>
+          <div v-for="candidate in retrievalTraceDetail.candidates || []" :key="candidate.candidate_id" class="candidate-item">
+            <NSpace align="center" size="small" wrap>
+              <NTag size="tiny" :type="candidate.selected ? 'success' : 'default'">
+                {{ candidate.selected ? '已注入' : '未注入' }}
+              </NTag>
+              <NTag size="tiny">{{ candidate.route || '-' }}</NTag>
+              <NTag size="tiny" type="info">{{ candidate.library_id || '-' }}</NTag>
+              <span class="candidate-score">score {{ score(candidate.final_score) }}</span>
+            </NSpace>
+            <div class="candidate-preview">{{ candidate.content_preview || candidate.card_id || '-' }}</div>
+            <div class="candidate-meta">
+              {{ candidate.injection_reason || candidate.filtered_reason || '-' }}
+            </div>
           </div>
         </div>
       </NSpace>
@@ -101,6 +174,69 @@ function eventTagType(eventType: string) {
 .history-list {
   max-height: 400px;
   overflow-y: auto;
+}
+
+.trace-list,
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.trace-item {
+  width: 100%;
+  padding: 8px;
+  text-align: left;
+  color: #e5e7eb;
+  background: #18181b;
+  border: 1px solid #2f2f36;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.trace-item:hover,
+.trace-item.active {
+  border-color: #63e2b7;
+}
+
+.trace-time,
+.candidate-score,
+.candidate-meta {
+  color: #888;
+  font-size: 12px;
+}
+
+.trace-reason,
+.trace-query,
+.candidate-preview {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.trace-query,
+.candidate-preview {
+  color: #cbd5e1;
+}
+
+.trace-libraries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.candidate-title {
+  color: #e5e7eb;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.candidate-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #333;
 }
 
 .history-item {

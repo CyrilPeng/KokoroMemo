@@ -100,14 +100,6 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
                 character_id = f"char_{_hash_short(system_prompt)}"
     if character_id:
         character_id = sanitize_id(character_id)
-    # Map system-prompt hashes to stable character names (multi-hash per character)
-    _CHAR_HASHES = {
-        'arona': ['char_538c35346c40', 'char_11ec99cfa6e6'],
-    }
-    for name, hashes in _CHAR_HASHES.items():
-        if character_id in hashes:
-            character_id = name
-            break
 
     if not conversation_id:
         seed = f"{user_id}_{character_id or 'none'}"

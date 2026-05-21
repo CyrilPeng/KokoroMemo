@@ -79,7 +79,7 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
     # 会话 ID
     conversation_id = _first_text(headers.get("x-conversation-id"), headers.get("x-chat-id"), headers.get("x-session-id"))
     if not conversation_id:
-        conversation_id = _metadata_value(meta, "conversation_id", "chat_id", "session_id", "chat_session_id", "thread_id")
+        conversation_id = _metadata_value(meta, "conversation_id", "chat_id", "session_id", "chat_session_id", "thread_id", "previous_response_id")
     explicit_conv_id = bool(conversation_id)
 
     # 角色 ID

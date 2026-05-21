@@ -34,6 +34,11 @@ async def _gpt_handle(raw_body, request):
     if not messages:
         return JSONResponse(status_code=400, content={'error':{'message':'No input','type':'invalid_request'}})
 
+    # Extract system prompt from instructions field for consistent character_id across models
+    instructions = raw_body.get('instructions', '')
+    if instructions:
+        messages.insert(0, {'role': 'system', 'content': instructions[:2000]})
+
     meta = raw_body.get('metadata',{})
     if not isinstance(meta, dict): meta = {}
     openai_body = {
@@ -50,54 +55,14 @@ async def _gpt_handle(raw_body, request):
         return JSONResponse(status_code=500, content={'error':{'message':f'Prepare: {e}'}})
 
     ctx, cfg = prepared.ctx, prepared.cfg
+    # Reuse ChatPipeline.inject_memory for unified memory pipeline
     memory_text = None
-
     try:
-        from app.memory.query_builder import build_retrieval_query
-        from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
-        from app.storage.sqlite_conversation import get_turn_count
-
-        q = build_retrieval_query(messages, ctx.user_id, ctx.character_id, ctx.conversation_id,
-                                   max_recent_turns=cfg.memory.max_recent_turns_for_query)
-        retrieve = True
-        if cfg.memory.retrieval_gate.enabled:
-            ti = await get_turn_count(ctx.chat_db_path, ctx.conversation_id)
-            d = decide_retrieval(RetrievalGateInput(
-                query=q, state_row_count=prepared.state_row_count,
-                avg_state_confidence=prepared.avg_state_confidence,
-                turn_index=ti, mode=cfg.memory.retrieval_gate.mode,
-                vector_search_on_new_session=cfg.memory.retrieval_gate.vector_search_on_new_session,
-                vector_search_every_n_turns=cfg.memory.retrieval_gate.vector_search_every_n_turns,
-                vector_search_when_state_confidence_below=cfg.memory.retrieval_gate.vector_search_when_state_confidence_below,
-                trigger_keywords=cfg.memory.retrieval_gate.trigger_keywords,
-                skip_when_latest_user_text_chars_below=cfg.memory.retrieval_gate.skip_when_latest_user_text_chars_below,
-                skip_when_state_is_sufficient=cfg.memory.retrieval_gate.skip_when_state_is_sufficient,
-            ))
-            retrieve = d.should_retrieve
-
-        if retrieve:
-            ep = pipeline.services.get_embedding_provider(cfg)
-            store = pipeline.services.get_lancedb_store(cfg)
-            if ep and store:
-                from app.memory.card_retriever import retrieve_cards
-                from app.memory.card_injector import inject_cards
-                scopes = {s for s, e in (('global', cfg.memory.scopes.include_global),
-                    ('character', cfg.memory.scopes.include_character),
-                    ('conversation', cfg.memory.scopes.include_conversation)) if e}
-                cards = await retrieve_cards(q, ep, store, cards_db_path=cfg.storage.sqlite.memory_db,
-                    vector_top_k=cfg.memory.vector_top_k, final_top_k=cfg.memory.final_top_k, allowed_scopes=scopes)
-                if cards:
-                    logger.info('GPT memory: conv=%s cards=%d', ctx.conversation_id[:12], len(cards))
-                    dummy = [{'role':'user','content':''}]
-                    inj = inject_cards(dummy, cards, max_chars=cfg.memory.max_injected_chars,
-                        max_count=cfg.memory.final_top_k, username=ctx.user_id,
-                        character_name=ctx.character_id, model_name='gpt-5.4',
-                        conversation_id=ctx.conversation_id)
-                    for m in inj:
-                        if m['role'] == 'system' and '【KokoroMemo' in m.get('content',''):
-                            memory_text = m['content']
-                            logger.info('GPT memory injected: conv=%s cards=%d chars=%d', ctx.conversation_id[:12], len(cards), len(memory_text))
-                            break
+        await pipeline.inject_memory(prepared)
+        for msg in prepared.injected_messages:
+            if msg.get('role') == 'system' and '【KokoroMemo' in msg.get('content',''):
+                memory_text = msg['content']
+                break
     except Exception as e:
         logger.warning('GPT memory failed: %s', e)
 
@@ -119,6 +84,21 @@ async def _gpt_handle(raw_body, request):
             if r.status_code != 200:
                 return JSONResponse(status_code=502, content={'error':{'message':f'GPT upstream: {r.status_code}'}})
             data = r.json()
+            # Record token usage (with cache tracking)
+            try:
+                u = data.get('usage', {})
+                itok = u.get('input_tokens', 0)
+                otok = u.get('output_tokens', 0)
+                ctok = u.get('input_tokens_details', {}).get('cached_tokens', 0)
+                if itok or otok:
+                    import aiosqlite, asyncio as _asyncio, time as _t
+                    async def _rec():
+                        async with aiosqlite.connect(cfg.storage.sqlite.app_db) as _db:
+                            await _db.execute('CREATE TABLE IF NOT EXISTS token_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, input_tokens INTEGER NOT NULL, cached_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL, created_at REAL NOT NULL)')
+                            await _db.execute('INSERT INTO token_usage (input_tokens, cached_tokens, output_tokens, created_at) VALUES (?, ?, ?, ?)', (itok, ctok, otok, _t.time()))
+                            await _db.commit()
+                    _asyncio.create_task(_rec())
+            except: pass
             # Persist in background
             assistant = ''
             for o in data.get('output', []):
@@ -130,6 +110,9 @@ async def _gpt_handle(raw_body, request):
     except Exception as e:
         logger.error('GPT upstream: %s', e)
         return JSONResponse(status_code=502, content={'error':{'message':f'GPT upstream: {e}'}})
+
+    # Safety: should never reach here, but ensure a response is always returned
+    return JSONResponse(status_code=500, content={'error':{'message':'GPT: unexpected code path'}})
 
 
 def _gpt_stream(body, prepared, pipeline, messages):
@@ -200,6 +183,18 @@ def _oai_to_resp(data, body):
 @router.post('/v1/responses')
 @router.post('/responses')
 async def handler(request: Request):
+    import logging, json
+    body_bytes = await request.body()
+    logging.getLogger('kokoromemo.raw').info(
+        'REQ %s headers=%s body=%s',
+        'handler',
+        dict(request.headers),
+        body_bytes.decode()[:800] if body_bytes else ''
+    )
+    import logging as _log, json as _json
+    _log.getLogger('kokoromemo.raw').info('REQ headers=%s body=%s',
+        {k:v for k,v in request.headers.items() if k.startswith('x-') or k in ('authorization','content-type','anthropic-version')},
+        await request.body() and (await request.body()).decode()[:500])
     raw_body = await request.json()
     model = raw_body.get('model','')
     if _is_gpt(model):

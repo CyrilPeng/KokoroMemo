@@ -91,14 +91,64 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
     if not character_id:
         system_prompt = _stable_system_prompt(messages)
         if system_prompt:
-            character_id = f"char_{_hash_short(system_prompt)}"
+            # Check for inline [character_id: name] tag
+            import re as _re
+            m = _re.search(r'\[character_id:\s*(\S+)\s*\]', system_prompt)
+            if m:
+                character_id = sanitize_id(m.group(1))
+            else:
+                character_id = f"char_{_hash_short(system_prompt)}"
     if character_id:
         character_id = sanitize_id(character_id)
+    # Map system-prompt hashes to stable character names (multi-hash per character)
+    _CHAR_HASHES = {
+        'arona': ['char_538c35346c40', 'char_11ec99cfa6e6'],
+    }
+    for name, hashes in _CHAR_HASHES.items():
+        if character_id in hashes:
+            character_id = name
+            break
 
     if not conversation_id:
         seed = f"{user_id}_{character_id or 'none'}"
         conversation_id = f"conv_{_hash_short(seed)}"
     conversation_id = sanitize_id(conversation_id)
+    import logging
+    logging.getLogger('kokoromemo.request').info(
+        'resolve: conv=%s user=%s char=%s explicit=%s headers=%s',
+        conversation_id[:12], user_id, str(character_id)[:20] if character_id else 'None',
+        explicit_conv_id,
+        str({k: headers.get(k) for k in ['x-conversation-id','x-character-id','x-user-id'] if headers.get(k)})[:100]
+    )
+
+    # Cross-model conversation binding: find existing conv by character or user
+    if not explicit_conv_id:
+        import aiosqlite
+        try:
+            async with aiosqlite.connect(cfg.storage.sqlite.app_db) as db:
+                if character_id:
+                    cur = await db.execute(
+                        "SELECT conversation_id FROM conversations WHERE character_id=? AND user_id=? ORDER BY last_seen_at DESC LIMIT 1",
+                        (character_id, user_id))
+                    row = await cur.fetchone()
+                    if row and row[0]:
+                        conversation_id = row[0]
+                elif not character_id:
+                    # Fallback: bind by user_id only
+                    cur = await db.execute(
+                        "SELECT conversation_id FROM conversations WHERE user_id=? ORDER BY last_seen_at DESC LIMIT 1",
+                        (user_id,))
+                    row = await cur.fetchone()
+                    if row and row[0]:
+                        conversation_id = row[0]
+                        # Also get the character_id from the bound conversation
+                        cur2 = await db.execute(
+                            "SELECT character_id FROM conversations WHERE conversation_id=?",
+                            (conversation_id,))
+                        row2 = await cur2.fetchone()
+                        if row2 and row2[0]:
+                            character_id = row2[0]
+        except: pass
 
     # Once a conversation already exists in app.sqlite, its manually reassigned
     # character binding should win over any newly inferred request character.

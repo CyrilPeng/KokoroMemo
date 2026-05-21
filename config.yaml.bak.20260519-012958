@@ -1,0 +1,133 @@
+server:
+  host: 127.0.0.1
+  port: 14514
+  webui_port: 14515
+  log_level: INFO
+  allow_remote_access: false
+  admin_token: ''
+  admin_token_env: ADMIN_TOKEN
+  timezone: ''
+llm:
+  provider: openai_compatible
+  base_url: https://llm.alex045.xyz/v1
+  api_key: ''
+  api_key_env: LLM_API_KEY
+  model: chat-main
+  timeout_seconds: 120
+embedding:
+  enabled: false
+  provider: modelark
+  base_url: https://ai.gitee.com/v1
+  api_key: ''
+  api_key_env: MODELARK_API_KEY
+  model: Qwen3-Embedding-8B
+  dimension: 4096
+  timeout_seconds: 8
+  batch_size: 16
+  normalize: true
+rerank:
+  enabled: false
+  provider: modelark
+  base_url: https://ai.gitee.com/v1
+  api_key: ''
+  api_key_env: MODELARK_API_KEY
+  model: Qwen3-Reranker-8B
+  timeout_seconds: 8
+  candidate_top_k: 30
+  final_top_k: 8
+  max_documents_per_request: 20
+memory:
+  enabled: true
+  inject_enabled: true
+  extraction_enabled: true
+  max_recent_turns_for_query: 6
+  vector_top_k: 30
+  final_top_k: 6
+  max_injected_chars: 1500
+  scopes:
+    include_global: true
+    include_character: true
+    include_conversation: true
+  scoring:
+    vector_weight: 0.55
+    importance_weight: 0.2
+    recency_weight: 0.1
+    scope_weight: 0.1
+    confidence_weight: 0.05
+  extraction:
+    min_importance: 0.45
+    min_confidence: 0.55
+    extract_after_each_turn: false
+    fallback_rule_based: true
+    discarded_keep_limit: 200
+  judge:
+    enabled: false
+    provider: openai_compatible
+    base_url: ''
+    api_key: ''
+    api_key_env: MEMORY_JUDGE_API_KEY
+    model: ''
+    timeout_seconds: 30
+    temperature: 0.0
+    mode: model_only
+    user_rules: []
+    prompt: ''
+  hot_context:
+    enabled: true
+    inject_always: true
+    max_chars: 1200
+  state_updater:
+    enabled: false
+    update_after_each_turn: true
+    update_every_n_turns: 1
+    min_confidence: 0.55
+    auto_expire_resolved_items: true
+    provider: openai_compatible
+    base_url: ''
+    api_key: ''
+    api_key_env: STATE_FILLER_API_KEY
+    model: ''
+    timeout_seconds: 30
+    temperature: 0.0
+    prompt: ''
+  retrieval_gate:
+    enabled: true
+    mode: auto
+    vector_search_on_new_session: true
+    vector_search_every_n_turns: 6
+    vector_search_when_state_confidence_below: 0.65
+    trigger_keywords:
+    - 记得
+    - 还记得
+    - 上次
+    - 以前
+    - 之前
+    - 曾经
+    - 约定
+    - 我们说过
+    - 你答应过
+    - 那个人
+    - 那个地方
+    - 那个东西
+    - 叫什么
+    - 发生过什么
+    skip_when_latest_user_text_chars_below: 4
+    skip_when_state_is_sufficient: true
+storage:
+  root_dir: ./data
+  sqlite:
+    app_db: ./data/app.sqlite
+    memory_db: ./data/memory/memory.sqlite
+    journal_mode: WAL
+    busy_timeout_ms: 5000
+  lancedb:
+    path: ./data/vector_indexes/qwen3_embedding_4096/lancedb
+    table: memories
+    vector_column: vector
+    text_column: content
+    metric: cosine
+    create_fts_index: true
+compatibility:
+  expose_v1_models: true
+  expose_root_chat_completions: true
+  cors_enabled: true

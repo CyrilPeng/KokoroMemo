@@ -148,3 +148,4 @@ compatibility:
   expose_v1_models: true
   expose_root_chat_completions: true
   cors_enabled: true
+  exposed_models: []

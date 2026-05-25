@@ -76,15 +76,16 @@ class ChatPipeline:
     def __init__(self, services: ServiceRegistry | None = None) -> None:
         self.services = services or get_service_registry()
 
-    async def handle(self, request: Request):
-        prepared = await self.prepare(request)
+    async def handle(self, request: Request, raw_body: dict[str, Any] | None = None):
+        prepared = await self.prepare(request, raw_body=raw_body)
         await self.inject_state(prepared)
         await self.inject_memory(prepared)
         return await self.forward(prepared)
 
-    async def prepare(self, request: Request) -> ChatPipelineContext:
+    async def prepare(self, request: Request, raw_body: dict[str, Any] | None = None) -> ChatPipelineContext:
         cfg = get_config()
-        raw_body: dict[str, Any] = await request.json()
+        if raw_body is None:
+            raw_body = await request.json()
         ctx = await resolve_context(request, raw_body, cfg.storage.root_dir, cfg)
         await _persist_request(cfg, ctx, deepcopy(raw_body))
 
@@ -758,4 +759,3 @@ async def _stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext,
         ctx, cfg, services, original_messages, full_text, turn_id, turn_index,
         name=f"post_process_turn_stream:{ctx.request_id}",
     )
-

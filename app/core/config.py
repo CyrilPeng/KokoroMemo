@@ -232,6 +232,7 @@ class CompatibilityConfig:
     expose_v1_models: bool = True
     expose_root_chat_completions: bool = True
     cors_enabled: bool = True
+    exposed_models: list[str] = field(default_factory=list)
 
 
 @dataclass

@@ -144,6 +144,13 @@ storage:
     metric: "cosine"
     create_fts_index: true
 
+conversation:
+  # request: use x-conversation-id/metadata session IDs; api_key: group requests by inbound API key.
+  session_identity_mode: "request"
+  auto_new_session_gap_minutes: 0
+  detect_system_prompt_change: false
+  detect_message_count_reset: false
+
 compatibility:
   expose_v1_models: true
   expose_root_chat_completions: true

@@ -578,6 +578,7 @@ async def get_current_config(request: Request):
             "model": cfg.llm.model,
         },
         "conversation": {
+            "session_identity_mode": cfg.conversation.session_identity_mode,
             "auto_new_session_gap_minutes": cfg.conversation.auto_new_session_gap_minutes,
             "detect_system_prompt_change": cfg.conversation.detect_system_prompt_change,
             "detect_message_count_reset": cfg.conversation.detect_message_count_reset,

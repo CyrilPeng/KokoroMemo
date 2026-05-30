@@ -203,6 +203,8 @@ X-Conversation-Id: conversation_id
 
 没有这些 Header 时，KokoroMemo 会使用默认值或从请求内容中推断，但多角色/多会话场景建议显式填写。
 
+如果某些客户端在全代理模式下不能稳定传递同一会话 ID，可以在“设置 → 高级 → 会话自动检测”中把“会话识别模式”切换为“按 API Key 归并”。该模式会忽略客户端传来的 session/conversation ID，将同一个入站 API Key 的请求归为同一会话；这里的入站 API Key 是用户自定义的会话区分标识，不需要是真实模型密钥；KokoroMemo 会把它规范化后作为本地会话 ID 的一部分。
+
 ---
 
 ## 第一次使用建议

@@ -61,6 +61,32 @@ def _assistant_name(messages: list[dict]) -> str | None:
     return None
 
 
+def _conversation_identity_mode(cfg) -> str:
+    conv_config = getattr(cfg, "conversation", None) if cfg else None
+    mode = getattr(conv_config, "session_identity_mode", "request") if conv_config else "request"
+    return str(mode or "request").strip().lower()
+
+
+def _client_api_key(request: Request) -> str | None:
+    headers = request.headers
+    auth = headers.get("authorization") or ""
+    if auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+        if token:
+            return token
+    for header_name in ("x-api-key", "api-key", "x-session-key"):
+        value = headers.get(header_name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    query_key = request.query_params.get("key")
+    if isinstance(query_key, str) and query_key.strip():
+        return query_key.strip()
+    return None
+
+
+def _conversation_id_from_api_key(api_key: str) -> str:
+    return f"conv_key_{sanitize_id(api_key)}"
+
 async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None) -> RequestContext:
     """Extract user/character/conversation identifiers from request."""
     headers = request.headers
@@ -81,6 +107,12 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
     if not conversation_id:
         conversation_id = _metadata_value(meta, "conversation_id", "chat_id", "session_id", "chat_session_id", "thread_id")
     explicit_conv_id = bool(conversation_id)
+
+    if _conversation_identity_mode(cfg) == "api_key":
+        api_key = _client_api_key(request)
+        if api_key:
+            conversation_id = _conversation_id_from_api_key(api_key)
+            explicit_conv_id = True
 
     # 角色 ID
     character_id = _first_text(

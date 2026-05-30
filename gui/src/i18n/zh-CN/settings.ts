@@ -17,6 +17,9 @@ export default {
       scoring: '评分权重',
       retrievalGate: '检索门控',
       hotContext: '热上下文注入',
+      convIdentityMode: '会话识别模式',
+      convIdentityRequest: '使用请求会话 ID',
+      convIdentityApiKey: '按 API Key 归并',
       convAutoGap: '空闲新会话阈值（分钟）',
       convAutoGapHint: '0 表示不启用',
       convDetectPrompt: '系统提示词变更新建会话',
@@ -96,6 +99,7 @@ export default {
         },
         conversation: {
           intro: '当上游客户端没有显式传 conversation_id 或复用同一个 ID 时，可让后端启发式判断是否切换为新会话，避免把多个对话混在一起。',
+          identityMode: '请求模式继续使用 x-conversation-id / metadata 中的会话 ID。API Key 模式会在存在客户端 Key 时忽略这些 ID，将同一个入站 Key 的请求归并为同一会话。这个 Key 是用户自定义的会话区分标识，不需要是真实模型密钥。',
           gap: '相邻两次请求间隔（分钟）超过该值则视为新会话。0 表示不启用。常用值 30-120。',
           prompt: '系统提示词（system role）哈希变更则视为新会话。适合切换角色卡时强制隔离。',
           count: '客户端将消息列表重置（消息数显著减少）则视为新会话。对部分类客户端有效。',

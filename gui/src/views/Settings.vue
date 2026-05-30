@@ -68,6 +68,11 @@ const updateInfo = ref<{
   androidCommand: 'bash update.sh',
   error: '',
 })
+const conversationIdentityModes = computed(() => [
+  { label: t('settings.adv.convIdentityRequest'), value: 'request' },
+  { label: t('settings.adv.convIdentityApiKey'), value: 'api_key' },
+])
+
 const UPDATE_MANIFEST_URLS = [
   { name: 'GitHub', url: 'https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json' },
   { name: 'GitHub Proxy', url: 'https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json' },
@@ -391,6 +396,7 @@ const config = ref({
   state_filler_min_confidence: 0.55,
   state_filler_prompt: '',
   // 高级：会话自动检测
+  conv_identity_mode: 'request',
   conv_auto_gap: 0,
   conv_detect_prompt_change: false,
   conv_detect_count_reset: false,
@@ -648,6 +654,7 @@ const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform
   ['state_filler_temperature',           'memory.state_updater.temperature',                  0],
   ['state_filler_min_confidence',        'memory.state_updater.min_confidence',               0.55],
   ['state_filler_prompt',                'memory.state_updater.prompt',                       ''],
+  ['conv_identity_mode',                 'conversation.session_identity_mode',                 'request'],
   ['conv_auto_gap',                      'conversation.auto_new_session_gap_minutes',          0],
   ['conv_detect_prompt_change',          'conversation.detect_system_prompt_change',           false],
   ['conv_detect_count_reset',            'conversation.detect_message_count_reset',            false],
@@ -812,6 +819,7 @@ async function saveConfig(): Promise<boolean> {
     }
     payload.llm.api_key = config.value.llm_api_key
     payload.conversation = {
+      session_identity_mode: config.value.conv_identity_mode,
       auto_new_session_gap_minutes: config.value.conv_auto_gap,
       detect_system_prompt_change: config.value.conv_detect_prompt_change,
       detect_message_count_reset: config.value.conv_detect_count_reset,
@@ -1422,6 +1430,9 @@ onMounted(() => {
                   <NButton quaternary size="tiny" @click="helpModal = 'adv_conversation'"><span class="help-icon">?</span></NButton>
                 </div>
                 <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
+                  <NFormItem :label="$t('settings.adv.convIdentityMode')">
+                    <NSelect v-model:value="config.conv_identity_mode" :options="conversationIdentityModes" style="width: 260px;" />
+                  </NFormItem>
                   <NFormItem :label="$t('settings.adv.convAutoGap')">
                     <NInputNumber v-model:value="config.conv_auto_gap" :min="0" :max="1440" style="width: 160px;" />
                     <span style="color: #71717a; font-size: 12px; margin-left: 12px;">{{ $t('settings.adv.convAutoGapHint') }}</span>
@@ -1592,6 +1603,7 @@ onMounted(() => {
       </div>
       <div v-else-if="helpModal === 'adv_conversation'" class="help-content">
         <p>{{ $t('settings.adv.helpDetail.conversation.intro') }}</p>
+        <p><strong>{{ $t('settings.adv.convIdentityMode') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.identityMode') }}</p>
         <p><strong>{{ $t('settings.adv.convAutoGap') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.gap') }}</p>
         <p><strong>{{ $t('settings.adv.convDetectPrompt') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.prompt') }}</p>
         <p><strong>{{ $t('settings.adv.convDetectCount') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.count') }}</p>

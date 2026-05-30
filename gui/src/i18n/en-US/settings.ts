@@ -17,6 +17,9 @@ export default {
       scoring: 'Scoring weights',
       retrievalGate: 'Retrieval gate',
       hotContext: 'Hot context injection',
+      convIdentityMode: 'Session identity mode',
+      convIdentityRequest: 'Use request session ID',
+      convIdentityApiKey: 'Group by API key',
       convAutoGap: 'Idle minutes to treat as new session',
       convAutoGapHint: '0 = disabled',
       convDetectPrompt: 'Trigger new session on system prompt change',
@@ -96,6 +99,7 @@ export default {
         },
         conversation: {
           intro: 'When the upstream client does not pass an explicit conversation_id (or reuses the same one), the backend can heuristically detect new sessions to avoid mixing conversations.',
+          identityMode: 'Request mode keeps using x-conversation-id / metadata session IDs. API key mode ignores those IDs when a client key is present and groups all requests with the same inbound key into one conversation. This key is a user-defined conversation identifier and does not need to be a real model API key.',
           gap: 'If two consecutive requests are this many minutes apart, treat as a new session. 0 disables. Common values: 30-120.',
           prompt: 'A change in the system prompt hash is treated as a new session. Useful for forcing isolation when switching character cards.',
           count: 'A significant drop in message count is treated as a new session. Effective for some tavern-style clients.',

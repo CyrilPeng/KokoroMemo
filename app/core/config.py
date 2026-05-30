@@ -237,6 +237,7 @@ class CompatibilityConfig:
 
 @dataclass
 class ConversationConfig:
+    session_identity_mode: str = "request"  # "request" = use client session/conversation IDs, "api_key" = group by inbound API key
     auto_new_session_gap_minutes: int = 0
     detect_system_prompt_change: bool = False
     detect_message_count_reset: bool = False

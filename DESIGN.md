@@ -161,6 +161,14 @@ KokoroMemo 的核心设计决策是**分层记忆**，避免每轮都做昂贵�
 
 ---
 
+### 2.1 会话识别模式
+
+默认 `conversation.session_identity_mode = "request"`，会话 ID 仍按请求中的 `X-Conversation-Id` / `X-Chat-Id` / `X-Session-Id` 或 metadata 中的 `conversation_id`、`session_id` 等字段解析。
+
+当上游 AIRP 客户端无法稳定复用同一个 session/conversation ID 时，可以切换为 `conversation.session_identity_mode = "api_key"`。该模式会优先读取入站客户端 Key（`Authorization: Bearer ...`、`X-API-Key`、`API-Key`、`X-Session-Key` 或 Gemini 风格的 `?key=`），并将同一个 Key 规范化为 `conv_key_<api_key>` 形式的会话 ID。此时客户端传来的 session/conversation ID 不再参与会话归并。
+
+这里的入站 Key 是用户在客户端中自定义的会话区分标识，不要求是真实上游模型密钥，也不按敏感密钥处理；写入本地会话 ID 前仍会经过 `sanitize_id` 规范化，确保路径与数据库 ID 安全。如果请求没有携带可识别的 Key，则回退到默认 request 模式，避免无 Key 请求全部混入一个会话。
+
 ## 3. 请求处理流程
 
 ```text

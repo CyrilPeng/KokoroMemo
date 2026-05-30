@@ -2,11 +2,11 @@
 import { computed, h, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NButton, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NInputNumber, NModal,
+  NButton, NButtonGroup, NCard, NDataTable, NEmpty, NForm, NFormItem, NInput, NInputNumber, NModal,
   NPagination, NPopconfirm, NSelect, NSlider, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { apiFetch } from '../api'
+import { apiFetch, friendlyError } from '../api'
 import { saveJsonExport } from '../export'
 import type { MemoryCard } from '../types/memory'
 import HelpModal from '../components/HelpModal.vue'
@@ -43,6 +43,25 @@ const editForm = ref({
   importance: 0.5,
   confidence: 0.7,
   is_pinned: false,
+})
+
+const viewMode = ref<'table' | 'timeline'>(
+  (localStorage.getItem('kokoromemo.memories.viewMode') as 'table' | 'timeline') || 'table',
+)
+
+function setViewMode(mode: 'table' | 'timeline') {
+  viewMode.value = mode
+  localStorage.setItem('kokoromemo.memories.viewMode', mode)
+}
+
+const timelineGroups = computed(() => {
+  const groups: Record<string, any[]> = {}
+  for (const m of memories.value) {
+    const date = (m.created_at || '').slice(0, 10) || 'unknown'
+    if (!groups[date]) groups[date] = []
+    groups[date].push(m)
+  }
+  return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]))
 })
 
 const libraryOptions = computed(() => [
@@ -275,7 +294,7 @@ async function exportLibrary() {
     const savedPath = await saveJsonExport(`library_${selectedLibraryId.value}.json`, data)
     if (savedPath) message.success(t('memories.libraryExported'))
   } catch (e: any) {
-    message.error(e.message || t('common.exportFailed'))
+    message.error(friendlyError(e.message || '', 'memories.export'))
   }
 }
 
@@ -372,7 +391,7 @@ async function confirmSillyTavernImport() {
     }
     showExtractModal.value = true
   } catch (e: any) {
-    message.error(e.message || String(e))
+    message.error(friendlyError(e.message || String(e), 'memories.operation'))
   }
   sillyTavernImporting.value = false
 }
@@ -393,7 +412,7 @@ async function confirmExtract() {
     message.success(t('memories.stExtractDone', { extracted: data.extracted_pairs, total: data.total_pairs }))
     router.push('/inbox')
   } catch (e: any) {
-    message.error(e.message || String(e))
+    message.error(friendlyError(e.message || String(e), 'memories.operation'))
   }
 }
 
@@ -429,9 +448,76 @@ onMounted(fetchMemories)
         </NSpace>
       </NSpace>
 
+      <NSpace justify="end" style="margin-bottom: 12px;" align="center">
+        <NButtonGroup size="small">
+          <NButton :type="viewMode === 'table' ? 'primary' : 'default'" @click="setViewMode('table')">
+            {{ t('memories.viewMode.table') }}
+          </NButton>
+          <NButton :type="viewMode === 'timeline' ? 'primary' : 'default'" @click="setViewMode('timeline')">
+            {{ t('memories.viewMode.timeline') }}
+          </NButton>
+        </NButtonGroup>
+      </NSpace>
+
       <NSpin :show="loading">
-        <NDataTable v-if="memories.length > 0" :columns="columns" :data="memories" :bordered="false" size="small" :single-line="false" style="--n-td-color: #18181b; --n-th-color: #1f1f23;" />
-        <NEmpty v-else :description="$t('memories.noData')" style="padding: 60px 0;"><template #extra><p style="color: #52525b; font-size: 13px;">{{ $t('memories.noDataHint') }}</p></template></NEmpty>
+        <!-- Timeline view -->
+        <div v-if="viewMode === 'timeline'">
+          <div v-if="!memories.length && !loading" style="text-align: center; padding: 60px 0; color: #52525b;">
+            <NEmpty :description="t('memories.noData')" />
+          </div>
+          <div v-for="[date, groupMemories] in timelineGroups" :key="date" style="display: flex; gap: 16px; margin-bottom: 24px;">
+            <!-- Left: date label -->
+            <div style="min-width: 100px; text-align: right; padding-top: 4px;">
+              <div style="color: #e4e4e7; font-size: 14px; font-weight: 600;">{{ date }}</div>
+              <div style="color: #52525b; font-size: 12px;">{{ groupMemories.length }} {{ t('memories.viewMode.items') }}</div>
+            </div>
+            <!-- Middle: timeline axis -->
+            <div style="width: 2px; background: #27272a; position: relative;">
+              <div style="width: 10px; height: 10px; border-radius: 50%; background: #a78bfa; position: absolute; top: 6px; left: -4px;"></div>
+            </div>
+            <!-- Right: card list -->
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+              <NCard
+                v-for="card in groupMemories"
+                :key="card.card_id"
+                size="small"
+                style="background: #18181b; border: 1px solid #27272a;"
+              >
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                  <div style="flex: 1;">
+                    <NSpace size="small" style="margin-bottom: 6px;">
+                      <NTag size="tiny" :type="card.scope === 'global' ? 'success' : card.scope === 'character' ? 'warning' : 'info'" round>
+                        {{ t(`memories.scopeLabels.${card.scope}`) || card.scope }}
+                      </NTag>
+                      <NTag size="tiny" round>{{ typeLabel(card.memory_type ?? card.card_type) }}</NTag>
+                      <span style="color: #71717a; font-size: 12px;">
+                        {{ t('memories.viewMode.importance') }} {{ (card.importance * 100).toFixed(0) }}%
+                      </span>
+                      <span style="color: #52525b; font-size: 12px;">{{ card.created_at?.slice(11, 16) }}</span>
+                    </NSpace>
+                    <div style="color: #e4e4e7; font-size: 14px; line-height: 1.5;">{{ card.content }}</div>
+                  </div>
+                  <NSpace size="small">
+                    <NButton size="tiny" type="info" quaternary @click="openEditModal(card)">
+                      {{ t('common.edit') }}
+                    </NButton>
+                    <NPopconfirm :positive-text="t('common.confirm')" :negative-text="t('common.cancel')" @positive-click="deleteCard(card.card_id)">
+                      <template #trigger>
+                        <NButton size="tiny" type="error" quaternary>{{ t('common.delete') }}</NButton>
+                      </template>
+                      {{ t('common.confirm') }}{{ t('common.delete') }}?
+                    </NPopconfirm>
+                  </NSpace>
+                </div>
+              </NCard>
+            </div>
+          </div>
+        </div>
+        <!-- Table view -->
+        <template v-else>
+          <NDataTable v-if="memories.length > 0" :columns="columns" :data="memories" :bordered="false" size="small" :single-line="false" style="--n-td-color: #18181b; --n-th-color: #1f1f23;" />
+          <NEmpty v-else :description="$t('memories.noData')" style="padding: 60px 0;"><template #extra><p style="color: #52525b; font-size: 13px;">{{ $t('memories.noDataHint') }}</p></template></NEmpty>
+        </template>
       </NSpin>
 
       <div v-if="total > pageSize" style="display: flex; justify-content: center; margin-top: 16px;">

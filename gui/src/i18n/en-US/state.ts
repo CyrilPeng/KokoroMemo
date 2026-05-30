@@ -320,6 +320,10 @@ export default {
       done: 'Batch done, {count} rows affected',
       failed: 'Batch operation failed',
     },
+    toolbar: {
+      turns: '{n} turns',
+      lastMsg: 'last',
+    },
     history: {
       title: 'Change History',
       empty: 'No events yet. Load a state board then click refresh.',

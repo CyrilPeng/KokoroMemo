@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { apiFetch, getServerUrl, setServerUrl } from '../api'
 import HelpModal from '../components/HelpModal.vue'
 import PageHeader from '../components/PageHeader.vue'
+import ConfigHealthCard from '../components/ConfigHealthCard.vue'
 const router = useRouter()
 const { t } = useI18n()
 function typeLabel(type: string): string {
@@ -73,10 +74,23 @@ async function fetchStats() {
   }
 }
 
+const actionItems = ref<any[]>([])
+
+async function fetchActionItems() {
+  try {
+    const resp = await apiFetch('/admin/action-items', { timeoutMs: 5000 })
+    if (resp.ok) {
+      const data = await resp.json()
+      actionItems.value = data.items || []
+    }
+  } catch {}
+}
+
 onMounted(() => {
   window.setTimeout(() => {
     fetchHealth()
     fetchStats()
+    fetchActionItems()
   }, 0)
 })
 
@@ -84,6 +98,7 @@ function onWsEvent(e: any) {
   const data = e.detail
   if (data?.event === 'inbox_new' || data?.event === 'card_approved') {
     fetchStats()
+    fetchActionItems()
   }
 }
 onMounted(() => window.addEventListener('kokoromemo:event', onWsEvent))
@@ -96,6 +111,42 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 
     <NSpin :show="loading">
       <div v-if="health">
+        <ConfigHealthCard style="margin-bottom: 16px;" />
+
+        <!-- 待处理事项 -->
+        <NCard v-if="actionItems.length" style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+          <div style="color: #71717a; font-size: 13px; margin-bottom: 10px;">{{ t('dashboard.actionItems.title') }}</div>
+          <NSpace>
+            <div
+              v-for="item in actionItems"
+              :key="item.key"
+              style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: #27272a; border-radius: 8px; cursor: pointer;"
+              @click="router.push(item.target)"
+            >
+              <NTag :type="item.severity === 'error' ? 'error' : 'warning'" size="small" round>
+                {{ item.count }}
+              </NTag>
+              <span style="color: #e4e4e7; font-size: 14px;">{{ item.label }}</span>
+            </div>
+          </NSpace>
+        </NCard>
+
+        <!-- 快捷操作 -->
+        <NCard style="background: #18181b; border: 1px solid #27272a; margin-bottom: 16px;">
+          <div style="color: #71717a; font-size: 13px; margin-bottom: 10px;">{{ t('dashboard.quickActions.title') }}</div>
+          <NSpace>
+            <NButton size="small" @click="router.push('/settings')">
+              {{ t('dashboard.quickActions.testConnectivity') }}
+            </NButton>
+            <NButton size="small" @click="router.push('/memories')">
+              {{ t('dashboard.quickActions.exportMemories') }}
+            </NButton>
+            <NButton size="small" @click="router.push('/settings')">
+              {{ t('dashboard.quickActions.rebuildIndex') }}
+            </NButton>
+          </NSpace>
+        </NCard>
+
         <NGrid :cols="3" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
           <NGridItem span="3 m:1">
             <NCard style="background: #18181b; border: 1px solid #27272a;">

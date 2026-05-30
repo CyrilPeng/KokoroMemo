@@ -8,7 +8,7 @@ import {
   NMenu,
   useMessage,
 } from 'naive-ui'
-import { apiFetch, getServerUrl, setServerUrl, resolveBackendUrl } from '../api'
+import { apiFetch, friendlyError, getServerUrl, setServerUrl, resolveBackendUrl } from '../api'
 import { useI18n } from 'vue-i18n'
 import { setLanguage, getLanguage } from '../i18n'
 
@@ -29,6 +29,15 @@ async function getTauriAppVersion(): Promise<string> {
 const backendUrl = ref(getServerUrl())
 const actualServerPort = ref<number | null>(null)
 const loading = ref(true)
+const settingsMode = ref<'simple' | 'advanced'>(
+  (localStorage.getItem('kokoromemo.settingsMode') as any) || 'simple'
+)
+
+function setSettingsMode(mode: 'simple' | 'advanced') {
+  settingsMode.value = mode
+  localStorage.setItem('kokoromemo.settingsMode', mode)
+}
+
 const showPortModal = ref(false)
 const portDraft = ref<number | null>(null)
 
@@ -42,6 +51,9 @@ const fetchingEmbedding = ref(false)
 const fetchingRerank = ref(false)
 const fetchingJudge = ref(false)
 const fetchingStateFiller = ref(false)
+// 连通性测试
+const connectTestLoading = ref<Record<string, boolean>>({})
+const connectTestResult = ref<Record<string, { status: string; latency_ms: number; message: string }>>({})
 const updateChecking = ref(false)
 const logLoading = ref(false)
 const logInfo = ref({ path: '', content: '', message: '', status: '' })
@@ -351,6 +363,38 @@ async function fetchModelList(baseUrl: string, apiKey: string, target: 'llm' | '
     message.error(t('settings.fetchModelsFailed'))
   }
   flagRef.value = false
+}
+
+async function runConnectivityTest(target: string) {
+  connectTestLoading.value = { ...connectTestLoading.value, [target]: true }
+  connectTestResult.value = { ...connectTestResult.value, [target]: undefined as any }
+  try {
+    const resp = await apiFetch('/admin/connectivity-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target }),
+      timeoutMs: target === 'all' ? 60000 : 20000,
+    })
+    const data = await resp.json()
+    if (data.status === 'ok' && data.results) {
+      if (target === 'all') {
+        connectTestResult.value = { ...connectTestResult.value, ...data.results }
+        const allOk = Object.values(data.results as Record<string, any>).every((r: any) => r.status === 'ok' || r.status === 'skipped')
+        message[allOk ? 'success' : 'warning'](allOk ? t('settings.connectTestAllPass') : t('settings.connectTestPartial'))
+      } else {
+        const r = data.results[target]
+        connectTestResult.value = { ...connectTestResult.value, [target]: r }
+        if (r?.status === 'ok') message.success(t('settings.connectTestPass', { latency: r.latency_ms }))
+        else if (r?.status === 'skipped') message.info(t('settings.connectTestSkipped'))
+        else message.error(t('settings.connectTestFail', { error: r?.message || 'unknown' }))
+      }
+    } else {
+      message.error(friendlyError(data.message || 'test failed', 'settings.connectTest'))
+    }
+  } catch (e: any) {
+    message.error(t('settings.connectTestFail', { error: e?.message || String(e) }))
+  }
+  connectTestLoading.value = { ...connectTestLoading.value, [target]: false }
 }
 
 const config = ref({
@@ -717,7 +761,7 @@ async function applyOnboardingPreset() {
     localStorage.setItem('kokoromemo.onboardingPreset', preset.key)
     message.success(`已套用“${preset.name}”推荐配置`)
   } catch (error: any) {
-    message.error(error.message || '套用向导配置失败')
+    message.error(friendlyError(error.message || '套用向导配置失败', 'settings.save'))
   } finally {
     onboardingSaving.value = false
   }
@@ -908,7 +952,7 @@ async function cleanupDiscardedInbox() {
       message.error(data.message || t('common.failed'))
     }
   } catch (e: any) {
-    message.error(e.message || String(e))
+    message.error(friendlyError(e.message || String(e), 'settings.operation'))
   }
 }
 
@@ -1009,6 +1053,15 @@ onMounted(() => {
       <p style="color: #71717a; font-size: 14px;">{{ $t('settings.subtitle') }}</p>
     </div>
 
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 12px; align-items: center; gap: 8px;">
+      <span style="color: #71717a; font-size: 13px;">{{ t('settings.mode.simple') }}</span>
+      <NSwitch :value="settingsMode === 'advanced'" @update:value="setSettingsMode($event ? 'advanced' : 'simple')">
+        <template #checked>{{ t('settings.mode.advanced') }}</template>
+        <template #unchecked>{{ t('settings.mode.simple') }}</template>
+      </NSwitch>
+      <NTag v-if="settingsMode === 'advanced'" size="tiny" type="warning" round>{{ t('settings.mode.advancedTag') }}</NTag>
+    </div>
+
     <NTabs type="line" animated>
       <NTabPane name="guide" tab="快速向导">
         <NSpace vertical :size="16">
@@ -1057,6 +1110,11 @@ onMounted(() => {
       <!-- 标签页 1： 模型配置 -->
       <NTabPane name="model" :tab="$t('settings.tabModel')">
         <NSpace vertical :size="16">
+          <div style="display: flex; justify-content: flex-end;">
+            <NButton size="small" :loading="connectTestLoading['all']" @click="runConnectivityTest('all')">
+              {{ $t('settings.testAllConnections') }}
+            </NButton>
+          </div>
           <!-- LLM 配置 -->
           <NCard style="background: #18181b; border: 1px solid #27272a;">
             <template #header>
@@ -1086,6 +1144,17 @@ onMounted(() => {
                 </div>
               </NFormItem>
             </NForm>
+            <NSpace style="margin-top: 8px;" align="center">
+              <NButton size="small" :loading="connectTestLoading['llm']" @click="runConnectivityTest('llm')">
+                {{ $t('settings.testConnection') }}
+              </NButton>
+              <NTag v-if="connectTestResult['llm']?.status === 'ok'" type="success" size="small" round>
+                {{ connectTestResult['llm'].latency_ms }}ms
+              </NTag>
+              <NTag v-else-if="connectTestResult['llm']?.status === 'error'" type="error" size="small" round>
+                {{ String(connectTestResult['llm'].message || '').slice(0, 60) }}
+              </NTag>
+            </NSpace>
           </NCard>
 
           <!-- Embedding 配置 -->
@@ -1119,6 +1188,17 @@ onMounted(() => {
                 </NFormItem>
               </template>
             </NForm>
+            <NSpace style="margin-top: 8px;" align="center">
+              <NButton size="small" :loading="connectTestLoading['embedding']" @click="runConnectivityTest('embedding')">
+                {{ $t('settings.testConnection') }}
+              </NButton>
+              <NTag v-if="connectTestResult['embedding']?.status === 'ok'" type="success" size="small" round>
+                {{ connectTestResult['embedding'].latency_ms }}ms
+              </NTag>
+              <NTag v-else-if="connectTestResult['embedding']?.status === 'error'" type="error" size="small" round>
+                {{ String(connectTestResult['embedding'].message || '').slice(0, 60) }}
+              </NTag>
+            </NSpace>
           </NCard>
 
           <!-- Rerank 配置 -->
@@ -1152,6 +1232,17 @@ onMounted(() => {
                 </NFormItem>
               </template>
             </NForm>
+            <NSpace style="margin-top: 8px;" align="center">
+              <NButton size="small" :loading="connectTestLoading['rerank']" @click="runConnectivityTest('rerank')">
+                {{ $t('settings.testConnection') }}
+              </NButton>
+              <NTag v-if="connectTestResult['rerank']?.status === 'ok'" type="success" size="small" round>
+                {{ connectTestResult['rerank'].latency_ms }}ms
+              </NTag>
+              <NTag v-else-if="connectTestResult['rerank']?.status === 'error'" type="error" size="small" round>
+                {{ String(connectTestResult['rerank'].message || '').slice(0, 60) }}
+              </NTag>
+            </NSpace>
           </NCard>
         </NSpace>
       </NTabPane>
@@ -1212,6 +1303,17 @@ onMounted(() => {
                 <NFormItem :label="$t('settings.customPrompt')">
                   <NInput v-model:value="config.judge_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.judgePromptPlaceholder')" />
                 </NFormItem>
+                <NSpace style="margin-top: 8px;" align="center">
+                  <NButton size="small" :loading="connectTestLoading['judge']" @click="runConnectivityTest('judge')">
+                    {{ $t('settings.testConnection') }}
+                  </NButton>
+                  <NTag v-if="connectTestResult['judge']?.status === 'ok'" type="success" size="small" round>
+                    {{ connectTestResult['judge'].latency_ms }}ms
+                  </NTag>
+                  <NTag v-else-if="connectTestResult['judge']?.status === 'error'" type="error" size="small" round>
+                    {{ String(connectTestResult['judge'].message || '').slice(0, 60) }}
+                  </NTag>
+                </NSpace>
               </template>
             </NForm>
 
@@ -1313,6 +1415,17 @@ onMounted(() => {
                 <NFormItem :label="$t('settings.customPrompt')">
                   <NInput v-model:value="config.state_filler_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.stateFillerPromptPlaceholder')" />
                 </NFormItem>
+                <NSpace style="margin-top: 8px;" align="center">
+                  <NButton size="small" :loading="connectTestLoading['state_filler']" @click="runConnectivityTest('state_filler')">
+                    {{ $t('settings.testConnection') }}
+                  </NButton>
+                  <NTag v-if="connectTestResult['state_filler']?.status === 'ok'" type="success" size="small" round>
+                    {{ connectTestResult['state_filler'].latency_ms }}ms
+                  </NTag>
+                  <NTag v-else-if="connectTestResult['state_filler']?.status === 'error'" type="error" size="small" round>
+                    {{ String(connectTestResult['state_filler'].message || '').slice(0, 60) }}
+                  </NTag>
+                </NSpace>
               </template>
             </NForm>
           </NCard>
@@ -1392,7 +1505,7 @@ onMounted(() => {
         </NSpace>
       </NTabPane>
 
-      <NTabPane name="advanced" :tab="$t('settings.tabAdvanced')">
+      <NTabPane v-if="settingsMode === 'advanced'" name="advanced" :tab="$t('settings.tabAdvanced')">
         <NCard style="background: #18181b; border: 1px solid #27272a;">
           <template #header>
             <NSpace align="center">

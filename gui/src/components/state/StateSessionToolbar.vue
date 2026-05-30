@@ -7,7 +7,6 @@ import {
   NGrid,
   NGridItem,
   NIcon,
-  NInput,
   NPopconfirm,
   NSelect,
   NSpace,
@@ -58,7 +57,7 @@ const deleteDisabled = computed(() => !props.conversationId.trim())
       </NSpace>
     </template>
     <NGrid :cols="24" :x-gap="12" :y-gap="12">
-      <NGridItem :span="10">
+      <NGridItem :span="16">
         <NSelect
           :value="conversationId"
           filterable
@@ -70,15 +69,6 @@ const deleteDisabled = computed(() => !props.conversationId.trim())
         />
       </NGridItem>
       <NGridItem :span="8">
-        <NInput
-          :value="adminToken"
-          type="password"
-          show-password-on="click"
-          placeholder="Admin Token（可选）"
-          @update:value="emit('update:adminToken', $event)"
-        />
-      </NGridItem>
-      <NGridItem :span="6">
         <NSpace>
           <NButton type="primary" :loading="loading" @click="emit('load')">
             <template #icon><NIcon :component="RefreshOutline" /></template>

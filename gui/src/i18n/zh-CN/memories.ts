@@ -84,6 +84,12 @@ export default {
       world_state: '世界状态',
       summary: '摘要',
     },
+    viewMode: {
+      table: '表格',
+      timeline: '时间线',
+      items: '条',
+      importance: '重要性',
+    },
     help: {
       title: '记忆库帮助',
       intro: 'KokoroMemo 用"卡片"形式存储长期记忆。每张卡片有类型、作用域、重要性等元数据，可被多个会话召回。',

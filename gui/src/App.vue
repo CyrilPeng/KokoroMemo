@@ -3,6 +3,7 @@ import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import EventBridge from './components/EventBridge.vue'
+import CommandPalette from './components/CommandPalette.vue'
 import { apiFetch } from './api'
 import {
   NConfigProvider,
@@ -39,7 +40,15 @@ const { t } = useI18n()
 const serverVersion = ref('')
 const isMobile = ref(typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false)
 const mobileMenuOpen = ref(false)
+const showCommandPalette = ref(false)
 let mediaQuery: MediaQueryList | null = null
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault()
+    showCommandPalette.value = !showCommandPalette.value
+  }
+}
 
 function updateMobileFlag() {
   isMobile.value = Boolean(mediaQuery?.matches ?? window.innerWidth <= 768)
@@ -102,6 +111,8 @@ async function syncCloseToTraySetting() {
 }
 
 onMounted(syncCloseToTraySetting)
+onMounted(() => window.addEventListener('keydown', onGlobalKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
 
 async function openGitHub() {
   const url = 'https://github.com/CyrilPeng/KokoroMemo'
@@ -152,6 +163,7 @@ const themeOverrides: GlobalThemeOverrides = {
     <NMessageProvider>
       <NDialogProvider>
       <EventBridge />
+      <CommandPalette v-model:show="showCommandPalette" />
       <NLayout class="app-shell" :has-sider="!isMobile">
         <NLayoutSider
           v-if="!isMobile"

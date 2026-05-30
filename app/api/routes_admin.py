@@ -399,6 +399,258 @@ async def get_stats(request: Request):
     return result
 
 
+@router.get("/admin/config-status")
+async def get_config_status(request: Request):
+    """Return configuration completeness and readiness for dashboard."""
+    _require_admin(request)
+    from app.core.state import get_config
+
+    cfg = get_config()
+
+    def _check(base_url: str, api_key: str, model: str, *, enabled: bool = True) -> dict:
+        if not enabled:
+            return {"configured": False, "required": False, "reason": "disabled", "missing": []}
+        missing = []
+        if not base_url:
+            missing.append("base_url")
+        if not api_key:
+            missing.append("api_key")
+        if not model:
+            missing.append("model")
+        return {"configured": len(missing) == 0, "required": True, "missing": missing}
+
+    llm_s = _check(cfg.llm.base_url, cfg.llm.get_api_key(), cfg.llm.model)
+    emb_s = _check(
+        cfg.embedding.base_url,
+        cfg.embedding.get_api_key(),
+        cfg.embedding.model,
+        enabled=cfg.embedding.enabled,
+    )
+    rer_s = _check(
+        cfg.rerank.base_url,
+        cfg.rerank.get_api_key(),
+        cfg.rerank.model,
+        enabled=cfg.rerank.enabled,
+    )
+    rer_s["required"] = False
+
+    judge_s = _check(
+        cfg.memory.judge.base_url,
+        cfg.memory.judge.get_api_key(),
+        cfg.memory.judge.model,
+        enabled=cfg.memory.judge.enabled and cfg.memory.extraction_enabled,
+    )
+    judge_s["required"] = cfg.memory.extraction_enabled
+
+    sf_s = _check(
+        cfg.memory.state_updater.base_url,
+        cfg.memory.state_updater.get_api_key(),
+        cfg.memory.state_updater.model,
+        enabled=cfg.memory.state_updater.enabled,
+    )
+    sf_s["required"] = False
+
+    required_list = [s for s in [llm_s, emb_s, judge_s] if s["required"]]
+    ok_count = sum(1 for s in required_list if s["configured"])
+    score = int((ok_count / max(len(required_list), 1)) * 100)
+
+    return {
+        "status": "ok",
+        "health_score": score,
+        "components": {
+            "llm": {"name": "Chat LLM", "required": True, **llm_s},
+            "embedding": {"name": "Embedding", "required": cfg.embedding.enabled, **emb_s},
+            "rerank": {"name": "Rerank", "required": False, **rer_s},
+            "judge": {"name": "Memory Judge", "required": judge_s["required"], **judge_s},
+            "state_filler": {"name": "State Filler", "required": False, **sf_s},
+        },
+    }
+
+
+@router.get("/admin/action-items")
+async def get_action_items(request: Request):
+    """返回需要用户关注的待处理项计数。"""
+    _require_admin(request)
+    from app.core.state import get_config
+    import aiosqlite
+
+    cfg = get_config()
+    items = []
+
+    try:
+        async with aiosqlite.connect(cfg.storage.sqlite.memory_db) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM memory_inbox WHERE status='pending'")
+            row = await cursor.fetchone()
+            inbox_pending = row[0] if row else 0
+            if inbox_pending > 0:
+                items.append({
+                    "key": "inbox_pending",
+                    "label": "待审核记忆",
+                    "count": inbox_pending,
+                    "severity": "warning",
+                    "action": "navigate",
+                    "target": "/inbox",
+                })
+
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM memory_cards WHERE status='approved' AND vector_synced=0"
+            )
+            row = await cursor.fetchone()
+            sync_failed = row[0] if row else 0
+            if sync_failed > 0:
+                items.append({
+                    "key": "vector_sync_failed",
+                    "label": "向量同步失败",
+                    "count": sync_failed,
+                    "severity": "error",
+                    "action": "navigate",
+                    "target": "/settings",
+                })
+    except Exception:
+        pass
+
+    return {"status": "ok", "items": items}
+
+
+async def _chat_test(base_url: str, api_key: str, model: str, provider: str = "openai_compatible", timeout: int = 15) -> dict:
+    """通用 chat completion 测试（适用于 llm、judge、state_filler）。"""
+    import time
+
+    base_url = base_url.rstrip("/")
+    if not base_url or not api_key or not model:
+        return {"status": "skipped", "latency_ms": 0, "message": "未配置 base_url / api_key / model"}
+
+    is_gemini = provider == "gemini" or "googleapis.com" in base_url
+    is_anthropic = provider == "anthropic" or "anthropic.com" in base_url
+
+    if is_gemini:
+        url = f"{base_url}/models/{model}:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        body = {"contents": [{"parts": [{"text": "hi"}]}], "generationConfig": {"maxOutputTokens": 1}}
+    elif is_anthropic:
+        url = f"{base_url}/messages"
+        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
+        body = {"model": model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
+    else:
+        url = f"{base_url}/chat/completions"
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        body = {"model": model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
+
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=body, headers=headers)
+            latency = int((time.monotonic() - t0) * 1000)
+            if resp.status_code == 200:
+                return {"status": "ok", "latency_ms": latency, "message": ""}
+            return {"status": "error", "latency_ms": latency, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+    except httpx.TimeoutException:
+        latency = int((time.monotonic() - t0) * 1000)
+        return {"status": "error", "latency_ms": latency, "message": "连接超时，请检查 Base URL 和网络"}
+    except Exception as e:
+        latency = int((time.monotonic() - t0) * 1000)
+        return {"status": "error", "latency_ms": latency, "message": str(e)[:200]}
+
+
+async def _embedding_test(base_url: str, api_key: str, model: str, timeout: int = 10) -> dict:
+    """Embedding 模型测试。"""
+    import time
+
+    base_url = base_url.rstrip("/")
+    if not base_url or not api_key or not model:
+        return {"status": "skipped", "latency_ms": 0, "message": "未配置 base_url / api_key / model"}
+
+    url = f"{base_url}/embeddings"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    body = {"model": model, "input": "test"}
+
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=body, headers=headers)
+            latency = int((time.monotonic() - t0) * 1000)
+            if resp.status_code == 200:
+                return {"status": "ok", "latency_ms": latency, "message": ""}
+            return {"status": "error", "latency_ms": latency, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+    except httpx.TimeoutException:
+        latency = int((time.monotonic() - t0) * 1000)
+        return {"status": "error", "latency_ms": latency, "message": "连接超时"}
+    except Exception as e:
+        latency = int((time.monotonic() - t0) * 1000)
+        return {"status": "error", "latency_ms": latency, "message": str(e)[:200]}
+
+
+async def _rerank_test(base_url: str, api_key: str, model: str, timeout: int = 10) -> dict:
+    """Rerank 模型测试。"""
+    import time
+
+    base_url = base_url.rstrip("/")
+    if not base_url or not api_key or not model:
+        return {"status": "skipped", "latency_ms": 0, "message": "未配置 base_url / api_key / model"}
+
+    url = f"{base_url}/rerank"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    body = {"model": model, "query": "test", "documents": ["a", "b"]}
+
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=body, headers=headers)
+            latency = int((time.monotonic() - t0) * 1000)
+            if resp.status_code == 200:
+                return {"status": "ok", "latency_ms": latency, "message": ""}
+            return {"status": "error", "latency_ms": latency, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+    except httpx.TimeoutException:
+        latency = int((time.monotonic() - t0) * 1000)
+        return {"status": "error", "latency_ms": latency, "message": "连接超时"}
+    except Exception as e:
+        latency = int((time.monotonic() - t0) * 1000)
+        return {"status": "error", "latency_ms": latency, "message": str(e)[:200]}
+
+
+async def _test_one_provider(cfg, target: str) -> dict:
+    """对单个 provider 发起最小请求并返回结果。"""
+    if target == "llm":
+        return await _chat_test(cfg.llm.base_url, cfg.llm.get_api_key(), cfg.llm.model, cfg.llm.provider, cfg.llm.timeout_seconds)
+    elif target == "embedding":
+        if not cfg.embedding.enabled:
+            return {"status": "skipped", "latency_ms": 0, "message": "Embedding 已禁用"}
+        return await _embedding_test(cfg.embedding.base_url, cfg.embedding.get_api_key(), cfg.embedding.model, cfg.embedding.timeout_seconds)
+    elif target == "rerank":
+        if not cfg.rerank.enabled:
+            return {"status": "skipped", "latency_ms": 0, "message": "Rerank 已禁用"}
+        return await _rerank_test(cfg.rerank.base_url, cfg.rerank.get_api_key(), cfg.rerank.model, cfg.rerank.timeout_seconds)
+    elif target == "judge":
+        if not cfg.memory.judge.enabled:
+            return {"status": "skipped", "latency_ms": 0, "message": "记忆判断未启用"}
+        return await _chat_test(cfg.memory.judge.base_url, cfg.memory.judge.get_api_key(), cfg.memory.judge.model, cfg.memory.judge.provider, cfg.memory.judge.timeout_seconds)
+    elif target == "state_filler":
+        if not cfg.memory.state_updater.enabled:
+            return {"status": "skipped", "latency_ms": 0, "message": "状态板填充未启用"}
+        return await _chat_test(
+            cfg.memory.state_updater.base_url, cfg.memory.state_updater.get_api_key(),
+            cfg.memory.state_updater.model, cfg.memory.state_updater.provider, cfg.memory.state_updater.timeout_seconds,
+        )
+    else:
+        return {"status": "error", "latency_ms": 0, "message": f"未知 target: {target}"}
+
+
+@router.post("/admin/connectivity-test")
+async def test_connectivity(data: dict = Body(...), request: Request = None):
+    """测试指定模型 provider 的真实连通性。"""
+    _require_admin(request)
+    from app.core.state import get_config
+
+    cfg = get_config()
+    target = data.get("target", "all")
+    targets = ["llm", "embedding", "rerank", "judge", "state_filler"] if target == "all" else [target]
+
+    results = {}
+    for t in targets:
+        results[t] = await _test_one_provider(cfg, t)
+    return {"status": "ok", "results": results}
+
+
 async def _fetch_models_from_remote(base_url: str, api_key: str, provider: str | None = None):
     """Fetch available models from a remote models endpoint."""
     if not api_key:
@@ -2355,6 +2607,38 @@ async def cleanup_discarded_inbox(data: dict = Body(default=None)):
         return {"status": "error", "message": "keep_limit 不能为负数"}
     removed = await trim_discarded_inbox(cfg.storage.sqlite.memory_db, keep_limit)
     return {"status": "ok", "removed": removed, "keep_limit": keep_limit}
+
+
+@router.post("/admin/inbox/batch")
+async def batch_inbox_action(request: Request, data: dict = Body(...)):
+    """批量批准或拒绝收件箱项。"""
+    _require_admin(request)
+
+    action = data.get("action")  # "approve" or "reject"
+    inbox_ids = data.get("inbox_ids") or []
+    note = data.get("note") or ""
+
+    if action not in {"approve", "reject"}:
+        raise HTTPException(status_code=400, detail="action must be 'approve' or 'reject'")
+    if not isinstance(inbox_ids, list) or not inbox_ids:
+        raise HTTPException(status_code=400, detail="inbox_ids required")
+
+    ok = 0
+    failed = 0
+    for iid in inbox_ids:
+        try:
+            if action == "approve":
+                result = await approve_inbox_item(iid)
+            else:
+                result = await reject_inbox_item(iid, {"note": note})
+            if isinstance(result, dict) and result.get("status") == "ok":
+                ok += 1
+            else:
+                failed += 1
+        except Exception:
+            failed += 1
+
+    return {"status": "ok" if failed == 0 else "partial", "ok": ok, "failed": failed, "action": action}
 
 
 @router.get("/admin/conversations/{conversation_id}/export")

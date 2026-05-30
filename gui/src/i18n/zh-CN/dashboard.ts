@@ -24,6 +24,26 @@ export default {
     skipRate: '跳过率:',
     dailyGrowth7d: '7 日新增',
     cardsByType: '按类型分布',
+    configStatus: {
+      title: '配置健康度',
+      configured: '已配置',
+      disabled: '已禁用',
+      optionalNotSet: '可选，未配置',
+      missing: '缺少: {missing}',
+      required: '必需',
+      optional: '可选',
+      goToSettings: '前往设置完成配置',
+      allReady: '系统就绪',
+    },
+    actionItems: {
+      title: '待处理',
+    },
+    quickActions: {
+      title: '快捷操作',
+      testConnectivity: '测试连通性',
+      exportMemories: '导出记忆库',
+      rebuildIndex: '重建向量索引',
+    },
     help: {
       title: '仪表盘帮助',
       intro: '展示 KokoroMemo 服务运行状态和记忆系统的关键指标。',

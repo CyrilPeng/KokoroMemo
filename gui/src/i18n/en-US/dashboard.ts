@@ -24,6 +24,26 @@ export default {
     skipRate: 'Skip rate:',
     dailyGrowth7d: '7-Day Growth',
     cardsByType: 'Cards by Type',
+    configStatus: {
+      title: 'Configuration Health',
+      configured: 'Configured',
+      disabled: 'Disabled',
+      optionalNotSet: 'Optional, not configured',
+      missing: 'Missing: {missing}',
+      required: 'Required',
+      optional: 'Optional',
+      goToSettings: 'Go to Settings',
+      allReady: 'All ready',
+    },
+    actionItems: {
+      title: 'Action Items',
+    },
+    quickActions: {
+      title: 'Quick Actions',
+      testConnectivity: 'Test Connectivity',
+      exportMemories: 'Export Memories',
+      rebuildIndex: 'Rebuild Vector Index',
+    },
     help: {
       title: 'Dashboard Help',
       intro: 'Shows KokoroMemo service status and key metrics for the memory system.',

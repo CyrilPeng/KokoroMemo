@@ -35,6 +35,10 @@ export default {
     none: 'None',
     tagline: 'Local Long-term Memory',
   },
+  errors: {
+    generic: 'Something went wrong. Please try again later.',
+    friendlyApplied: 'Displayed as friendly message',
+  },
   events: {
     inboxNew: 'New candidate memory pending: {content}',
     cardApproved: 'Memory auto-approved: {content}',
@@ -47,5 +51,23 @@ export default {
     state: 'Session State',
     characters: 'Characters',
     settings: 'Settings',
+  },
+  command: {
+    placeholder: 'Type a command or search...',
+    noResults: 'No results',
+    category: {
+      pages: 'Pages',
+      actions: 'Actions',
+    },
+    actions: {
+      testConnectivity: 'Test Connectivity',
+      rebuildIndex: 'Rebuild Vector Index',
+      exportMemories: 'Export Memories',
+    },
+    footer: {
+      navigate: 'navigate',
+      execute: 'execute',
+      close: 'close',
+    },
   },
 }

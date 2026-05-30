@@ -187,3 +187,67 @@ export async function createWebSocket(onMessage: (data: any) => void): Promise<W
   }
   return ws
 }
+
+/**
+ * 将原始错误信息映射为用户友好的提示文本。
+ * @param raw 原始错误字符串（如 "Failed to fetch"、"HTTP 401: Invalid API key"）
+ * @param context 触发上下文（如 "inbox.approve"、"settings.testConnectivity"），用于定制提示
+ * @returns 友好的错误提示文本
+ */
+export function friendlyError(raw: string, _context?: string): string {
+  if (!raw) return '未知错误'
+
+  const lower = raw.toLowerCase()
+
+  // 网络层错误
+  if (lower.includes('failed to fetch') || lower.includes('networkerror')) {
+    return '无法连接到后端服务，请确认后端已启动并且 URL 正确。'
+  }
+  if (lower.includes('aborted') || lower.includes('timeout') || lower.includes('timed out')) {
+    return '请求超时，可能是网络不稳定或服务响应过慢，请稍后再试。'
+  }
+
+  // HTTP 错误码
+  if (/http 401|unauthorized|invalid api key/i.test(raw)) {
+    return 'API Key 无效或已过期，请在设置中检查对应的 API Key。'
+  }
+  if (/http 403|forbidden/i.test(raw)) {
+    return '访问被拒绝，可能需要配置 Admin Token 或允许远程访问。'
+  }
+  if (/http 404|not found/i.test(raw)) {
+    return '请求的资源不存在，请检查 URL 或配置。'
+  }
+  if (/http 429|too many requests|rate limit/i.test(raw)) {
+    return '请求过于频繁，已被限流，请稍后再试。'
+  }
+  if (/http 500|internal server error/i.test(raw)) {
+    return '服务内部错误，请查看后端日志或在设置页检查连通性。'
+  }
+  if (/http 502|503|504|bad gateway|service unavailable|gateway timeout/i.test(raw)) {
+    return '上游服务暂时不可用，可能是模型服务商的问题，请稍后再试。'
+  }
+
+  // LLM 相关错误
+  if (/context.?length|max.?tokens|token.?limit/i.test(raw)) {
+    return '请求内容过长，超出模型上下文窗口，可减少历史消息或调高 max_tokens。'
+  }
+  if (/model.?not.?found|model.?does.?not.?exist|invalid.?model/i.test(raw)) {
+    return '模型名称不存在，请在设置中确认当前使用的模型名。'
+  }
+
+  // Embedding/Rerank 相关
+  if (/dimension.?mismatch|embedding.?size/i.test(raw)) {
+    return '向量维度不匹配，可能切换了 Embedding 模型但未重建索引，请在设置中重建向量索引。'
+  }
+
+  // 数据库错误
+  if (/disk.?full|no space left/i.test(raw)) {
+    return '磁盘空间不足，请清理磁盘后重试。'
+  }
+  if (/database.?locked|busy.?timeout/i.test(raw)) {
+    return '数据库被锁定，可能是并发操作冲突，请稍后再试。'
+  }
+
+  // 兜底：返回原始信息（截断到 120 字符）
+  return raw.length > 120 ? raw.slice(0, 120) + '...' : raw
+}

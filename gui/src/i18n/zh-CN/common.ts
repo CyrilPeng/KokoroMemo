@@ -35,6 +35,10 @@ export default {
     none: '无',
     tagline: '本地长期记忆',
   },
+  errors: {
+    generic: '发生了一些错误，请稍后再试。',
+    friendlyApplied: '已转换为友好提示',
+  },
   events: {
     inboxNew: '新候选记忆待审核：{content}',
     cardApproved: '已自动批准记忆：{content}',
@@ -47,5 +51,23 @@ export default {
     state: '会话状态板',
     characters: '角色',
     settings: '设置',
+  },
+  command: {
+    placeholder: '输入命令或搜索...',
+    noResults: '无匹配结果',
+    category: {
+      pages: '页面',
+      actions: '操作',
+    },
+    actions: {
+      testConnectivity: '测试连通性',
+      rebuildIndex: '重建向量索引',
+      exportMemories: '导出记忆库',
+    },
+    footer: {
+      navigate: '导航',
+      execute: '执行',
+      close: '关闭',
+    },
   },
 }

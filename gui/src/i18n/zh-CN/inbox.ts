@@ -45,6 +45,16 @@ export default {
       restored: '已恢复为待审核',
       deleted: '已删除',
       loadFailed: '加载失败：{error}',
+      batchApproved: '已批量批准 {count} 项',
+      batchRejected: '已批量拒绝 {count} 项',
+      batchPartial: '部分成功: {ok} 成功，{failed} 失败',
+      noHighConfidence: '无符合条件的高置信候选',
+    },
+    batch: {
+      approveSelected: '批准选中项 ({n})',
+      rejectSelected: '拒绝选中项 ({n})',
+      approveHighConfidence: '批准全部高置信候选',
+      shortcuts: '快捷键: A 批准 · R 拒绝',
     },
     help: {
       title: '待审核帮助',

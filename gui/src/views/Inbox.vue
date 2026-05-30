@@ -5,7 +5,7 @@ import {
   NPagination, NPopconfirm, NSelect, NSpace, NSpin, NTag, useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { apiFetch } from '../api'
+import { apiFetch, friendlyError } from '../api'
 import type { InboxItem } from '../types/memory'
 import HelpModal from '../components/HelpModal.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -23,6 +23,8 @@ const rejectingId = ref('')
 const rejectNote = ref('')
 const helpModal = ref(false)
 const processingIds = ref<Set<string>>(new Set())
+const checkedRowKeys = ref<string[]>([])
+const batchLoading = ref(false)
 
 const inboxHelpSections = computed(() => [
   { title: t('inbox.help.intro'), body: '' },
@@ -88,6 +90,7 @@ function riskTag(risk: string) {
 
 const columns = computed(() => {
   const base: any[] = [
+    { type: 'selection' },
     {
       title: t('inbox.column.content'), key: 'content', minWidth: 280, ellipsis: { tooltip: true },
       render: (row: InboxItem) => parsePayload(row).content || '—',
@@ -184,7 +187,7 @@ async function approveItem(inboxId: string) {
       message.error(data.message || t('common.failed'))
     }
   } catch (e: any) {
-    message.error(e.message || String(e))
+    message.error(friendlyError(e.message || String(e), 'inbox.approve'))
   } finally {
     setProcessing(inboxId, false)
   }
@@ -197,6 +200,11 @@ function openRejectModal(inboxId: string) {
 }
 
 async function confirmReject() {
+  if (rejectingId.value === '__batch__') {
+    showRejectModal.value = false
+    await batchAction('reject', rejectNote.value)
+    return
+  }
   if (!rejectingId.value || isProcessing(rejectingId.value)) return
   setProcessing(rejectingId.value, true)
   try {
@@ -214,7 +222,7 @@ async function confirmReject() {
       message.error(data.message || t('common.failed'))
     }
   } catch (e: any) {
-    message.error(e.message || String(e))
+    message.error(friendlyError(e.message || String(e), 'inbox.reject'))
   } finally {
     if (rejectingId.value) setProcessing(rejectingId.value, false)
   }
@@ -233,7 +241,7 @@ async function restoreItem(inboxId: string) {
       message.error(data.message || t('common.failed'))
     }
   } catch (e: any) {
-    message.error(e.message || String(e))
+    message.error(friendlyError(e.message || String(e), 'inbox.restore'))
   } finally {
     setProcessing(inboxId, false)
   }
@@ -252,19 +260,95 @@ async function deleteItem(inboxId: string) {
       message.error(data.message || t('common.failed'))
     }
   } catch (e: any) {
-    message.error(e.message || String(e))
+    message.error(friendlyError(e.message || String(e), 'inbox.delete'))
   } finally {
     setProcessing(inboxId, false)
+  }
+}
+
+async function batchAction(action: 'approve' | 'reject', note = '') {
+  if (!checkedRowKeys.value.length) return
+  batchLoading.value = true
+  try {
+    const resp = await apiFetch('/admin/inbox/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, inbox_ids: checkedRowKeys.value, note }),
+    })
+    const data = await resp.json()
+    if (data.status === 'ok') {
+      message.success(action === 'approve'
+        ? t('inbox.messages.batchApproved', { count: data.ok })
+        : t('inbox.messages.batchRejected', { count: data.ok }))
+      checkedRowKeys.value = []
+      await fetchInbox()
+    } else if (data.status === 'partial') {
+      message.warning(t('inbox.messages.batchPartial', { ok: data.ok, failed: data.failed }))
+      checkedRowKeys.value = []
+      await fetchInbox()
+    } else {
+      message.error(data.message || t('common.failed'))
+    }
+  } catch (e: any) {
+    message.error(friendlyError(e.message || String(e), 'inbox.cleanup'))
+  }
+  batchLoading.value = false
+}
+
+async function approveHighConfidence() {
+  const highConfIds = items.value
+    .filter((item: InboxItem) => {
+      if (item.status !== 'pending') return false
+      const p = parsePayload(item)
+      return (p.importance || 0) >= 0.7 && (p.confidence || 0) >= 0.8
+    })
+    .map((item: InboxItem) => item.inbox_id)
+  if (!highConfIds.length) {
+    message.info(t('inbox.messages.noHighConfidence'))
+    return
+  }
+  batchLoading.value = true
+  try {
+    const resp = await apiFetch('/admin/inbox/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approve', inbox_ids: highConfIds }),
+    })
+    const data = await resp.json()
+    if (data.status === 'ok' || data.status === 'partial') {
+      message.success(t('inbox.messages.batchApproved', { count: data.ok }))
+      await fetchInbox()
+    } else {
+      message.error(data.message || t('common.failed'))
+    }
+  } catch (e: any) {
+    message.error(friendlyError(e.message || String(e), 'inbox.permanentDelete'))
+  }
+  batchLoading.value = false
+}
+
+function onKeydown(e: KeyboardEvent) {
+  const ae = document.activeElement as HTMLElement | null
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+  if (!checkedRowKeys.value.length) return
+  if (e.key === 'a' || e.key === 'A') { e.preventDefault(); batchAction('approve') }
+  if (e.key === 'r' || e.key === 'R') {
+    e.preventDefault()
+    if (rejectNote.value) { batchAction('reject', rejectNote.value) }
+    else { batchAction('reject') }
   }
 }
 
 function handleStatusChange(val: string) {
   statusFilter.value = val
   page.value = 1
+  checkedRowKeys.value = []
   fetchInbox()
 }
 
 onMounted(fetchInbox)
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 function onWsEvent(e: any) {
   const data = e.detail
@@ -289,9 +373,49 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
         <NButton size="small" @click="fetchInbox">{{ $t('common.load') }}</NButton>
       </NSpace>
 
+      <NCard v-if="statusFilter === 'pending'" style="background: #18181b; border: 1px solid #27272a; margin-bottom: 12px;">
+        <NSpace align="center">
+          <NButton
+            size="small"
+            type="primary"
+            :loading="batchLoading"
+            :disabled="!checkedRowKeys.length"
+            @click="batchAction('approve')"
+          >
+            {{ $t('inbox.batch.approveSelected', { n: checkedRowKeys.length }) }}
+          </NButton>
+          <NButton
+            size="small"
+            type="error"
+            :loading="batchLoading"
+            :disabled="!checkedRowKeys.length"
+            @click="showRejectModal = true; rejectingId = '__batch__'"
+          >
+            {{ $t('inbox.batch.rejectSelected', { n: checkedRowKeys.length }) }}
+          </NButton>
+          <NButton
+            size="small"
+            :loading="batchLoading"
+            @click="approveHighConfidence"
+          >
+            {{ $t('inbox.batch.approveHighConfidence') }}
+          </NButton>
+          <span style="color: #71717a; font-size: 12px; margin-left: 8px;">
+            {{ $t('inbox.batch.shortcuts') }}
+          </span>
+        </NSpace>
+      </NCard>
+
       <NSpin :show="loading">
         <NEmpty v-if="!items.length && !loading" :description="$t('inbox.empty')" />
-        <NDataTable v-else :columns="columns" :data="items" :pagination="false" />
+        <NDataTable
+          v-else
+          :columns="columns"
+          :data="items"
+          :pagination="false"
+          :row-key="(row: any) => row.inbox_id"
+          v-model:checked-row-keys="checkedRowKeys"
+        />
       </NSpin>
 
       <div v-if="total > pageSize" style="display: flex; justify-content: center; margin-top: 16px;">
@@ -308,7 +432,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
       <template #footer>
         <NSpace justify="end">
           <NButton @click="showRejectModal = false">{{ $t('common.cancel') }}</NButton>
-          <NButton type="error" :loading="isProcessing(rejectingId)" :disabled="isProcessing(rejectingId)" @click="confirmReject">{{ $t('inbox.actions.reject') }}</NButton>
+          <NButton type="error" :loading="rejectingId === '__batch__' ? batchLoading : isProcessing(rejectingId)" :disabled="rejectingId === '__batch__' ? batchLoading : isProcessing(rejectingId)" @click="confirmReject">{{ $t('inbox.actions.reject') }}</NButton>
         </NSpace>
       </template>
     </NModal>

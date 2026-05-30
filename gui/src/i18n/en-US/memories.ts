@@ -84,6 +84,12 @@ export default {
       world_state: 'World State',
       summary: 'Summary',
     },
+    viewMode: {
+      table: 'Table',
+      timeline: 'Timeline',
+      items: 'items',
+      importance: 'Importance',
+    },
     help: {
       title: 'Memories Help',
       intro: 'KokoroMemo stores long-term memory as "cards". Each card has type, scope, importance and other metadata, and can be recalled by multiple conversations.',

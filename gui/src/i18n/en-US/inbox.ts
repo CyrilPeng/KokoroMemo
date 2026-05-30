@@ -45,6 +45,16 @@ export default {
       restored: 'Restored to pending',
       deleted: 'Deleted',
       loadFailed: 'Load failed: {error}',
+      batchApproved: 'Batch approved {count} items',
+      batchRejected: 'Batch rejected {count} items',
+      batchPartial: 'Partial success: {ok} succeeded, {failed} failed',
+      noHighConfidence: 'No high-confidence candidates found',
+    },
+    batch: {
+      approveSelected: 'Approve selected ({n})',
+      rejectSelected: 'Reject selected ({n})',
+      approveHighConfidence: 'Approve all high-confidence',
+      shortcuts: 'Shortcuts: A approve · R reject',
     },
     help: {
       title: 'Inbox Help',

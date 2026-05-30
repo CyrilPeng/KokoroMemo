@@ -18,7 +18,7 @@ import {
   useMessage,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { apiFetch } from '../api'
+import { apiFetch, friendlyError } from '../api'
 import { saveJsonExport } from '../export'
 import HelpModal from '../components/HelpModal.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -140,10 +140,17 @@ const retrievalProfileOptions = computed(() => retrievalProfiles.value.map((item
   label: item.name,
   value: item.profile_id,
 })))
-const conversationOptions = computed(() => conversations.value.map((item) => ({
-  label: `${conversationDisplayName(item)} · ${item.character_display_name || item.character_id || '未知角色'} · ${item.last_seen_at || item.conversation_id}`,
-  value: item.conversation_id,
-})))
+const conversationOptions = computed(() => conversations.value.map((item) => {
+  const name = conversationDisplayName(item)
+  const char = item.character_display_name || item.character_id || '-'
+  const turns = item.turn_count || 0
+  const lastMsg = item.last_user_message?.slice(0, 40) || ''
+  const turnsLabel = t('state.toolbar.turns', { n: turns })
+  const label = turns > 0
+    ? `[${char}] ${name}  ·  ${turnsLabel}${lastMsg ? `  ·  ${t('state.toolbar.lastMsg')}: ${lastMsg}` : ''}`
+    : `[${char}] ${name}`
+  return { label, value: item.conversation_id }
+}))
 const selectedConversation = computed(() => conversations.value.find((item) => item.conversation_id === conversationId.value.trim()) || null)
 const activeProfile = computed(() => profiles.value.find((item) => item.profile_id === config.value?.profile_id) || null)
 const activeTemplate = computed(() => tableTemplates.value.find((item) => item.template_id === config.value?.table_template_id) || null)
@@ -255,7 +262,7 @@ async function fetchBoard() {
     await fetchMounts()
     await fetchRetrievalTraces()
   } catch (error: any) {
-    message.error(error.message || '加载失败')
+    message.error(friendlyError(error.message || '', 'state.loadBoard'))
   } finally {
     loading.value = false
   }
@@ -281,7 +288,7 @@ async function fetchRetrievalTraces() {
       await fetchRetrievalTraceDetail(retrievalTraces.value[0].trace_id)
     }
   } catch (error: any) {
-    message.error(error.message || '加载检索解释失败')
+    message.error(friendlyError(error.message || '', 'state.loadTraces'))
   } finally {
     retrievalLoading.value = false
   }
@@ -298,7 +305,7 @@ async function fetchRetrievalTraceDetail(traceId: string) {
     if (!resp.ok) throw new Error(data.detail || data.message || '加载检索详情失败')
     retrievalTraceDetail.value = data
   } catch (error: any) {
-    message.error(error.message || '加载检索详情失败')
+    message.error(friendlyError(error.message || '', 'state.loadTraceDetail'))
   } finally {
     retrievalLoading.value = false
   }
@@ -374,7 +381,7 @@ async function saveMounts() {
     if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存挂载失败')
     await fetchMounts()
   } catch (error: any) {
-    message.error(error.message || '保存挂载失败')
+    message.error(friendlyError(error.message || '', 'state.saveMounts'))
   } finally {
     saving.value = false
   }
@@ -674,7 +681,7 @@ async function saveEditTab() {
     message.success('标签页已更新')
     await applyTemplateUpdate(data.template)
   } catch (error: any) {
-    message.error(error.message || '保存标签页失败')
+    message.error(friendlyError(error.message || '', 'state.saveTab'))
   } finally {
     saving.value = false
   }
@@ -697,7 +704,7 @@ async function deleteTab(table: StateTable) {
     message.success('标签页已删除')
     await applyTemplateUpdate(data.template)
   } catch (error: any) {
-    message.error(error.message || '删除标签页失败')
+    message.error(friendlyError(error.message || '', 'state.deleteTab'))
   } finally {
     saving.value = false
   }
@@ -739,7 +746,7 @@ async function saveEditColumn() {
     message.success('列标题已更新')
     await applyTemplateUpdate(data.template)
   } catch (error: any) {
-    message.error(error.message || '保存列失败')
+    message.error(friendlyError(error.message || '', 'state.saveColumn'))
   } finally {
     saving.value = false
   }
@@ -1154,6 +1161,12 @@ onMounted(async () => {
   fetchDefaultConfig()
   await fetchConversations()
   if (conversationId.value.trim()) {
+    await fetchBoard()
+  } else if (conversations.value.length > 0) {
+    // 自动选择最近活跃对话
+    const first = conversations.value[0]
+    conversationId.value = first.conversation_id
+    persistInputs()
     await fetchBoard()
   } else {
     showDefaultDrawer.value = true

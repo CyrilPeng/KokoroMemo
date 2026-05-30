@@ -80,6 +80,7 @@ ignore = [
 "app/storage/vector_sync.py" = ["E402"]  # logger defined before app imports
 "app/memory/graph.py" = ["S608"]  # parameterized SQL with placeholders f-string
 "app/api/routes_admin.py" = ["S608"]  # parameterized SQL with dynamic WHERE clauses
+"app/api/admin/memories.py" = ["S608"]  # parameterized SQL with dynamic WHERE clauses (split from routes_admin)
 
 [tool.ruff.format]
 quote-style = "double"

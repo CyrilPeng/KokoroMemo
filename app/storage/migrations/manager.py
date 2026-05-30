@@ -33,12 +33,8 @@ class DatabaseMigrationTarget:
         return max((migration.version for migration in self.migrations), default=0)
 
 
-APP_MIGRATIONS = (
-    Migration(1, "baseline_app_schema", init_app_db),
-)
-MEMORY_MIGRATIONS = (
-    Migration(1, "baseline_memory_schema", lambda db_path: _init_memory_db(db_path)),
-)
+APP_MIGRATIONS = (Migration(1, "baseline_app_schema", init_app_db),)
+MEMORY_MIGRATIONS = (Migration(1, "baseline_memory_schema", lambda db_path: _init_memory_db(db_path)),)
 
 
 async def apply_startup_migrations(cfg) -> None:

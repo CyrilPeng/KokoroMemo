@@ -136,7 +136,15 @@ def _state_table_row_to_dict(row) -> dict:
         "source_turn_id": row.source_turn_id,
         "source_message_ids": row.source_message_ids,
         "metadata": row.metadata,
-        "cells": {key: {"cell_id": cell.cell_id, "value": cell.value, "confidence": cell.confidence, "updated_at": cell.updated_at} for key, cell in row.cells.items()},
+        "cells": {
+            key: {
+                "cell_id": cell.cell_id,
+                "value": cell.value,
+                "confidence": cell.confidence,
+                "updated_at": cell.updated_at,
+            }
+            for key, cell in row.cells.items()
+        },
         "values": {key: cell.value for key, cell in row.cells.items()},
         "created_at": row.created_at,
         "updated_at": row.updated_at,
@@ -194,7 +202,9 @@ async def clone_state_table_template(template_id: str, request: Request, data: d
     from app.storage.sqlite_state import SQLiteStateStore
 
     try:
-        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).clone_table_template(template_id, data.get("name"))
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).clone_table_template(
+            template_id, data.get("name")
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "ok", "template": _state_table_template_to_dict(saved)}
@@ -256,7 +266,9 @@ async def update_state_table_template_table(template_id: str, table_key: str, re
     from app.storage.sqlite_state import SQLiteStateStore
 
     try:
-        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_table_in_template(template_id, table_key, data)
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_table_in_template(
+            template_id, table_key, data
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "ok", "template": _state_table_template_to_dict(saved)}
@@ -270,7 +282,9 @@ async def delete_state_table_template_table(template_id: str, table_key: str, re
     from app.storage.sqlite_state import SQLiteStateStore
 
     try:
-        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).delete_table_from_template(template_id, table_key)
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).delete_table_from_template(
+            template_id, table_key
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "ok", "template": _state_table_template_to_dict(saved)}
@@ -284,21 +298,27 @@ async def add_state_table_template_column(template_id: str, table_key: str, requ
     from app.storage.sqlite_state import SQLiteStateStore
 
     try:
-        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).add_column_to_table(template_id, table_key, data)
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).add_column_to_table(
+            template_id, table_key, data
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "ok", "template": _state_table_template_to_dict(saved)}
 
 
 @router.patch("/admin/state/table-templates/{template_id}/tables/{table_key}/columns/{column_key}")
-async def update_state_table_template_column(template_id: str, table_key: str, column_key: str, request: Request, data: dict = Body(...)):
+async def update_state_table_template_column(
+    template_id: str, table_key: str, column_key: str, request: Request, data: dict = Body(...)
+):
     """Update a column in a custom state board template."""
     _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_state import SQLiteStateStore
 
     try:
-        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_column_in_table(template_id, table_key, column_key, data)
+        saved = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_column_in_table(
+            template_id, table_key, column_key, data
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "ok", "template": _state_table_template_to_dict(saved)}
@@ -327,7 +347,9 @@ async def get_conversation_state_tables(conversation_id: str, request: Request):
 
 
 @router.post("/admin/conversations/{conversation_id}/state/tables/{table_key}/rows")
-async def upsert_conversation_state_table_row(conversation_id: str, table_key: str, request: Request, data: dict = Body(...)):
+async def upsert_conversation_state_table_row(
+    conversation_id: str, table_key: str, request: Request, data: dict = Body(...)
+):
     """Create or update one row in a table-based state board."""
     _require_admin(request)
     from app.core.state import get_config
@@ -373,7 +395,9 @@ async def delete_conversation_state_table_row(row_id: str, request: Request):
     from app.core.state import get_config
     from app.storage.sqlite_state import SQLiteStateStore
 
-    ok = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_table_row_status(row_id, "resolved", "GUI delete")
+    ok = await SQLiteStateStore(get_config().storage.sqlite.memory_db).update_table_row_status(
+        row_id, "resolved", "GUI delete"
+    )
     return {"status": "ok" if ok else "error", "message": None if ok else "State table row not found"}
 
 
@@ -512,12 +536,24 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
     cfg = get_config()
     filler_config = StateFillerConfigView(
         provider=data.get("provider") or cfg.memory.state_updater.provider,
-        base_url=data.get("base_url") or cfg.memory.state_updater.base_url or cfg.memory.judge.base_url or cfg.llm.base_url,
-        api_key=data.get("api_key") or cfg.memory.state_updater.get_api_key() or cfg.memory.judge.get_api_key() or cfg.llm.get_api_key(),
+        base_url=data.get("base_url")
+        or cfg.memory.state_updater.base_url
+        or cfg.memory.judge.base_url
+        or cfg.llm.base_url,
+        api_key=data.get("api_key")
+        or cfg.memory.state_updater.get_api_key()
+        or cfg.memory.judge.get_api_key()
+        or cfg.llm.get_api_key(),
         model=data.get("model") or cfg.memory.state_updater.model or cfg.memory.judge.model or cfg.llm.model,
         timeout_seconds=int(data.get("timeout_seconds") or cfg.memory.state_updater.timeout_seconds),
-        temperature=float(data.get("temperature") if data.get("temperature") is not None else cfg.memory.state_updater.temperature),
-        min_confidence=float(data.get("min_confidence") if data.get("min_confidence") is not None else cfg.memory.state_updater.min_confidence),
+        temperature=float(
+            data.get("temperature") if data.get("temperature") is not None else cfg.memory.state_updater.temperature
+        ),
+        min_confidence=float(
+            data.get("min_confidence")
+            if data.get("min_confidence") is not None
+            else cfg.memory.state_updater.min_confidence
+        ),
         prompt=data.get("prompt") or cfg.memory.state_updater.prompt,
     )
     operations = None
@@ -546,10 +582,7 @@ async def fill_conversation_state_once(conversation_id: str, request: Request, d
         "mode": "table",
         "applied": table_result.applied,
         "skipped": table_result.skipped,
-        "operations": [
-            {k: v for k, v in op.__dict__.items() if v is not None}
-            for op in table_result.operations
-        ],
+        "operations": [{k: v for k, v in op.__dict__.items() if v is not None} for op in table_result.operations],
         "notes": table_result.notes,
         "preview": bool(data.get("preview")),
     }

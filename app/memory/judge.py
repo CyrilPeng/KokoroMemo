@@ -92,14 +92,16 @@ async def judge_memories_with_llm(
         risk_level = item.get("risk_level")
         if risk_level:
             tags.append(f"risk:{risk_level}")
-        memories.append(ExtractedMemory(
-            scope=item.get("scope") or ("character" if character_id else "global"),
-            memory_type=memory_type,
-            content=memory_content[:500],
-            importance=importance,
-            confidence=confidence,
-            tags=[str(tag) for tag in tags],
-        ))
+        memories.append(
+            ExtractedMemory(
+                scope=item.get("scope") or ("character" if character_id else "global"),
+                memory_type=memory_type,
+                content=memory_content[:500],
+                importance=importance,
+                confidence=confidence,
+                tags=[str(tag) for tag in tags],
+            )
+        )
     return memories
 
 

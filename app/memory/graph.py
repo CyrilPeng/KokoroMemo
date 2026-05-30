@@ -6,7 +6,6 @@ import aiosqlite
 
 from app.core.ids import generate_id
 
-
 ALLOWED_EDGE_TYPES = {
     "supports",
     "constrains",

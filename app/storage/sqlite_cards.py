@@ -274,7 +274,9 @@ async def delete_conversation_memory_data(db_path: str, conversation_id: str) ->
             cards = cursor.rowcount
         inbox_cursor = await db.execute("DELETE FROM memory_inbox WHERE conversation_id = ?", (conversation_id,))
         summary_cursor = await db.execute("DELETE FROM memory_summaries WHERE conversation_id = ?", (conversation_id,))
-        mount_cursor = await db.execute("DELETE FROM conversation_memory_mounts WHERE conversation_id = ?", (conversation_id,))
+        mount_cursor = await db.execute(
+            "DELETE FROM conversation_memory_mounts WHERE conversation_id = ?", (conversation_id,)
+        )
         await db.commit()
         return {
             "cards": cards,
@@ -319,8 +321,14 @@ async def _ensure_default_library(db: aiosqlite.Connection) -> None:
             updated_at = datetime('now', 'localtime')""",
         (DEFAULT_MEMORY_LIBRARY_ID,),
     )
-    await db.execute("UPDATE memory_cards SET library_id = ? WHERE library_id IS NULL OR library_id = ''", (DEFAULT_MEMORY_LIBRARY_ID,))
-    await db.execute("UPDATE memory_inbox SET library_id = ? WHERE library_id IS NULL OR library_id = ''", (DEFAULT_MEMORY_LIBRARY_ID,))
+    await db.execute(
+        "UPDATE memory_cards SET library_id = ? WHERE library_id IS NULL OR library_id = ''",
+        (DEFAULT_MEMORY_LIBRARY_ID,),
+    )
+    await db.execute(
+        "UPDATE memory_inbox SET library_id = ? WHERE library_id IS NULL OR library_id = ''",
+        (DEFAULT_MEMORY_LIBRARY_ID,),
+    )
 
 
 async def card_exists_with_content(db_path: str, user_id: str, content: str) -> bool:
@@ -345,6 +353,7 @@ async def find_card_id_by_content(db_path: str, user_id: str, content: str) -> s
 
 
 # --- 记忆库与挂载 ---
+
 
 async def list_memory_libraries(db_path: str, include_deleted: bool = False) -> list[dict]:
     await init_cards_db(db_path)
@@ -495,14 +504,20 @@ async def set_conversation_mounts(
                     status = 'active',
                     updated_at = datetime('now', 'localtime')""",
                 (
-                    generate_id("mount_"), conversation_id, library_id, user_id, character_id,
-                    1 if library_id == write_library_id else 0, index,
+                    generate_id("mount_"),
+                    conversation_id,
+                    library_id,
+                    user_id,
+                    character_id,
+                    1 if library_id == write_library_id else 0,
+                    index,
                 ),
             )
         await db.commit()
 
 
 # --- 记忆卡片 CRUD ---
+
 
 async def insert_card(
     db_path: str,
@@ -531,9 +546,24 @@ async def insert_card(
                 title, content, summary, importance, confidence, status, is_pinned,
                 evidence_text, supersedes_card_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (card_id, library_id, user_id, character_id, conversation_id, scope, card_type,
-             title, content, summary, importance, confidence, status, is_pinned,
-             evidence_text, supersedes_card_id),
+            (
+                card_id,
+                library_id,
+                user_id,
+                character_id,
+                conversation_id,
+                scope,
+                card_type,
+                title,
+                content,
+                summary,
+                importance,
+                confidence,
+                status,
+                is_pinned,
+                evidence_text,
+                supersedes_card_id,
+            ),
         )
         await db.commit()
 
@@ -739,6 +769,7 @@ async def get_recent_important_cards(
 
 # --- 待审核条目 CRUD ---
 
+
 async def insert_inbox_item(
     db_path: str,
     inbox_id: str,
@@ -762,8 +793,21 @@ async def insert_inbox_item(
                (inbox_id, library_id, candidate_type, payload_json, user_id, character_id, conversation_id,
                 suggested_action, risk_level, reason, status, discard_reason, related_card_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (inbox_id, library_id, candidate_type, payload_json, user_id, character_id, conversation_id,
-             suggested_action, risk_level, reason, status, discard_reason, related_card_id),
+            (
+                inbox_id,
+                library_id,
+                candidate_type,
+                payload_json,
+                user_id,
+                character_id,
+                conversation_id,
+                suggested_action,
+                risk_level,
+                reason,
+                status,
+                discard_reason,
+                related_card_id,
+            ),
         )
         await db.commit()
 
@@ -787,12 +831,12 @@ async def trim_discarded_inbox(db_path: str, keep_limit: int) -> int:
         return cursor.rowcount or 0
 
 
-async def get_inbox_items(db_path: str, status: str = "pending", limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
+async def get_inbox_items(
+    db_path: str, status: str = "pending", limit: int = 50, offset: int = 0
+) -> tuple[list[dict], int]:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        count_cursor = await db.execute(
-            "SELECT COUNT(*) FROM memory_inbox WHERE status = ?", (status,)
-        )
+        count_cursor = await db.execute("SELECT COUNT(*) FROM memory_inbox WHERE status = ?", (status,))
         total = (await count_cursor.fetchone())[0]
         cursor = await db.execute(
             "SELECT * FROM memory_inbox WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
@@ -802,7 +846,9 @@ async def get_inbox_items(db_path: str, status: str = "pending", limit: int = 50
         return [dict(r) for r in rows], total
 
 
-async def get_inbox_items_multi(db_path: str, statuses: list[str], limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
+async def get_inbox_items_multi(
+    db_path: str, statuses: list[str], limit: int = 50, offset: int = 0
+) -> tuple[list[dict], int]:
     if not statuses:
         return [], 0
     placeholders = ",".join("?" for _ in statuses)
@@ -885,7 +931,7 @@ async def list_memory_diagnostics(
             f"""SELECT card_id, library_id, user_id, character_id, conversation_id, scope, card_type,
                        title, content, summary, importance, confidence, status, is_pinned, created_at, updated_at
                 FROM memory_cards
-                WHERE {' AND '.join(card_where)}
+                WHERE {" AND ".join(card_where)}
                 ORDER BY updated_at DESC, created_at DESC
                 LIMIT ?""",
             (*params, limit),
@@ -894,7 +940,7 @@ async def list_memory_diagnostics(
             f"""SELECT inbox_id, library_id, candidate_type, payload_json, user_id, character_id, conversation_id,
                        suggested_action, risk_level, reason, status, created_at, reviewed_at, review_note
                 FROM memory_inbox
-                WHERE {' AND '.join(inbox_where)}
+                WHERE {" AND ".join(inbox_where)}
                 ORDER BY created_at DESC
                 LIMIT ?""",
             (*inbox_params, limit),
@@ -906,6 +952,7 @@ async def list_memory_diagnostics(
 
 
 # --- 复制挂载 ---
+
 
 async def copy_conversation_mounts(db_path: str, source_conversation_id: str, target_conversation_id: str) -> int:
     """Copy memory mount configuration from one conversation to another. Returns count copied."""
@@ -937,15 +984,22 @@ async def copy_conversation_mounts(db_path: str, source_conversation_id: str, ta
                     status = 'active',
                     updated_at = datetime('now', 'localtime')""",
                 (
-                    generate_id("mount_"), target_conversation_id, row["library_id"],
-                    row["user_id"], row["character_id"], row["is_write_target"], row["sort_order"],
+                    generate_id("mount_"),
+                    target_conversation_id,
+                    row["library_id"],
+                    row["user_id"],
+                    row["character_id"],
+                    row["is_write_target"],
+                    row["sort_order"],
                 ),
             )
         await db.commit()
     return len(rows)
 
 
-async def update_conversation_character_refs(db_path: str, conversation_id: str, character_id: str | None) -> dict[str, int]:
+async def update_conversation_character_refs(
+    db_path: str, conversation_id: str, character_id: str | None
+) -> dict[str, int]:
     """更新单个会话在记忆相关表中的角色引用。"""
     await init_cards_db(db_path)
     async with aiosqlite.connect(db_path) as db:
@@ -987,14 +1041,13 @@ async def merge_character_refs(db_path: str, source_character_id: str, target_ch
 
 # --- 记忆挂载预设 ---
 
+
 async def list_mount_presets(db_path: str, include_deleted: bool = False) -> list[dict]:
     await init_cards_db(db_path)
     where = "" if include_deleted else "WHERE status = 'active'"
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            f"SELECT * FROM memory_mount_presets {where} ORDER BY updated_at DESC"
-        )
+        cursor = await db.execute(f"SELECT * FROM memory_mount_presets {where} ORDER BY updated_at DESC")
         return [dict(row) for row in await cursor.fetchall()]
 
 
@@ -1002,9 +1055,7 @@ async def get_mount_preset(db_path: str, preset_id: str) -> dict | None:
     await init_cards_db(db_path)
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM memory_mount_presets WHERE preset_id = ?", (preset_id,)
-        )
+        cursor = await db.execute("SELECT * FROM memory_mount_presets WHERE preset_id = ?", (preset_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
 

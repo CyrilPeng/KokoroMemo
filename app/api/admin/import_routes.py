@@ -33,14 +33,19 @@ async def import_sillytavern(request: Request, data: dict = Body(...)):
     conversation_id = data.get("conversation_id") or generate_id("conv_import_")
 
     from pathlib import Path
+
     conv_dir = str(Path(cfg.storage.root_dir, "conversations", conversation_id))
     chat_db_path = str(Path(conv_dir, "chat.sqlite"))
 
     await init_app_db(cfg.storage.sqlite.app_db)
     await init_chat_db(chat_db_path)
     await upsert_conversation(
-        cfg.storage.sqlite.app_db, conversation_id,
-        user_id, character_id, "sillytavern_import", conv_dir,
+        cfg.storage.sqlite.app_db,
+        conversation_id,
+        user_id,
+        character_id,
+        "sillytavern_import",
+        conv_dir,
     )
 
     messages = []
@@ -52,7 +57,14 @@ async def import_sillytavern(request: Request, data: dict = Body(...)):
     turn_id = generate_id("turn_")
     request_id = generate_id("req_import_")
     await save_turn_and_messages(
-        chat_db_path, turn_id, conversation_id, user_id, character_id, request_id, 0, messages,
+        chat_db_path,
+        turn_id,
+        conversation_id,
+        user_id,
+        character_id,
+        request_id,
+        0,
+        messages,
     )
 
     return {
@@ -75,6 +87,7 @@ async def extract_memories_from_import(conversation_id: str, request: Request, d
 
     cfg = get_config()
     from pathlib import Path
+
     chat_db_path = str(Path(cfg.storage.root_dir, "conversations", conversation_id, "chat.sqlite"))
 
     if not Path(chat_db_path).exists():

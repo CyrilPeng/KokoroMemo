@@ -142,10 +142,7 @@ class ChatPipeline:
     async def inject_memory(self, prepared: ChatPipelineContext) -> None:
         cfg = prepared.cfg
         if not (
-            cfg.memory.enabled
-            and cfg.memory.inject_enabled
-            and cfg.embedding.enabled
-            and prepared.should_inject_memory
+            cfg.memory.enabled and cfg.memory.inject_enabled and cfg.embedding.enabled and prepared.should_inject_memory
         ):
             return
         try:
@@ -185,11 +182,13 @@ class ChatPipeline:
                 decision_id = None
 
             allowed_scopes = {
-                scope for scope, enabled in (
+                scope
+                for scope, enabled in (
                     ("global", cfg.memory.scopes.include_global),
                     ("character", cfg.memory.scopes.include_character),
                     ("conversation", cfg.memory.scopes.include_conversation),
-                ) if enabled
+                )
+                if enabled
             }
             mounted_library_ids = await self._get_mounted_library_ids(prepared)
 
@@ -274,9 +273,17 @@ class ChatPipeline:
             final_model = cfg.llm.model or client_model
 
         if not cfg.llm.base_url:
-            return JSONResponse(status_code=500, content={
-                "error": {"message": "未配置 LLM Base URL，请在设置中配置对话大模型", "type": "config_error", "param": None, "code": "no_base_url"}
-            })
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": {
+                        "message": "未配置 LLM Base URL，请在设置中配置对话大模型",
+                        "type": "config_error",
+                        "param": None,
+                        "code": "no_base_url",
+                    }
+                },
+            )
         if final_model:
             forward_body["model"] = final_model
 
@@ -288,12 +295,18 @@ class ChatPipeline:
         )
         if raw_body.get("stream", False):
             return StreamingResponse(
-                _stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared.ctx, cfg, prepared.messages, self.services),
+                _stream_proxy(
+                    provider, forward_body, cfg.llm.timeout_seconds, prepared.ctx, cfg, prepared.messages, self.services
+                ),
                 media_type="text/event-stream",
             )
-        return await _non_stream_proxy(provider, forward_body, cfg.llm.timeout_seconds, prepared.ctx, cfg, prepared.messages, self.services)
+        return await _non_stream_proxy(
+            provider, forward_body, cfg.llm.timeout_seconds, prepared.ctx, cfg, prepared.messages, self.services
+        )
 
-    async def _record_retrieval_decision(self, prepared: ChatPipelineContext, query, decision, turn_index: int) -> str | None:
+    async def _record_retrieval_decision(
+        self, prepared: ChatPipelineContext, query, decision, turn_index: int
+    ) -> str | None:
         try:
             cfg = prepared.cfg
             ctx = prepared.ctx
@@ -430,17 +443,25 @@ async def _persist_request(cfg, ctx: RequestContext, raw_body: dict) -> None:
         # but redundant and wasteful.
         await init_chat_db(ctx.chat_db_path)
         await upsert_conversation(
-            cfg.storage.sqlite.app_db, ctx.conversation_id,
-            ctx.user_id, ctx.character_id, ctx.client_name, ctx.conv_dir,
+            cfg.storage.sqlite.app_db,
+            ctx.conversation_id,
+            ctx.user_id,
+            ctx.character_id,
+            ctx.client_name,
+            ctx.conv_dir,
         )
         if ctx.character_id:
             await upsert_character(
-                cfg.storage.sqlite.app_db, ctx.character_id, ctx.user_id,
+                cfg.storage.sqlite.app_db,
+                ctx.character_id,
+                ctx.user_id,
             )
         await _apply_character_defaults_if_new(cfg, ctx)
         await _apply_default_mount_preset_if_new(cfg, ctx)
         await save_raw_request(
-            ctx.chat_db_path, ctx.request_id, ctx.conversation_id,
+            ctx.chat_db_path,
+            ctx.request_id,
+            ctx.conversation_id,
             json.dumps(raw_body, ensure_ascii=False),
         )
     except Exception as e:
@@ -476,16 +497,18 @@ async def _apply_character_defaults_if_new(cfg, ctx: RequestContext) -> None:
         )
 
         store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
-        await store.set_conversation_config({
-            "conversation_id": ctx.conversation_id,
-            "profile_id": defaults.get("profile_id"),
-            "table_template_id": defaults.get("table_template_id"),
-            "mount_preset_id": defaults.get("mount_preset_id"),
-            "memory_write_policy": defaults.get("memory_write_policy"),
-            "state_update_policy": defaults.get("state_update_policy"),
-            "injection_policy": defaults.get("injection_policy"),
-            "created_from_default": True,
-        })
+        await store.set_conversation_config(
+            {
+                "conversation_id": ctx.conversation_id,
+                "profile_id": defaults.get("profile_id"),
+                "table_template_id": defaults.get("table_template_id"),
+                "mount_preset_id": defaults.get("mount_preset_id"),
+                "memory_write_policy": defaults.get("memory_write_policy"),
+                "state_update_policy": defaults.get("state_update_policy"),
+                "injection_policy": defaults.get("injection_policy"),
+                "created_from_default": True,
+            }
+        )
     except Exception as e:
         logger.debug("Character defaults auto-apply skipped: %s", e)
 
@@ -523,8 +546,12 @@ async def _persist_response_turn(
     try:
         resp_id = generate_id("resp_")
         await save_raw_response(
-            ctx.chat_db_path, resp_id, ctx.request_id, ctx.conversation_id,
-            body_json=response_json, stream_text=stream_text,
+            ctx.chat_db_path,
+            resp_id,
+            ctx.request_id,
+            ctx.conversation_id,
+            body_json=response_json,
+            stream_text=stream_text,
         )
         all_msgs = list(original_messages)
         if assistant_text:
@@ -532,8 +559,14 @@ async def _persist_response_turn(
         turn_id = generate_id("turn_")
         turn_index = await get_turn_count(ctx.chat_db_path, ctx.conversation_id)
         await save_turn_and_messages(
-            ctx.chat_db_path, turn_id, ctx.conversation_id,
-            ctx.user_id, ctx.character_id, ctx.request_id, turn_index, all_msgs,
+            ctx.chat_db_path,
+            turn_id,
+            ctx.conversation_id,
+            ctx.user_id,
+            ctx.character_id,
+            ctx.request_id,
+            turn_index,
+            all_msgs,
         )
         return turn_id, turn_index
     except Exception as exc:
@@ -599,7 +632,9 @@ async def _update_state_and_extract_memories(
     conversation_config = None
     if cfg.memory.enabled:
         try:
-            conversation_config = await SQLiteStateStore(cfg.storage.sqlite.memory_db).ensure_conversation_config(ctx.conversation_id)
+            conversation_config = await SQLiteStateStore(cfg.storage.sqlite.memory_db).ensure_conversation_config(
+                ctx.conversation_id
+            )
         except Exception as exc:
             logger.warning("Conversation policy loading failed during extraction (degraded): %s", exc)
 
@@ -616,27 +651,29 @@ async def _update_state_and_extract_memories(
     ):
         user_msg = _latest_user_message(original_messages)
         if user_msg:
-                try:
-                    await fill_conversation_state_tables(
-                        db_path=cfg.storage.sqlite.memory_db,
-                        conversation_id=ctx.conversation_id,
-                        user_message=user_msg,
-                        assistant_message=assistant_text,
-                        turn_id=turn_id,
-                        config=StateFillerConfigView(
-                            provider=cfg.memory.state_updater.provider,
-                            base_url=cfg.memory.state_updater.base_url or cfg.memory.judge.base_url or cfg.llm.base_url,
-                            api_key=cfg.memory.state_updater.get_api_key() or cfg.memory.judge.get_api_key() or cfg.llm.get_api_key(),
-                            model=cfg.memory.state_updater.model or cfg.memory.judge.model or cfg.llm.model,
-                            timeout_seconds=cfg.memory.state_updater.timeout_seconds,
-                            temperature=cfg.memory.state_updater.temperature,
-                            min_confidence=cfg.memory.state_updater.min_confidence,
-                            prompt=cfg.memory.state_updater.prompt,
-                        ),
-                        lang=cfg.language,
-                    )
-                except Exception as exc:
-                    logger.warning("State updater failed: %s", exc)
+            try:
+                await fill_conversation_state_tables(
+                    db_path=cfg.storage.sqlite.memory_db,
+                    conversation_id=ctx.conversation_id,
+                    user_message=user_msg,
+                    assistant_message=assistant_text,
+                    turn_id=turn_id,
+                    config=StateFillerConfigView(
+                        provider=cfg.memory.state_updater.provider,
+                        base_url=cfg.memory.state_updater.base_url or cfg.memory.judge.base_url or cfg.llm.base_url,
+                        api_key=cfg.memory.state_updater.get_api_key()
+                        or cfg.memory.judge.get_api_key()
+                        or cfg.llm.get_api_key(),
+                        model=cfg.memory.state_updater.model or cfg.memory.judge.model or cfg.llm.model,
+                        timeout_seconds=cfg.memory.state_updater.timeout_seconds,
+                        temperature=cfg.memory.state_updater.temperature,
+                        min_confidence=cfg.memory.state_updater.min_confidence,
+                        prompt=cfg.memory.state_updater.prompt,
+                    ),
+                    lang=cfg.language,
+                )
+            except Exception as exc:
+                logger.warning("State updater failed: %s", exc)
 
     if not cfg.memory.enabled or not cfg.memory.extraction_enabled:
         return
@@ -711,7 +748,15 @@ def _should_run_state_updater(cfg, turn_index: int | None) -> bool:
     return turn_index % every_n == 0
 
 
-async def _non_stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext, cfg, original_messages: list[dict], services: ServiceRegistry) -> JSONResponse:
+async def _non_stream_proxy(
+    provider,
+    body: dict,
+    timeout: int,
+    ctx: RequestContext,
+    cfg,
+    original_messages: list[dict],
+    services: ServiceRegistry,
+) -> JSONResponse:
     try:
         resp_data = await provider.chat(body, timeout)
 
@@ -724,19 +769,53 @@ async def _non_stream_proxy(provider, body: dict, timeout: int, ctx: RequestCont
             ctx, original_messages, assistant_text, json.dumps(resp_data, ensure_ascii=False), None
         )
         await _schedule_post_process_turn(
-            ctx, cfg, services, original_messages, assistant_text, turn_id, turn_index,
+            ctx,
+            cfg,
+            services,
+            original_messages,
+            assistant_text,
+            turn_id,
+            turn_index,
             name=f"post_process_turn:{ctx.request_id}",
         )
 
         return JSONResponse(content=resp_data, status_code=200)
     except httpx.TimeoutException:
-        return JSONResponse(status_code=504, content={"error": {"message": "Upstream LLM request timed out", "type": "proxy_error", "param": None, "code": "upstream_timeout"}})
+        return JSONResponse(
+            status_code=504,
+            content={
+                "error": {
+                    "message": "Upstream LLM request timed out",
+                    "type": "proxy_error",
+                    "param": None,
+                    "code": "upstream_timeout",
+                }
+            },
+        )
     except Exception as e:
         logger.error("Upstream request failed: %s", e)
-        return JSONResponse(status_code=502, content={"error": {"message": f"Upstream LLM request failed: {e}", "type": "proxy_error", "param": None, "code": "upstream_error"}})
+        return JSONResponse(
+            status_code=502,
+            content={
+                "error": {
+                    "message": f"Upstream LLM request failed: {e}",
+                    "type": "proxy_error",
+                    "param": None,
+                    "code": "upstream_error",
+                }
+            },
+        )
 
 
-async def _stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext, cfg, original_messages: list[dict], services: ServiceRegistry):
+async def _stream_proxy(
+    provider,
+    body: dict,
+    timeout: int,
+    ctx: RequestContext,
+    cfg,
+    original_messages: list[dict],
+    services: ServiceRegistry,
+):
     collected_text: list[str] = []
     try:
         async for line in provider.stream_chat(body, timeout):
@@ -755,15 +834,21 @@ async def _stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext,
         return
     except Exception as e:
         logger.error("Stream proxy error: %s", e)
-        error_payload = json.dumps({"error": {"message": f"Stream error: {e}", "type": "proxy_error", "code": "upstream_error"}})
+        error_payload = json.dumps(
+            {"error": {"message": f"Stream error: {e}", "type": "proxy_error", "code": "upstream_error"}}
+        )
         yield f"data: {error_payload}\n\n"
         return
 
     full_text = "".join(collected_text)
-    turn_id, turn_index = await _persist_response_turn(
-        ctx, original_messages, full_text, None, full_text
-    )
+    turn_id, turn_index = await _persist_response_turn(ctx, original_messages, full_text, None, full_text)
     await _schedule_post_process_turn(
-        ctx, cfg, services, original_messages, full_text, turn_id, turn_index,
+        ctx,
+        cfg,
+        services,
+        original_messages,
+        full_text,
+        turn_id,
+        turn_index,
         name=f"post_process_turn_stream:{ctx.request_id}",
     )

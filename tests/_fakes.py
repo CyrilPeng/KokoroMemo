@@ -37,7 +37,9 @@ class FakeLanceDBStore:
         self.rows = rows or []
         self.on_upsert = on_upsert
 
-    def search(self, query_vector: Any, where: str | None = None, top_k: int = 30, select_columns: list | None = None) -> list[dict]:
+    def search(
+        self, query_vector: Any, where: str | None = None, top_k: int = 30, select_columns: list | None = None
+    ) -> list[dict]:
         return self.rows[:top_k]
 
     async def upsert(self, records: list[dict]) -> None:

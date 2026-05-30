@@ -42,17 +42,20 @@ async def _build_conversation_config_response(db_path: str, store, conversation_
     )
     active_row_count = sum(1 for row in table_rows if row.status == "active")
     data = config.to_dict()
-    data.update({
-        "mounted_library_ids": mounted_library_ids,
-        "write_library_id": write_library_id,
-        "mounts": mounts,
-        "table_template_id": data.get("table_template_id") or (table_template.template_id if table_template else None),
-        "table_template_name": table_template.name if table_template else None,
-        "template_name": table_template.name if table_template else None,
-        "state_row_count": active_row_count,
-        "state_item_count": active_row_count,
-        "is_new_session": active_row_count == 0 and mounted_library_ids == ["lib_default"],
-    })
+    data.update(
+        {
+            "mounted_library_ids": mounted_library_ids,
+            "write_library_id": write_library_id,
+            "mounts": mounts,
+            "table_template_id": data.get("table_template_id")
+            or (table_template.template_id if table_template else None),
+            "table_template_name": table_template.name if table_template else None,
+            "template_name": table_template.name if table_template else None,
+            "state_row_count": active_row_count,
+            "state_item_count": active_row_count,
+            "is_new_session": active_row_count == 0 and mounted_library_ids == ["lib_default"],
+        }
+    )
     return data
 
 
@@ -109,8 +112,12 @@ async def preview_conversation_api(
     if not conversation:
         raise HTTPException(status_code=404, detail="会话不存在")
     chat_db_path = str(Path(cfg.storage.root_dir, "conversations", conversation_id, "chat.sqlite"))
-    messages = await get_recent_messages(chat_db_path, conversation_id, limit=limit) if Path(chat_db_path).exists() else []
-    summary = await get_conversation_message_summary(chat_db_path, conversation_id) if Path(chat_db_path).exists() else {}
+    messages = (
+        await get_recent_messages(chat_db_path, conversation_id, limit=limit) if Path(chat_db_path).exists() else []
+    )
+    summary = (
+        await get_conversation_message_summary(chat_db_path, conversation_id) if Path(chat_db_path).exists() else {}
+    )
     return {"conversation": {**conversation, **summary}, "messages": messages}
 
 
@@ -138,12 +145,16 @@ async def list_conversations_api(
     for item in items:
         conversation_id = item.get("conversation_id")
         chat_db_path = Path(cfg.storage.root_dir, "conversations", conversation_id, "chat.sqlite")
-        summary = await get_conversation_message_summary(str(chat_db_path), conversation_id) if chat_db_path.exists() else {
-            "message_count": 0,
-            "turn_count": 0,
-            "last_user_message": None,
-            "last_assistant_message": None,
-        }
+        summary = (
+            await get_conversation_message_summary(str(chat_db_path), conversation_id)
+            if chat_db_path.exists()
+            else {
+                "message_count": 0,
+                "turn_count": 0,
+                "last_user_message": None,
+                "last_assistant_message": None,
+            }
+        )
         config = await store.get_conversation_config(conversation_id)
         item.update(summary)
         issues = []
@@ -169,7 +180,14 @@ async def update_conversation_fields_api(conversation_id: str, request: Request,
     from app.storage.sqlite_app import list_conversations, update_conversation_profile
 
     cfg = get_config()
-    old_item = next((item for item in (await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0, status="all"))[0] if item.get("conversation_id") == conversation_id), None)
+    old_item = next(
+        (
+            item
+            for item in (await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0, status="all"))[0]
+            if item.get("conversation_id") == conversation_id
+        ),
+        None,
+    )
     item = await update_conversation_profile(
         cfg.storage.sqlite.app_db,
         conversation_id,
@@ -191,8 +209,12 @@ async def update_conversation_fields_api(conversation_id: str, request: Request,
         sync_result = {
             "app": 1,
             "chat_turns": await update_conversation_character(chat_db_path, conversation_id, item.get("character_id")),
-            "memory": await update_conversation_character_refs(cfg.storage.sqlite.memory_db, conversation_id, item.get("character_id")),
-            "state": await SQLiteStateStore(cfg.storage.sqlite.memory_db).update_conversation_character_refs(conversation_id, item.get("character_id")),
+            "memory": await update_conversation_character_refs(
+                cfg.storage.sqlite.memory_db, conversation_id, item.get("character_id")
+            ),
+            "state": await SQLiteStateStore(cfg.storage.sqlite.memory_db).update_conversation_character_refs(
+                conversation_id, item.get("character_id")
+            ),
         }
     return {"status": "ok", "item": item, "sync": sync_result}
 
@@ -339,9 +361,7 @@ async def import_conversation_state_bundle(request: Request, data: dict = Body(.
     db_path = cfg.storage.sqlite.memory_db
     source_conversation_id = data.get("conversation_id") or "imported"
     target_conversation_id = sanitize_id(
-        data.get("target_conversation_id")
-        or data.get("new_conversation_id")
-        or source_conversation_id
+        data.get("target_conversation_id") or data.get("new_conversation_id") or source_conversation_id
     )
     config = data.get("config") or {}
     raw_rows = data.get("table_rows") or data.get("rows") or []
@@ -359,7 +379,9 @@ async def import_conversation_state_bundle(request: Request, data: dict = Body(.
         existing_dict["conversation_id"] = target_conversation_id
         await store.set_conversation_config(existing_dict)
 
-    library_ids = config.get("mounted_library_ids") or [mount.get("library_id") for mount in data.get("mounts", []) if mount.get("library_id")]
+    library_ids = config.get("mounted_library_ids") or [
+        mount.get("library_id") for mount in data.get("mounts", []) if mount.get("library_id")
+    ]
     if library_ids:
         await set_conversation_mounts(
             db_path,

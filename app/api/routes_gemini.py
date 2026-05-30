@@ -144,7 +144,9 @@ async def generate_content(model: str, request: Request):
         if payload.get("error"):
             return JSONResponse(status_code=pipeline_response.status_code, content=payload)
         return JSONResponse(status_code=pipeline_response.status_code, content=_openai_to_gemini(payload, model))
-    return JSONResponse(status_code=500, content={"error": {"message": "Unexpected proxy response", "type": "proxy_error"}})
+    return JSONResponse(
+        status_code=500, content={"error": {"message": "Unexpected proxy response", "type": "proxy_error"}}
+    )
 
 
 @router.post("/v1beta/models/{model}:streamGenerateContent")
@@ -163,4 +165,6 @@ async def stream_generate_content(model: str, request: Request):
         if payload.get("error"):
             return JSONResponse(status_code=pipeline_response.status_code, content=payload)
         return JSONResponse(status_code=pipeline_response.status_code, content=_openai_to_gemini(payload, model))
-    return JSONResponse(status_code=500, content={"error": {"message": "Unexpected proxy response", "type": "proxy_error"}})
+    return JSONResponse(
+        status_code=500, content={"error": {"message": "Unexpected proxy response", "type": "proxy_error"}}
+    )

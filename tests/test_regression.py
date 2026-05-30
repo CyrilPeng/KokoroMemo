@@ -1,4 +1,5 @@
 """Regression tests for core KokoroMemo functionality."""
+
 from __future__ import annotations
 
 import shutil
@@ -75,11 +76,14 @@ async def test_non_stream_chat_completion_basic(monkeypatch):
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/v1/chat/completions", json={
-                "model": "fake-model",
-                "messages": [{"role": "user", "content": "你好"}],
-                "metadata": {"conversation_id": "conv_basic"},
-            })
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "你好"}],
+                    "metadata": {"conversation_id": "conv_basic"},
+                },
+            )
         assert resp.status_code == 200
         data = resp.json()
         assert "id" in data
@@ -103,17 +107,21 @@ async def test_stream_chat_completion_basic(monkeypatch):
         collected_lines = []
         async with (
             AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
-            client.stream("POST", "/v1/chat/completions", json={
-                "model": "fake-model",
-                "stream": True,
-                "messages": [{"role": "user", "content": "你好"}],
-                "metadata": {"conversation_id": "conv_stream_basic"},
-            }) as resp,
+            client.stream(
+                "POST",
+                "/v1/chat/completions",
+                json={
+                    "model": "fake-model",
+                    "stream": True,
+                    "messages": [{"role": "user", "content": "你好"}],
+                    "metadata": {"conversation_id": "conv_stream_basic"},
+                },
+            ) as resp,
         ):
             assert resp.status_code == 200
             async for line in resp.aiter_lines():
-                    if line.strip():
-                        collected_lines.append(line)
+                if line.strip():
+                    collected_lines.append(line)
 
         data_lines = [line for line in collected_lines if line.startswith("data:") and "[DONE]" not in line]
         done_lines = [line for line in collected_lines if "[DONE]" in line]
@@ -133,11 +141,14 @@ async def test_raw_request_persisted(monkeypatch):
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/v1/chat/completions", json={
-                "model": "fake-model",
-                "messages": [{"role": "user", "content": "测试持久化"}],
-                "metadata": {"conversation_id": "conv_persist"},
-            })
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "测试持久化"}],
+                    "metadata": {"conversation_id": "conv_persist"},
+                },
+            )
         assert resp.status_code == 200
 
         chat_db = test_dir / "conversations" / "conv_persist" / "chat.sqlite"
@@ -164,18 +175,23 @@ async def test_new_conversation_default_mount_preset_is_applied(monkeypatch):
             ["lib_default", lib_id],
             write_library_id=lib_id,
         )
-        await SQLiteStateStore(cfg.storage.sqlite.memory_db).set_default_conversation_config({
-            "mount_preset_id": preset_id,
-        })
+        await SQLiteStateStore(cfg.storage.sqlite.memory_db).set_default_conversation_config(
+            {
+                "mount_preset_id": preset_id,
+            }
+        )
         provider = FakeChatProvider()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/v1/chat/completions", json={
-                "model": "fake-model",
-                "messages": [{"role": "user", "content": "新会话"}],
-                "metadata": {"conversation_id": "conv_default_preset"},
-            })
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "新会话"}],
+                    "metadata": {"conversation_id": "conv_default_preset"},
+                },
+            )
         assert resp.status_code == 200
 
         mounts = await get_conversation_mounts(cfg.storage.sqlite.memory_db, "conv_default_preset")
@@ -194,9 +210,16 @@ async def test_deprecated_cards_not_injected_in_pipeline(monkeypatch):
         await init_cards_db(memory_db)
 
         await insert_card(
-            memory_db, "card_old", "u1", "c1", None,
-            "character", "preference", "用户喜欢猫娘说话方式",
-            status="deprecated", confidence=0.8,
+            memory_db,
+            "card_old",
+            "u1",
+            "c1",
+            None,
+            "character",
+            "preference",
+            "用户喜欢猫娘说话方式",
+            status="deprecated",
+            confidence=0.8,
         )
 
         provider = FakeChatProvider()
@@ -207,16 +230,24 @@ async def test_deprecated_cards_not_injected_in_pipeline(monkeypatch):
             return [{"card_id": "card_old", "content": "用户喜欢猫娘说话方式", "status": "deprecated", "score": 0.9}]
 
         from app.providers.embedding_dummy import DummyEmbeddingProvider
-        monkeypatch.setattr("app.core.services.ServiceRegistry.get_embedding_provider", lambda _self, _cfg: DummyEmbeddingProvider(8))
-        monkeypatch.setattr("app.core.services.ServiceRegistry.get_lancedb_store", lambda _self, _cfg: FakeLanceDBStore())
+
+        monkeypatch.setattr(
+            "app.core.services.ServiceRegistry.get_embedding_provider", lambda _self, _cfg: DummyEmbeddingProvider(8)
+        )
+        monkeypatch.setattr(
+            "app.core.services.ServiceRegistry.get_lancedb_store", lambda _self, _cfg: FakeLanceDBStore()
+        )
         monkeypatch.setattr("app.memory.card_retriever.retrieve_cards", fake_retrieve_cards)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/v1/chat/completions", json={
-                "model": "fake-model",
-                "messages": [{"role": "user", "content": "你还记得我喜欢什么吗"}],
-                "metadata": {"conversation_id": "conv_deprecated"},
-            })
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "你还记得我喜欢什么吗"}],
+                    "metadata": {"conversation_id": "conv_deprecated"},
+                },
+            )
         assert resp.status_code == 200
         contents = [message["content"] for message in provider.captured_bodies[-1]["messages"]]
         assert not any("猫娘说话方式" in content for content in contents)
@@ -238,14 +269,23 @@ async def test_memory_cards_approved_syncs_vector():
         FakeLanceDBStore(on_upsert=on_upsert)
 
         await insert_card(
-            str(memory_db), "card_sync_test", "u1", "c1", None,
-            "character", "preference", "用户喜欢安静",
-            status="approved", confidence=0.85,
+            str(memory_db),
+            "card_sync_test",
+            "u1",
+            "c1",
+            None,
+            "character",
+            "preference",
+            "用户喜欢安静",
+            status="approved",
+            confidence=0.85,
         )
 
         conn = sqlite3.connect(str(memory_db))
         try:
-            row = conn.execute("SELECT vector_synced FROM memory_cards WHERE card_id = ?", ("card_sync_test",)).fetchone()
+            row = conn.execute(
+                "SELECT vector_synced FROM memory_cards WHERE card_id = ?", ("card_sync_test",)
+            ).fetchone()
             # Note: vector_synced is set by the sync pipeline, not insert_card directly.
             # This test verifies the card exists with approved status.
             assert row is not None

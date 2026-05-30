@@ -1,4 +1,4 @@
-﻿import httpx
+import httpx
 import pytest
 
 from app.proxy import llm_providers

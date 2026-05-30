@@ -101,7 +101,9 @@ async def merge_character_api(character_id: str, request: Request, data: dict = 
 
     app_result = await merge_character_profile(cfg.storage.sqlite.app_db, source_character_id, character_id)
     memory_result = await merge_character_refs(cfg.storage.sqlite.memory_db, source_character_id, character_id)
-    state_result = await SQLiteStateStore(cfg.storage.sqlite.memory_db).merge_character_refs(source_character_id, character_id)
+    state_result = await SQLiteStateStore(cfg.storage.sqlite.memory_db).merge_character_refs(
+        source_character_id, character_id
+    )
     turn_count = 0
     for chat_db_path in Path(cfg.storage.root_dir, "conversations").glob("*/chat.sqlite"):
         turn_count += await merge_character_turn_refs(str(chat_db_path), source_character_id, character_id)
@@ -234,18 +236,20 @@ async def apply_character_defaults_api(character_id: str, request: Request, data
         if apply_policy:
             existing = await store.get_conversation_config(conversation_id)
             if overwrite_existing or not existing:
-                await store.set_conversation_config({
-                    "conversation_id": conversation_id,
-                    "profile_id": defaults.get("profile_id"),
-                    "template_id": defaults.get("template_id"),
-                    "table_template_id": defaults.get("table_template_id"),
-                    "mount_preset_id": defaults.get("mount_preset_id"),
-                    "memory_write_policy": defaults.get("memory_write_policy"),
-                    "state_update_policy": defaults.get("state_update_policy"),
-                    "injection_policy": defaults.get("injection_policy"),
-                    "retrieval_profile_id": defaults.get("retrieval_profile_id") or "balanced",
-                    "created_from_default": True,
-                })
+                await store.set_conversation_config(
+                    {
+                        "conversation_id": conversation_id,
+                        "profile_id": defaults.get("profile_id"),
+                        "template_id": defaults.get("template_id"),
+                        "table_template_id": defaults.get("table_template_id"),
+                        "mount_preset_id": defaults.get("mount_preset_id"),
+                        "memory_write_policy": defaults.get("memory_write_policy"),
+                        "state_update_policy": defaults.get("state_update_policy"),
+                        "injection_policy": defaults.get("injection_policy"),
+                        "retrieval_profile_id": defaults.get("retrieval_profile_id") or "balanced",
+                        "created_from_default": True,
+                    }
+                )
         updated += 1
     return {"status": "ok", "updated": updated}
 

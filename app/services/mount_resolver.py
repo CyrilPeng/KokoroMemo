@@ -63,7 +63,9 @@ class MountResolver:
             warnings=warnings,
         )
 
-    async def resolve_character_defaults(self, character_id: str, *, require_auto_apply: bool = False) -> MountResolution | None:
+    async def resolve_character_defaults(
+        self, character_id: str, *, require_auto_apply: bool = False
+    ) -> MountResolution | None:
         if not self.app_db_path:
             return None
         from app.storage.sqlite_app import get_character_defaults

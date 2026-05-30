@@ -181,7 +181,9 @@ BUILTIN_CONVERSATION_PROFILES: dict[str, ConversationProfile] = {
 
 
 def get_profile(profile_id: str | None) -> ConversationProfile:
-    return BUILTIN_CONVERSATION_PROFILES.get(profile_id or "", BUILTIN_CONVERSATION_PROFILES[DEFAULT_CONVERSATION_PROFILE_ID])
+    return BUILTIN_CONVERSATION_PROFILES.get(
+        profile_id or "", BUILTIN_CONVERSATION_PROFILES[DEFAULT_CONVERSATION_PROFILE_ID]
+    )
 
 
 def list_profiles() -> list[ConversationProfile]:
@@ -194,4 +196,3 @@ def get_retrieval_profile(profile_id: str | None) -> RetrievalProfile:
 
 def list_retrieval_profiles() -> list[RetrievalProfile]:
     return list(BUILTIN_RETRIEVAL_PROFILES.values())
-

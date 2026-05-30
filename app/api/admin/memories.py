@@ -65,24 +65,26 @@ async def list_memories(
 
             memories = []
             for r in rows:
-                memories.append({
-                    "memory_id": r["card_id"],
-                    "card_id": r["card_id"],
-                    "library_id": r["library_id"],
-                    "user_id": r["user_id"],
-                    "character_id": r["character_id"],
-                    "conversation_id": r["conversation_id"],
-                    "scope": r["scope"],
-                    "memory_type": r["card_type"],
-                    "content": r["content"],
-                    "summary": r["summary"],
-                    "importance": r["importance"],
-                    "confidence": r["confidence"],
-                    "status": r["status"],
-                    "created_at": r["created_at"],
-                    "updated_at": r["updated_at"],
-                    "access_count": r["access_count"],
-                })
+                memories.append(
+                    {
+                        "memory_id": r["card_id"],
+                        "card_id": r["card_id"],
+                        "library_id": r["library_id"],
+                        "user_id": r["user_id"],
+                        "character_id": r["character_id"],
+                        "conversation_id": r["conversation_id"],
+                        "scope": r["scope"],
+                        "memory_type": r["card_type"],
+                        "content": r["content"],
+                        "summary": r["summary"],
+                        "importance": r["importance"],
+                        "confidence": r["confidence"],
+                        "status": r["status"],
+                        "created_at": r["created_at"],
+                        "updated_at": r["updated_at"],
+                        "access_count": r["access_count"],
+                    }
+                )
 
             return {"memories": memories, "total": total, "limit": limit, "offset": offset}
     except Exception:
@@ -152,7 +154,17 @@ async def update_memory_card(card_id: str, data: dict = Body(...)):
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
 
-    allowed_fields = {"library_id", "content", "card_type", "scope", "importance", "confidence", "title", "summary", "is_pinned"}
+    allowed_fields = {
+        "library_id",
+        "content",
+        "card_type",
+        "scope",
+        "importance",
+        "confidence",
+        "title",
+        "summary",
+        "is_pinned",
+    }
     updates = {k: v for k, v in data.items() if k in allowed_fields}
     if not updates:
         return {"status": "error", "message": "无可更新字段"}
@@ -283,7 +295,10 @@ async def rebuild_index():
         return {"status": "error", "message": "Embedding or LanceDB not configured"}
 
     result = await rebuild_vector_index_v2(
-        cfg.storage.sqlite.memory_db, store, ep, batch_size=cfg.embedding.batch_size,
+        cfg.storage.sqlite.memory_db,
+        store,
+        ep,
+        batch_size=cfg.embedding.batch_size,
     )
     return result
 
@@ -370,14 +385,16 @@ async def get_memory_graph(
             card_ids = set()
             for row in rows:
                 card_ids.add(row["card_id"])
-                nodes.append({
-                    "id": row["card_id"],
-                    "label": row["content"][:60],
-                    "type": row["card_type"],
-                    "importance": row["importance"],
-                    "confidence": row["confidence"],
-                    "scope": row["scope"],
-                })
+                nodes.append(
+                    {
+                        "id": row["card_id"],
+                        "label": row["content"][:60],
+                        "type": row["card_type"],
+                        "importance": row["importance"],
+                        "confidence": row["confidence"],
+                        "scope": row["scope"],
+                    }
+                )
 
             if card_ids:
                 placeholders = ",".join("?" * len(card_ids))
@@ -388,13 +405,15 @@ async def get_memory_graph(
                     list(card_ids) + list(card_ids),
                 )
                 for row in await cursor.fetchall():
-                    edges.append({
-                        "source": row["source_card_id"],
-                        "target": row["target_card_id"],
-                        "type": row["edge_type"],
-                        "weight": row["weight"],
-                        "confidence": row["confidence"],
-                    })
+                    edges.append(
+                        {
+                            "source": row["source_card_id"],
+                            "target": row["target_card_id"],
+                            "type": row["edge_type"],
+                            "weight": row["weight"],
+                            "confidence": row["confidence"],
+                        }
+                    )
     except Exception:  # noqa: S110
         pass
 

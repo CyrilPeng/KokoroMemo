@@ -350,8 +350,6 @@ async def _ensure_columns(db: aiosqlite.Connection, table: str, columns: dict[st
             await db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
 
-
-
 BUILTIN_STATE_TABLE_TEMPLATES = [
     {
         "template_id": "tpl_rimtalk_roleplay_tables",
@@ -778,8 +776,18 @@ async def _ensure_builtin_table_templates(db: aiosqlite.Connection) -> None:
                         include_in_prompt = excluded.include_in_prompt,
                         max_chars = excluded.max_chars,
                         updated_at = datetime('now', 'localtime')""",
-                    (column_id, table_id, column_key, name, description, int(bool(required)), column_index, int(max_chars)),
+                    (
+                        column_id,
+                        table_id,
+                        column_key,
+                        name,
+                        description,
+                        int(bool(required)),
+                        column_index,
+                        int(max_chars),
+                    ),
                 )
+
 
 async def _ensure_default_conversation_config(db: aiosqlite.Connection) -> None:
     profile = get_profile(DEFAULT_CONVERSATION_PROFILE_ID)
@@ -801,7 +809,6 @@ async def _ensure_default_conversation_config(db: aiosqlite.Connection) -> None:
     )
 
 
-
 from app.storage.sqlite_state_config import ConversationConfigMixin
 from app.storage.sqlite_state_retrieval import RetrievalDecisionsMixin
 from app.storage.sqlite_state_tables import StateTablesMixin
@@ -815,4 +822,3 @@ class SQLiteStateStore(ConversationConfigMixin, StateTablesMixin, RetrievalDecis
 
     async def init_schema(self) -> None:
         await init_state_db(self.db_path)
-

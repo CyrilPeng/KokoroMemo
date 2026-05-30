@@ -174,12 +174,14 @@ async def retrieve_cards(
             if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
                 continue
             seen_ids.add(cid)
-            all_candidates.append(MemoryCandidate.from_card(
-                card,
-                source="pinned",
-                vector_score=1.0,  # 置顶卡片始终保持高优先级
-                final_score=1.0,
-            ))
+            all_candidates.append(
+                MemoryCandidate.from_card(
+                    card,
+                    source="pinned",
+                    vector_score=1.0,  # 置顶卡片始终保持高优先级
+                    final_score=1.0,
+                )
+            )
     except Exception as e:
         logger.warning("Pinned cards retrieval failed: %s", e)
 
@@ -238,12 +240,14 @@ async def retrieve_cards(
                 + conf * weights["confidence_weight"]
             )
 
-            all_candidates.append(MemoryCandidate.from_card(
-                card,
-                source="vector",
-                vector_score=vs,
-                final_score=final,
-            ))
+            all_candidates.append(
+                MemoryCandidate.from_card(
+                    card,
+                    source="vector",
+                    vector_score=vs,
+                    final_score=final,
+                )
+            )
     except Exception as e:
         logger.warning("Vector retrieval failed (degraded): %s", e)
 
@@ -257,12 +261,14 @@ async def retrieve_cards(
             if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
                 continue
             seen_ids.add(cid)
-            all_candidates.append(MemoryCandidate.from_card(
-                card,
-                source="recent",
-                vector_score=0.5,
-                final_score=card.get("importance", 0.5) * 0.8,
-            ))
+            all_candidates.append(
+                MemoryCandidate.from_card(
+                    card,
+                    source="recent",
+                    vector_score=0.5,
+                    final_score=card.get("importance", 0.5) * 0.8,
+                )
+            )
     except Exception as e:
         logger.warning("Recent cards retrieval failed: %s", e)
 
@@ -321,12 +327,14 @@ async def retrieve_cards(
                 cid = card.get("card_id", "")
                 seen_ids.add(cid)
                 importance = card.get("importance", 0.5)
-                all_candidates.append(MemoryCandidate.from_card(
-                    card,
-                    source="graph",
-                    vector_score=0.6,
-                    final_score=max(0.75, importance * 0.9),
-                ))
+                all_candidates.append(
+                    MemoryCandidate.from_card(
+                        card,
+                        source="graph",
+                        vector_score=0.6,
+                        final_score=max(0.75, importance * 0.9),
+                    )
+                )
     except Exception as e:
         logger.warning("Graph expansion failed: %s", e)
 
@@ -359,12 +367,12 @@ async def _rerank_candidates(
 
     rerankable.sort(key=lambda candidate: candidate.final_score, reverse=True)
     selected = rerankable[: max(1, candidate_top_k)]
-    untouched = rerankable[len(selected):]
+    untouched = rerankable[len(selected) :]
     batch_size = max(1, batch_size)
 
     reranked: list[MemoryCandidate] = []
     for start in range(0, len(selected), batch_size):
-        batch = selected[start:start + batch_size]
+        batch = selected[start : start + batch_size]
         documents = [candidate.content for candidate in batch]
         try:
             results = await rerank_provider.rerank(query.query_text, documents)

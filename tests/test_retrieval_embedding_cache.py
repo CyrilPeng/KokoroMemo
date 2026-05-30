@@ -142,6 +142,7 @@ class TestSingleton:
 class TestIntegrationRetrieveCardsUsesCache:
     def test_retrieve_cards_uses_cache_for_embedding(self, tmp_path):
         """Verify retrieve_cards hits the retrieval cache on repeated queries."""
+
         async def run():
             from app.memory.card_retriever import retrieve_cards
             from app.memory.query_builder import build_retrieval_query
@@ -159,9 +160,13 @@ class TestIntegrationRetrieveCardsUsesCache:
             await init_cards_db(db_path)
 
             lib_id = await create_memory_library(db_path, name="test", library_id="lib_test")
-            await set_conversation_mounts(db_path, "conv1", [lib_id], write_library_id=lib_id, user_id="u1", character_id="c1")
+            await set_conversation_mounts(
+                db_path, "conv1", [lib_id], write_library_id=lib_id, user_id="u1", character_id="c1"
+            )
 
-            await insert_card(db_path, "card1", lib_id, "u1", "c1", "conv1", "global", "fact", "test content", 0.8, 0.9, "approved")
+            await insert_card(
+                db_path, "card1", lib_id, "u1", "c1", "conv1", "global", "fact", "test content", 0.8, 0.9, "approved"
+            )
             embedding = DummyEmbeddingProvider(dimension=8)
             store = SqliteVectorStore(db_path=str(tmp_path / "vec.sqlite"), table_name="memory", dimension=8)
             store.connect()
@@ -171,7 +176,10 @@ class TestIntegrationRetrieveCardsUsesCache:
             cache = get_retrieval_cache()
 
             query = build_retrieval_query(
-                [{"role": "user", "content": "test"}], "u1", "c1", "conv1",
+                [{"role": "user", "content": "test"}],
+                "u1",
+                "c1",
+                "conv1",
             )
 
             stats_before = (cache.stats.hits, cache.stats.misses)
@@ -186,6 +194,7 @@ class TestIntegrationRetrieveCardsUsesCache:
 
     def test_write_path_sync_card_vector_does_not_use_cache(self, tmp_path):
         """sync_card_vector should NOT check the retrieval cache."""
+
         async def run():
             from app.providers.embedding_dummy import DummyEmbeddingProvider
             from app.storage.sqlite_cards import init_cards_db, insert_card
@@ -194,7 +203,9 @@ class TestIntegrationRetrieveCardsUsesCache:
 
             db_path = str(tmp_path / "memory.sqlite")
             await init_cards_db(db_path)
-            await insert_card(db_path, "card1", "lib", "u1", "c1", "conv1", "global", "fact", "content", 0.8, 0.9, "approved")
+            await insert_card(
+                db_path, "card1", "lib", "u1", "c1", "conv1", "global", "fact", "content", 0.8, 0.9, "approved"
+            )
 
             init_retrieval_cache(ttl_seconds=60.0, capacity=16)
             cache = get_retrieval_cache()

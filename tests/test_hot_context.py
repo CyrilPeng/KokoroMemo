@@ -23,7 +23,9 @@ def cleanup_test_dir(path: Path) -> None:
 
 
 def make_query(text: str) -> RetrievalQuery:
-    return RetrievalQuery(text, text, f"user: {text}", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
+    return RetrievalQuery(
+        text, text, f"user: {text}", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"}
+    )
 
 
 def test_state_injector_preserves_original_system_prompt():

@@ -22,25 +22,27 @@ class LanceDBStore:
         self._table = None
 
     def _get_schema(self) -> pa.Schema:
-        return pa.schema([
-            pa.field("memory_id", pa.string()),
-            pa.field("library_id", pa.string()),
-            pa.field("user_id", pa.string()),
-            pa.field("character_id", pa.string()),
-            pa.field("conversation_id", pa.string()),
-            pa.field("scope", pa.string()),
-            pa.field("memory_type", pa.string()),
-            pa.field("content", pa.string()),
-            pa.field("summary", pa.string()),
-            pa.field("tags_json", pa.string()),
-            pa.field("importance", pa.float32()),
-            pa.field("confidence", pa.float32()),
-            pa.field("status", pa.string()),
-            pa.field("created_at", pa.string()),
-            pa.field("updated_at", pa.string()),
-            pa.field("embedding_model", pa.string()),
-            pa.field("vector", pa.list_(pa.float32(), self.dimension)),
-        ])
+        return pa.schema(
+            [
+                pa.field("memory_id", pa.string()),
+                pa.field("library_id", pa.string()),
+                pa.field("user_id", pa.string()),
+                pa.field("character_id", pa.string()),
+                pa.field("conversation_id", pa.string()),
+                pa.field("scope", pa.string()),
+                pa.field("memory_type", pa.string()),
+                pa.field("content", pa.string()),
+                pa.field("summary", pa.string()),
+                pa.field("tags_json", pa.string()),
+                pa.field("importance", pa.float32()),
+                pa.field("confidence", pa.float32()),
+                pa.field("status", pa.string()),
+                pa.field("created_at", pa.string()),
+                pa.field("updated_at", pa.string()),
+                pa.field("embedding_model", pa.string()),
+                pa.field("vector", pa.list_(pa.float32(), self.dimension)),
+            ]
+        )
 
     def connect(self) -> None:
         Path(self.db_path).mkdir(parents=True, exist_ok=True)
@@ -48,9 +50,7 @@ class LanceDBStore:
         try:
             self._table = self._db.open_table(self.table_name)
         except Exception:
-            self._table = self._db.create_table(
-                self.table_name, schema=self._get_schema()
-            )
+            self._table = self._db.create_table(self.table_name, schema=self._get_schema())
             logger.info("Created LanceDB table: %s", self.table_name)
             return
         self._validate_table_dimension()
@@ -64,9 +64,7 @@ class LanceDBStore:
         value_type = getattr(vector_field.type, "value_type", None)
         list_size = getattr(vector_field.type, "list_size", None)
         if value_type != pa.float32() or list_size != self.dimension:
-            raise ValueError(
-                f"LanceDB table dimension mismatch: expected {self.dimension}, got {list_size}"
-            )
+            raise ValueError(f"LanceDB table dimension mismatch: expected {self.dimension}, got {list_size}")
 
     def upsert(self, rows: list[dict[str, Any]]) -> None:
         """Insert or update memory vectors."""

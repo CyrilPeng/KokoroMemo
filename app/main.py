@@ -36,12 +36,14 @@ def _read_version() -> str:
 
     try:
         from importlib.metadata import version as _get_version
+
         return _get_version("kokoromemo")
     except Exception:  # noqa: S110
         pass
 
     try:
         from kokoromemo._version import __version__
+
         return __version__
     except Exception:
         return "0.0.0"
@@ -73,6 +75,7 @@ async def lifespan(app: FastAPI):
     await lifecycle.start()
     app.state.lifecycle = lifecycle
     import logging
+
     logger = logging.getLogger("kokoromemo")
     logger.info("KokoroMemo started on %s:%d", cfg.server.host, cfg.server.port)
 
@@ -129,7 +132,9 @@ def create_app() -> FastAPI:
 
     # 如果存在预构建前端，则提供 Vue SPA 静态资源（Web UI / Termux 模式）。
     _web_dist_env = os.getenv("KOKOROMEMO_WEB_DIST", "").strip()
-    _gui_dist = Path(_web_dist_env).expanduser() if _web_dist_env else Path(__file__).resolve().parent.parent / "gui" / "dist"
+    _gui_dist = (
+        Path(_web_dist_env).expanduser() if _web_dist_env else Path(__file__).resolve().parent.parent / "gui" / "dist"
+    )
     if _gui_dist.is_dir():
         application.mount("/assets", CacheStaticFiles(directory=_gui_dist / "assets"), name="static-assets")
 
@@ -167,16 +172,20 @@ def create_app() -> FastAPI:
 
     cfg = load_config()
     if cfg.compatibility.cors_enabled:
-        allowed_origins = ["*"] if cfg.server.allow_remote_access else [
-            "http://127.0.0.1:14515",
-            "http://localhost:14515",
-            "http://127.0.0.1:5173",
-            "http://localhost:5173",
-            f"http://127.0.0.1:{cfg.server.webui_port}",
-            f"http://localhost:{cfg.server.webui_port}",
-            "tauri://localhost",
-            "http://tauri.localhost",
-        ]
+        allowed_origins = (
+            ["*"]
+            if cfg.server.allow_remote_access
+            else [
+                "http://127.0.0.1:14515",
+                "http://localhost:14515",
+                "http://127.0.0.1:5173",
+                "http://localhost:5173",
+                f"http://127.0.0.1:{cfg.server.webui_port}",
+                f"http://localhost:{cfg.server.webui_port}",
+                "tauri://localhost",
+                "http://tauri.localhost",
+            ]
+        )
         application.add_middleware(
             CORSMiddleware,
             allow_origins=allowed_origins,
@@ -195,6 +204,7 @@ def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
     """优先使用配置端口；不可用时从回退范围中选择随机端口。"""
     import errno
     import socket
+
     strict_port = os.getenv("KOKOROMEMO_STRICT_PORT", "0").lower() in {"1", "true", "yes"}
 
     def _try_bind(port: int) -> tuple[bool, OSError | None]:
@@ -210,8 +220,7 @@ def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
         return preferred, None
     if strict_port:
         raise RuntimeError(
-            f"Configured server port {host}:{preferred} is not available: "
-            f"{_describe_port_unavailable(preferred_error)}"
+            f"Configured server port {host}:{preferred} is not available: {_describe_port_unavailable(preferred_error)}"
         ) from preferred_error
     if preferred_error and preferred_error.errno not in {errno.EADDRINUSE, errno.EACCES}:
         raise RuntimeError(
@@ -220,6 +229,7 @@ def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
     reason = _describe_port_unavailable(preferred_error)
 
     import random
+
     for _ in range(_FALLBACK_PORT_RETRIES):
         port = random.randint(_FALLBACK_PORT_MIN, _FALLBACK_PORT_MAX)  # noqa: S311
         ok, _ = _try_bind(port)
@@ -272,6 +282,7 @@ if __name__ == "__main__":
 
     if port != cfg.server.port:
         import logging
+
         logging.getLogger("kokoromemo").info(
             "配置端口 %d %s，已切换到实际监听端口 %d",
             cfg.server.port,

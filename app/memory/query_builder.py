@@ -30,7 +30,7 @@ def build_retrieval_query(
 
     # 构建近期上下文（最近 N 条消息，跳过系统消息）
     non_system = [m for m in messages if m.get("role") != "system"]
-    recent = non_system[-(max_recent_turns * 2):]
+    recent = non_system[-(max_recent_turns * 2) :]
     recent_lines = []
     for m in recent:
         role = m.get("role", "")

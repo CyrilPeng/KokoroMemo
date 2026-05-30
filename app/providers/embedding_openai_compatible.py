@@ -37,9 +37,7 @@ class OpenAICompatibleEmbeddingProvider(EmbeddingProvider):
         for item in sorted(data["data"], key=lambda x: x["index"]):
             vec = item["embedding"]
             if len(vec) != self.dimension:
-                raise ValueError(
-                    f"Embedding dimension mismatch: expected {self.dimension}, got {len(vec)}"
-                )
+                raise ValueError(f"Embedding dimension mismatch: expected {self.dimension}, got {len(vec)}")
             embeddings.append(vec)
         return embeddings
 

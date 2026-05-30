@@ -143,9 +143,7 @@ async def export_memory_library(library_id: str, request: Request):
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        lib_cursor = await db.execute(
-            "SELECT * FROM memory_libraries WHERE library_id = ?", (library_id,)
-        )
+        lib_cursor = await db.execute("SELECT * FROM memory_libraries WHERE library_id = ?", (library_id,))
         lib_row = await lib_cursor.fetchone()
         if not lib_row:
             raise HTTPException(status_code=404, detail="记忆库不存在")

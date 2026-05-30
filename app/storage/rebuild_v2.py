@@ -48,7 +48,7 @@ async def rebuild_vector_index_v2(
     success_count = 0
     try:
         for i in range(0, len(cards), batch_size):
-            batch = cards[i:i + batch_size]
+            batch = cards[i : i + batch_size]
             texts = [c["content"] for c in batch]
 
             try:
@@ -59,25 +59,27 @@ async def rebuild_vector_index_v2(
 
             rows = []
             for card, vec in zip(batch, vectors, strict=False):
-                rows.append({
-                    "memory_id": card["card_id"],
-                    "library_id": card.get("library_id") or "lib_default",
-                    "user_id": card["user_id"],
-                    "character_id": card.get("character_id") or "",
-                    "conversation_id": card.get("conversation_id") or "",
-                    "scope": card["scope"],
-                    "memory_type": card["card_type"],
-                    "content": card["content"],
-                    "summary": card.get("summary") or "",
-                    "tags_json": "",
-                    "importance": card["importance"],
-                    "confidence": card["confidence"],
-                    "status": "active",
-                    "created_at": card.get("created_at") or "",
-                    "updated_at": card.get("updated_at") or "",
-                    "embedding_model": embedding_provider.model,
-                    "vector": vec,
-                })
+                rows.append(
+                    {
+                        "memory_id": card["card_id"],
+                        "library_id": card.get("library_id") or "lib_default",
+                        "user_id": card["user_id"],
+                        "character_id": card.get("character_id") or "",
+                        "conversation_id": card.get("conversation_id") or "",
+                        "scope": card["scope"],
+                        "memory_type": card["card_type"],
+                        "content": card["content"],
+                        "summary": card.get("summary") or "",
+                        "tags_json": "",
+                        "importance": card["importance"],
+                        "confidence": card["confidence"],
+                        "status": "active",
+                        "created_at": card.get("created_at") or "",
+                        "updated_at": card.get("updated_at") or "",
+                        "embedding_model": embedding_provider.model,
+                        "vector": vec,
+                    }
+                )
 
             try:
                 if use_atomic and staging_name:

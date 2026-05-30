@@ -23,7 +23,14 @@ from app.storage.sqlite_cards import (
 class VectorSyncWorker:
     """Periodically drains pending card vector sync jobs."""
 
-    def __init__(self, cfg, *, service_registry: ServiceRegistry | None = None, interval_seconds: float = 30.0, batch_limit: int = 50) -> None:
+    def __init__(
+        self,
+        cfg,
+        *,
+        service_registry: ServiceRegistry | None = None,
+        interval_seconds: float = 30.0,
+        batch_limit: int = 50,
+    ) -> None:
         self._cfg = cfg
         self._services = service_registry or get_service_registry()
         self._interval_seconds = interval_seconds
@@ -87,25 +94,29 @@ async def sync_card_vector(
         return
 
     vec = await embedding_provider.embed_text(card["content"])
-    upsert_result = lancedb_store.upsert([{
-        "memory_id": card["card_id"],
-        "library_id": card.get("library_id") or "lib_default",
-        "user_id": card["user_id"],
-        "character_id": card.get("character_id") or "",
-        "conversation_id": card.get("conversation_id") or "",
-        "scope": card["scope"],
-        "memory_type": card["card_type"],
-        "content": card["content"],
-        "summary": card.get("summary") or "",
-        "tags_json": "",
-        "importance": card["importance"],
-        "confidence": card["confidence"],
-        "status": "active",
-        "created_at": card.get("created_at") or "",
-        "updated_at": card.get("updated_at") or "",
-        "embedding_model": embedding_provider.model,
-        "vector": vec,
-    }])
+    upsert_result = lancedb_store.upsert(
+        [
+            {
+                "memory_id": card["card_id"],
+                "library_id": card.get("library_id") or "lib_default",
+                "user_id": card["user_id"],
+                "character_id": card.get("character_id") or "",
+                "conversation_id": card.get("conversation_id") or "",
+                "scope": card["scope"],
+                "memory_type": card["card_type"],
+                "content": card["content"],
+                "summary": card.get("summary") or "",
+                "tags_json": "",
+                "importance": card["importance"],
+                "confidence": card["confidence"],
+                "status": "active",
+                "created_at": card.get("created_at") or "",
+                "updated_at": card.get("updated_at") or "",
+                "embedding_model": embedding_provider.model,
+                "vector": vec,
+            }
+        ]
+    )
     if inspect.isawaitable(upsert_result):
         await upsert_result
     await mark_card_vector_synced(db_path, card_id, embedding_provider.model, embedding_provider.dimension)

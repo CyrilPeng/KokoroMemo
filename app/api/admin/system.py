@@ -14,7 +14,10 @@ router = APIRouter()
 
 _UPDATE_MANIFEST_SOURCES = [
     ("GitHub", "https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json"),
-    ("GitHub Proxy", "https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json"),
+    (
+        "GitHub Proxy",
+        "https://gh-proxy.org/https://github.com/CyrilPeng/KokoroMemo/releases/latest/download/latest.json",
+    ),
 ]
 _GITEE_LATEST_RELEASE_API = "https://gitee.com/api/v5/repos/CyrilPeng/KokoroMemo/releases/latest"
 
@@ -32,10 +35,14 @@ async def _fetch_update_json(client: httpx.AsyncClient, url: str) -> dict:
 async def _fetch_gitee_update_manifest(client: httpx.AsyncClient) -> dict:
     release = await _fetch_update_json(client, _GITEE_LATEST_RELEASE_API)
     tag = release.get("tag_name") or release.get("name")
-    attachments = release.get("attach_files") if isinstance(release.get("attach_files"), list) else release.get("assets")
+    attachments = (
+        release.get("attach_files") if isinstance(release.get("attach_files"), list) else release.get("assets")
+    )
     if not isinstance(attachments, list):
         attachments = []
-    manifest_asset = next((item for item in attachments if (item.get("name") or item.get("filename")) == "latest.json"), None)
+    manifest_asset = next(
+        (item for item in attachments if (item.get("name") or item.get("filename")) == "latest.json"), None
+    )
     manifest_url = ""
     if manifest_asset:
         manifest_url = (
@@ -80,6 +87,7 @@ async def health(request: Request):
     actual_port = getattr(request.app.state, "actual_port", None)
     if actual_port is None:
         import os
+
         actual_port = os.getenv("KOKOROMEMO_ACTUAL_PORT")
     try:
         actual_port = int(actual_port) if actual_port else cfg.server.port
@@ -274,36 +282,40 @@ async def get_action_items(request: Request):
             row = await cursor.fetchone()
             inbox_pending = row[0] if row else 0
             if inbox_pending > 0:
-                items.append({
-                    "key": "inbox_pending",
-                    "label": "待审核记忆",
-                    "count": inbox_pending,
-                    "severity": "warning",
-                    "action": "navigate",
-                    "target": "/inbox",
-                })
+                items.append(
+                    {
+                        "key": "inbox_pending",
+                        "label": "待审核记忆",
+                        "count": inbox_pending,
+                        "severity": "warning",
+                        "action": "navigate",
+                        "target": "/inbox",
+                    }
+                )
 
-            cursor = await db.execute(
-                "SELECT COUNT(*) FROM memory_cards WHERE status='approved' AND vector_synced=0"
-            )
+            cursor = await db.execute("SELECT COUNT(*) FROM memory_cards WHERE status='approved' AND vector_synced=0")
             row = await cursor.fetchone()
             sync_failed = row[0] if row else 0
             if sync_failed > 0:
-                items.append({
-                    "key": "vector_sync_failed",
-                    "label": "向量同步失败",
-                    "count": sync_failed,
-                    "severity": "error",
-                    "action": "navigate",
-                    "target": "/settings",
-                })
+                items.append(
+                    {
+                        "key": "vector_sync_failed",
+                        "label": "向量同步失败",
+                        "count": sync_failed,
+                        "severity": "error",
+                        "action": "navigate",
+                        "target": "/settings",
+                    }
+                )
     except Exception:  # noqa: S110
         pass
 
     return {"status": "ok", "items": items}
 
 
-async def _chat_test(base_url: str, api_key: str, model: str, provider: str = "openai_compatible", timeout: int = 15) -> dict:
+async def _chat_test(
+    base_url: str, api_key: str, model: str, provider: str = "openai_compatible", timeout: int = 15
+) -> dict:
     """通用 chat completion 测试（适用于 llm、judge、state_filler）。"""
     import time
 
@@ -402,25 +414,40 @@ async def _rerank_test(base_url: str, api_key: str, model: str, timeout: int = 1
 async def _test_one_provider(cfg, target: str) -> dict:
     """对单个 provider 发起最小请求并返回结果。"""
     if target == "llm":
-        return await _chat_test(cfg.llm.base_url, cfg.llm.get_api_key(), cfg.llm.model, cfg.llm.provider, cfg.llm.timeout_seconds)
+        return await _chat_test(
+            cfg.llm.base_url, cfg.llm.get_api_key(), cfg.llm.model, cfg.llm.provider, cfg.llm.timeout_seconds
+        )
     elif target == "embedding":
         if not cfg.embedding.enabled:
             return {"status": "skipped", "latency_ms": 0, "message": "Embedding 已禁用"}
-        return await _embedding_test(cfg.embedding.base_url, cfg.embedding.get_api_key(), cfg.embedding.model, cfg.embedding.timeout_seconds)
+        return await _embedding_test(
+            cfg.embedding.base_url, cfg.embedding.get_api_key(), cfg.embedding.model, cfg.embedding.timeout_seconds
+        )
     elif target == "rerank":
         if not cfg.rerank.enabled:
             return {"status": "skipped", "latency_ms": 0, "message": "Rerank 已禁用"}
-        return await _rerank_test(cfg.rerank.base_url, cfg.rerank.get_api_key(), cfg.rerank.model, cfg.rerank.timeout_seconds)
+        return await _rerank_test(
+            cfg.rerank.base_url, cfg.rerank.get_api_key(), cfg.rerank.model, cfg.rerank.timeout_seconds
+        )
     elif target == "judge":
         if not cfg.memory.judge.enabled:
             return {"status": "skipped", "latency_ms": 0, "message": "记忆判断未启用"}
-        return await _chat_test(cfg.memory.judge.base_url, cfg.memory.judge.get_api_key(), cfg.memory.judge.model, cfg.memory.judge.provider, cfg.memory.judge.timeout_seconds)
+        return await _chat_test(
+            cfg.memory.judge.base_url,
+            cfg.memory.judge.get_api_key(),
+            cfg.memory.judge.model,
+            cfg.memory.judge.provider,
+            cfg.memory.judge.timeout_seconds,
+        )
     elif target == "state_filler":
         if not cfg.memory.state_updater.enabled:
             return {"status": "skipped", "latency_ms": 0, "message": "状态板填充未启用"}
         return await _chat_test(
-            cfg.memory.state_updater.base_url, cfg.memory.state_updater.get_api_key(),
-            cfg.memory.state_updater.model, cfg.memory.state_updater.provider, cfg.memory.state_updater.timeout_seconds,
+            cfg.memory.state_updater.base_url,
+            cfg.memory.state_updater.get_api_key(),
+            cfg.memory.state_updater.model,
+            cfg.memory.state_updater.provider,
+            cfg.memory.state_updater.timeout_seconds,
         )
     else:
         return {"status": "error", "latency_ms": 0, "message": f"未知 target: {target}"}
@@ -506,6 +533,7 @@ async def get_current_config(request: Request):
 
     cfg = get_config()
     import os
+
     actual_port = getattr(request.app.state, "actual_port", None)
     actual_port = os.getenv("KOKOROMEMO_ACTUAL_PORT") or actual_port or cfg.server.port
     try:
@@ -696,12 +724,12 @@ async def save_config(data: dict = Body(...)):
             for key in ("app_db", "memory_db"):
                 val = sqlite.get(key, "")
                 if val.startswith(default_prefix):
-                    suffix = val[len(default_prefix):]
+                    suffix = val[len(default_prefix) :]
                     sqlite[key] = str(Path(new_root) / suffix)
             lancedb = storage.get("lancedb", {})
             ldb_val = lancedb.get("path", "")
             if ldb_val.startswith(default_prefix):
-                suffix = ldb_val[len(default_prefix):]
+                suffix = ldb_val[len(default_prefix) :]
                 lancedb["path"] = str(Path(new_root) / suffix)
 
     # 写入当前生效的 config.yaml，而不是任意进程工作目录。
@@ -714,17 +742,16 @@ async def save_config(data: dict = Body(...)):
     new_cfg = load_config(str(out_path))
     set_config(new_cfg)
     from app.core.time_util import set_configured_timezone
+
     set_configured_timezone(new_cfg.server.timezone or None)
     reset_services()
 
     # 检查是否需要重启
-    needs_restart = (
-        new_cfg.storage.root_dir != old_root_dir
-        or new_cfg.server.port != old_port
-    )
+    needs_restart = new_cfg.storage.root_dir != old_root_dir or new_cfg.server.port != old_port
 
     if needs_restart:
         import logging
+
         logger = logging.getLogger("kokoromemo")
         logger.info("配置变更需要重启服务（存储目录或端口已更改）")
         return {"status": "restart_required", "message": "配置已保存，正在重启服务..."}

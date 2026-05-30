@@ -19,7 +19,9 @@ async def list_conversation_profiles_api(request: Request):
 
     store = SQLiteStateStore(get_config().storage.sqlite.memory_db)
     items = [{**profile.to_dict(), "is_builtin": True} for profile in list_profiles()]
-    items.extend({**profile.to_dict(), "is_builtin": False} for profile in await store.list_custom_conversation_profiles())
+    items.extend(
+        {**profile.to_dict(), "is_builtin": False} for profile in await store.list_custom_conversation_profiles()
+    )
     return {"items": items}
 
 
@@ -48,6 +50,7 @@ async def update_conversation_profile_api(profile_id: str, request: Request, dat
     """Update a custom conversation policy profile."""
     _require_admin(request)
     from app.memory.conversation_policy import BUILTIN_CONVERSATION_PROFILES
+
     if profile_id in BUILTIN_CONVERSATION_PROFILES:
         raise HTTPException(status_code=400, detail="Built-in profiles cannot be modified")
     from app.core.state import get_config
@@ -64,6 +67,7 @@ async def delete_conversation_profile_api(profile_id: str, request: Request):
     """Delete a custom conversation policy profile."""
     _require_admin(request)
     from app.memory.conversation_policy import BUILTIN_CONVERSATION_PROFILES
+
     if profile_id in BUILTIN_CONVERSATION_PROFILES:
         raise HTTPException(status_code=400, detail="Built-in profiles cannot be deleted")
     from app.core.state import get_config

@@ -21,7 +21,7 @@ def parse_json_object(text: str, fallback: dict[str, Any] | None = None) -> dict
     start = text.find("{")
     end = text.rfind("}")
     if start >= 0 and end > start:
-        text = text[start:end + 1]
+        text = text[start : end + 1]
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:

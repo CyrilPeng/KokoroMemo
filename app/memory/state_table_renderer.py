@@ -163,16 +163,18 @@ def summarize_state_tables(
                 lines = candidate_lines
                 included = True
 
-        summaries.append({
-            "table_key": table.table_key,
-            "table_name": table.name,
-            "active_row_count": len(table_rows),
-            "selected_row_count": len(selected_row_ids) if included else 0,
-            "selected_row_ids": selected_row_ids if included else [],
-            "max_prompt_rows": table.max_prompt_rows,
-            "truncated_cell_count": truncated_cells if included else 0,
-            "included": included,
-        })
+        summaries.append(
+            {
+                "table_key": table.table_key,
+                "table_name": table.name,
+                "active_row_count": len(table_rows),
+                "selected_row_count": len(selected_row_ids) if included else 0,
+                "selected_row_ids": selected_row_ids if included else [],
+                "max_prompt_rows": table.max_prompt_rows,
+                "truncated_cell_count": truncated_cells if included else 0,
+                "included": included,
+            }
+        )
 
     return {
         "template_id": template.template_id,

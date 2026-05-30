@@ -62,12 +62,14 @@ def parse_sillytavern_jsonl(text: str) -> ImportedConversation:
             if not result.character_name and role == "assistant" and name:
                 result.character_name = name
 
-            result.turns.append(ImportedTurn(
-                role=role,
-                content=content,
-                name=name or None,
-                timestamp=timestamp or None,
-            ))
+            result.turns.append(
+                ImportedTurn(
+                    role=role,
+                    content=content,
+                    name=name or None,
+                    timestamp=timestamp or None,
+                )
+            )
 
         elif "role" in entry and "content" in entry:
             # OpenAI 风格格式
@@ -78,12 +80,14 @@ def parse_sillytavern_jsonl(text: str) -> ImportedConversation:
             if role == "system":
                 result.system_prompt = content
                 continue
-            result.turns.append(ImportedTurn(
-                role=role,
-                content=content,
-                name=entry.get("name"),
-                timestamp=entry.get("timestamp"),
-            ))
+            result.turns.append(
+                ImportedTurn(
+                    role=role,
+                    content=content,
+                    name=entry.get("name"),
+                    timestamp=entry.get("timestamp"),
+                )
+            )
 
     return result
 

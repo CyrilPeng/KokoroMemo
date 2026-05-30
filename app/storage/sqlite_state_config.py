@@ -31,15 +31,12 @@ def _row_to_conversation_config(row: aiosqlite.Row) -> ConversationConfig:
 
 
 class ConversationConfigMixin:
-
     async def list_custom_conversation_profiles(self, include_inactive: bool = False) -> list[ConversationProfile]:
         await self.init_schema()
         where = "" if include_inactive else "WHERE status = 'active'"
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                f"SELECT * FROM conversation_profiles {where} ORDER BY updated_at DESC, name ASC"
-            )
+            cursor = await db.execute(f"SELECT * FROM conversation_profiles {where} ORDER BY updated_at DESC, name ASC")
             rows = await cursor.fetchall()
         return [
             ConversationProfile(
@@ -170,7 +167,15 @@ class ConversationConfigMixin:
                     injection_policy = excluded.injection_policy,
                     retrieval_profile_id = excluded.retrieval_profile_id,
                     updated_at = datetime('now', 'localtime')""",
-                (profile_id, table_template_id, mount_preset_id, memory_write_policy, state_update_policy, injection_policy, retrieval_profile_id),
+                (
+                    profile_id,
+                    table_template_id,
+                    mount_preset_id,
+                    memory_write_policy,
+                    state_update_policy,
+                    injection_policy,
+                    retrieval_profile_id,
+                ),
             )
             await db.commit()
         return await self.get_default_conversation_config()
@@ -179,7 +184,9 @@ class ConversationConfigMixin:
         await self.init_schema()
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM conversation_configs WHERE conversation_id = ?", (conversation_id,))
+            cursor = await db.execute(
+                "SELECT * FROM conversation_configs WHERE conversation_id = ?", (conversation_id,)
+            )
             row = await cursor.fetchone()
         return _row_to_conversation_config(row) if row else None
 
@@ -250,7 +257,9 @@ class ConversationConfigMixin:
             )
         )
 
-    async def update_conversation_character_refs(self, conversation_id: str, character_id: str | None) -> dict[str, int]:
+    async def update_conversation_character_refs(
+        self, conversation_id: str, character_id: str | None
+    ) -> dict[str, int]:
         """更新单个会话状态数据中的角色引用。"""
         await self.init_schema()
         async with aiosqlite.connect(self.db_path) as db:
@@ -271,11 +280,13 @@ class ConversationConfigMixin:
             )
             await db.commit()
             return {"items": items.rowcount}
-        async def update_conversation_character_refs(self, conversation_id: str, character_id: str | None) -> dict[str, int]:
+
+        async def update_conversation_character_refs(
+            self, conversation_id: str, character_id: str | None
+        ) -> dict[str, int]:
             await self.init_schema()
             return {"state_table_rows": 0}
 
         async def merge_character_refs(self, source_character_id: str, target_character_id: str) -> dict[str, int]:
             await self.init_schema()
             return {"state_table_rows": 0}
-

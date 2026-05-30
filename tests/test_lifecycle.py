@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import shutil
 import uuid
 from pathlib import Path

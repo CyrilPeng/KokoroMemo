@@ -24,9 +24,13 @@ async def list_inbox(
     cfg = get_config()
     statuses = [s.strip() for s in status.split(",") if s.strip()]
     if len(statuses) > 1:
-        items, total = await get_inbox_items_multi(cfg.storage.sqlite.memory_db, statuses=statuses, limit=limit, offset=offset)
+        items, total = await get_inbox_items_multi(
+            cfg.storage.sqlite.memory_db, statuses=statuses, limit=limit, offset=offset
+        )
     else:
-        items, total = await get_inbox_items(cfg.storage.sqlite.memory_db, status=statuses[0] if statuses else "pending", limit=limit, offset=offset)
+        items, total = await get_inbox_items(
+            cfg.storage.sqlite.memory_db, status=statuses[0] if statuses else "pending", limit=limit, offset=offset
+        )
     return {"items": items, "total": total, "status": status}
 
 
@@ -68,7 +72,9 @@ async def approve_inbox_item(inbox_id: str):
 
         # 创建已批准卡片
         card_id = generate_id("card_")
-        library_id = payload.get("library_id") or await get_write_library_id(db_path, payload.get("conversation_id") or "default")
+        library_id = payload.get("library_id") or await get_write_library_id(
+            db_path, payload.get("conversation_id") or "default"
+        )
         await insert_card(
             db_path,
             card_id=card_id,
@@ -144,6 +150,7 @@ async def reject_inbox_item(inbox_id: str, data=Body(default="")):
         latest_status = latest["status"] if latest else "missing"
         return {"status": "error", "message": f"Item already {latest_status}"}
     import aiosqlite
+
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             "UPDATE memory_inbox SET discard_reason = ? WHERE inbox_id = ?",
@@ -154,6 +161,7 @@ async def reject_inbox_item(inbox_id: str, data=Body(default="")):
     discarded_keep_limit = cfg.memory.extraction.discarded_keep_limit
     if discarded_keep_limit > 0:
         from app.storage.sqlite_cards import trim_discarded_inbox
+
         with contextlib.suppress(Exception):
             await trim_discarded_inbox(db_path, discarded_keep_limit)
     return {"status": "ok"}
@@ -178,6 +186,7 @@ async def restore_inbox_item(inbox_id: str):
         latest_status = latest["status"] if latest else "missing"
         return {"status": "error", "message": f"Item already {latest_status}"}
     import aiosqlite
+
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             "UPDATE memory_inbox SET discard_reason = NULL WHERE inbox_id = ?",
@@ -202,6 +211,7 @@ async def delete_inbox_item(inbox_id: str):
     if item["status"] == "pending":
         return {"status": "error", "message": "待审核条目请先丢弃后再删除"}
     import aiosqlite
+
     async with aiosqlite.connect(db_path) as db:
         await db.execute("DELETE FROM memory_inbox WHERE inbox_id = ?", (inbox_id,))
         await db.commit()

@@ -87,6 +87,7 @@ def _client_api_key(request: Request) -> str | None:
 def _conversation_id_from_api_key(api_key: str) -> str:
     return f"conv_key_{sanitize_id(api_key)}"
 
+
 async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None) -> RequestContext:
     """Extract user/character/conversation identifiers from request."""
     headers = request.headers
@@ -103,9 +104,13 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
         messages = []
 
     # 会话 ID
-    conversation_id = _first_text(headers.get("x-conversation-id"), headers.get("x-chat-id"), headers.get("x-session-id"))
+    conversation_id = _first_text(
+        headers.get("x-conversation-id"), headers.get("x-chat-id"), headers.get("x-session-id")
+    )
     if not conversation_id:
-        conversation_id = _metadata_value(meta, "conversation_id", "chat_id", "session_id", "chat_session_id", "thread_id")
+        conversation_id = _metadata_value(
+            meta, "conversation_id", "chat_id", "session_id", "chat_session_id", "thread_id"
+        )
     explicit_conv_id = bool(conversation_id)
 
     if _conversation_identity_mode(cfg) == "api_key":
@@ -128,7 +133,9 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
         character_id = sanitize_id(character_id)
 
     if explicit_conv_id and cfg:
-        existing_character_id = await _existing_character_for_conversation(cfg.storage.sqlite.app_db, sanitize_id(conversation_id))
+        existing_character_id = await _existing_character_for_conversation(
+            cfg.storage.sqlite.app_db, sanitize_id(conversation_id)
+        )
         if existing_character_id:
             character_id = existing_character_id
     if not conversation_id:
@@ -138,9 +145,7 @@ async def resolve_context(request: Request, body: dict, root_dir: str, cfg=None)
 
     # 智能会话检测：未显式提供 ID 时，检查是否需要开启新会话
     if not explicit_conv_id and cfg:
-        conversation_id = await _maybe_new_session(
-            conversation_id, user_id, character_id, body, root_dir, cfg
-        )
+        conversation_id = await _maybe_new_session(conversation_id, user_id, character_id, body, root_dir, cfg)
 
     # 客户端名称
     client_name = _first_text(headers.get("x-client-name"), _metadata_value(meta, "client_name", "app", "source"))
@@ -227,6 +232,7 @@ async def _maybe_new_session(
 def _allocate_new_session_id(base_conv_id: str, app_db: str, db) -> str:
     """Generate a new sequential session ID based on the base conversation ID."""
     import time
+
     suffix = hex(int(time.time()) % 0xFFFFFF)[2:]
     return f"{base_conv_id}_{suffix}"
 

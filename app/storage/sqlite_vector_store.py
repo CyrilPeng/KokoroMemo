@@ -13,9 +13,21 @@ import numpy as np
 logger = logging.getLogger("kokoromemo.sqlite_vector")
 
 _META_COLUMNS = [
-    "memory_id", "library_id", "user_id", "character_id", "conversation_id",
-    "scope", "memory_type", "content", "summary", "tags_json",
-    "importance", "confidence", "status", "created_at", "updated_at",
+    "memory_id",
+    "library_id",
+    "user_id",
+    "character_id",
+    "conversation_id",
+    "scope",
+    "memory_type",
+    "content",
+    "summary",
+    "tags_json",
+    "importance",
+    "confidence",
+    "status",
+    "created_at",
+    "updated_at",
     "embedding_model",
 ]
 
@@ -55,7 +67,9 @@ class SqliteVectorStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(_CREATE_TABLE_SQL.format(table=self.table_name))
         self._conn.commit()
-        logger.info("SQLite vector store connected: %s (table=%s, dim=%d)", self.db_path, self.table_name, self.dimension)
+        logger.info(
+            "SQLite vector store connected: %s (table=%s, dim=%d)", self.db_path, self.table_name, self.dimension
+        )
 
     def _ensure_conn(self) -> sqlite3.Connection:
         if not self._conn:

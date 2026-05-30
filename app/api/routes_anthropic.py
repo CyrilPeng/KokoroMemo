@@ -14,6 +14,7 @@ from app.pipeline.chat import ChatPipeline
 
 router = APIRouter()
 
+
 def _normalize_anthropic_model(model_id: Any) -> Any:
     if not isinstance(model_id, str):
         return model_id
@@ -267,7 +268,11 @@ async def _stream_openai_to_anthropic(openai_response: StreamingResponse, reques
                     text_block_started = True
                     start = {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
                     yield f"event: content_block_start\ndata: {json.dumps(start, ensure_ascii=False)}\n\n"
-                delta_payload = {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": content_delta}}
+                delta_payload = {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": content_delta},
+                }
                 yield f"event: content_block_delta\ndata: {json.dumps(delta_payload, ensure_ascii=False)}\n\n"
 
             tool_calls = delta.get("tool_calls") or []
@@ -309,9 +314,13 @@ async def _stream_openai_to_anthropic(openai_response: StreamingResponse, reques
             stop = {"type": "content_block_stop", "index": index + 1}
             yield f"event: content_block_stop\ndata: {json.dumps(stop, ensure_ascii=False)}\n\n"
 
-    message_delta = {"type": "message_delta", "delta": {"stop_reason": stop_reason, "stop_sequence": None}, "usage": {"output_tokens": 0}}
+    message_delta = {
+        "type": "message_delta",
+        "delta": {"stop_reason": stop_reason, "stop_sequence": None},
+        "usage": {"output_tokens": 0},
+    }
     yield f"event: message_delta\ndata: {json.dumps(message_delta, ensure_ascii=False)}\n\n"
-    yield "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    yield 'event: message_stop\ndata: {"type":"message_stop"}\n\n'
 
 
 @router.get("/anthropic/v1/models")
@@ -339,6 +348,10 @@ async def anthropic_messages(request: Request):
         payload = json.loads(pipeline_response.body.decode("utf-8"))
         if payload.get("error"):
             return JSONResponse(status_code=pipeline_response.status_code, content=payload)
-        return JSONResponse(status_code=pipeline_response.status_code, content=_openai_response_to_anthropic(payload, raw_body))
+        return JSONResponse(
+            status_code=pipeline_response.status_code, content=_openai_response_to_anthropic(payload, raw_body)
+        )
 
-    return JSONResponse(status_code=500, content={"error": {"message": "Unexpected proxy response", "type": "proxy_error"}})
+    return JSONResponse(
+        status_code=500, content={"error": {"message": "Unexpected proxy response", "type": "proxy_error"}}
+    )

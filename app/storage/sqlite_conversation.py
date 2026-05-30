@@ -153,6 +153,7 @@ async def save_turn_and_messages(
         )
         for msg in messages:
             from app.core.ids import generate_id
+
             msg_id = generate_id("msg_")
             await db.execute(
                 "INSERT OR IGNORE INTO messages (message_id, turn_id, conversation_id, role, name, content, raw_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))",
@@ -172,9 +173,7 @@ async def save_turn_and_messages(
 async def get_turn_count(db_path: str, conversation_id: str) -> int:
     """Get current turn count for a conversation."""
     async with aiosqlite.connect(db_path) as db:
-        cursor = await db.execute(
-            "SELECT COUNT(*) FROM turns WHERE conversation_id = ?", (conversation_id,)
-        )
+        cursor = await db.execute("SELECT COUNT(*) FROM turns WHERE conversation_id = ?", (conversation_id,))
         row = await cursor.fetchone()
         return row[0] if row else 0
 

@@ -55,19 +55,24 @@ async def test_import_memory_library_records_versions_and_syncs_vectors(monkeypa
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/admin/memory-libraries/import", json={
-                "library": {"name": "imported"},
-                "cards": [{
-                    "user_id": "u1",
-                    "scope": "global",
-                    "card_type": "preference",
-                    "content": "imported memory",
-                    "summary": "summary",
-                    "importance": 0.8,
-                    "confidence": 0.9,
-                    "status": "approved",
-                }],
-            })
+            resp = await client.post(
+                "/admin/memory-libraries/import",
+                json={
+                    "library": {"name": "imported"},
+                    "cards": [
+                        {
+                            "user_id": "u1",
+                            "scope": "global",
+                            "card_type": "preference",
+                            "content": "imported memory",
+                            "summary": "summary",
+                            "importance": 0.8,
+                            "confidence": 0.9,
+                            "status": "approved",
+                        }
+                    ],
+                },
+            )
 
         assert resp.status_code == 200
         assert resp.json()["imported_cards"] == 1
@@ -75,9 +80,7 @@ async def test_import_memory_library_records_versions_and_syncs_vectors(monkeypa
         assert fake_store.rows[0]["content"] == "imported memory"
 
         with sqlite3.connect(cfg.storage.sqlite.memory_db) as conn:
-            card = conn.execute(
-                "SELECT card_id, vector_synced, embedding_model FROM memory_cards"
-            ).fetchone()
+            card = conn.execute("SELECT card_id, vector_synced, embedding_model FROM memory_cards").fetchone()
             version_count = conn.execute(
                 "SELECT COUNT(*) FROM memory_card_versions WHERE card_id = ?",
                 (card[0],),

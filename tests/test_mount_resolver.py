@@ -30,11 +30,13 @@ async def test_resolve_selection_prefers_mount_preset() -> None:
         write_library_id=lib_id,
     )
 
-    resolved = await MountResolver(memory_db).resolve_selection({
-        "mount_preset_id": preset_id,
-        "library_ids": ["lib_default"],
-        "write_library_id": "lib_default",
-    })
+    resolved = await MountResolver(memory_db).resolve_selection(
+        {
+            "mount_preset_id": preset_id,
+            "library_ids": ["lib_default"],
+            "write_library_id": "lib_default",
+        }
+    )
 
     assert resolved.mounted_library_ids == ["lib_default", lib_id]
     assert resolved.write_library_id == lib_id
@@ -44,10 +46,12 @@ async def test_resolve_selection_prefers_mount_preset() -> None:
 @pytest.mark.asyncio
 async def test_resolve_selection_falls_back_when_write_library_is_not_mounted() -> None:
     _app_db, memory_db = _db_paths()
-    resolved = await MountResolver(memory_db).resolve_selection({
-        "library_ids": ["lib_default"],
-        "write_library_id": "missing_lib",
-    })
+    resolved = await MountResolver(memory_db).resolve_selection(
+        {
+            "library_ids": ["lib_default"],
+            "write_library_id": "missing_lib",
+        }
+    )
 
     assert resolved.mounted_library_ids == ["lib_default"]
     assert resolved.write_library_id == "lib_default"

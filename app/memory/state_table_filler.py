@@ -179,26 +179,39 @@ async def fill_conversation_state_tables(
             result.skipped += 1
             continue
         result.applied += 1
-        result.operations.append(AppliedTableOperation(
-            operation.op, operation.table_key, row_id, operation.confidence, operation.reason,
-            before=op_before, after=op_after,
-        ))
+        result.operations.append(
+            AppliedTableOperation(
+                operation.op,
+                operation.table_key,
+                row_id,
+                operation.confidence,
+                operation.reason,
+                before=op_before,
+                after=op_after,
+            )
+        )
 
     if not dry_run and result.applied > 0:
         try:
             from app.core.events import emit
-            await emit("state_fill_complete", {
-                "conversation_id": conversation_id,
-                "applied": result.applied,
-                "skipped": result.skipped,
-            })
+
+            await emit(
+                "state_fill_complete",
+                {
+                    "conversation_id": conversation_id,
+                    "applied": result.applied,
+                    "skipped": result.skipped,
+                },
+            )
         except Exception:  # noqa: S110
             pass
 
     return result
 
 
-def _build_table_prompt(custom_prompt: str, template: StateTableTemplate, rows: list[StateTableRow], lang: str = "zh") -> str:
+def _build_table_prompt(
+    custom_prompt: str, template: StateTableTemplate, rows: list[StateTableRow], lang: str = "zh"
+) -> str:
     if custom_prompt.strip():
         base = custom_prompt.strip()
     else:
@@ -220,7 +233,9 @@ def _build_table_prompt(custom_prompt: str, template: StateTableTemplate, rows: 
         lines.append("当前已有行（匹配时优先 update/upsert）：")
         for row in rows[:80]:
             values = {key: cell.value for key, cell in row.cells.items() if cell.value.strip()}
-            lines.append(f"- row_id={row.row_id}; table_key={row.table_key}; values={json.dumps(values, ensure_ascii=False)}")
+            lines.append(
+                f"- row_id={row.row_id}; table_key={row.table_key}; values={json.dumps(values, ensure_ascii=False)}"
+            )
     return "\n".join(lines)
 
 
@@ -250,15 +265,17 @@ def _parse_operations(payload: dict[str, Any]) -> list[StateTableOperation]:
         table_key = str(raw.get("table_key") or "").strip()
         if op not in {"insert_row", "update_row", "upsert_row", "resolve_row", "delete_row"} or not table_key:
             continue
-        operations.append(StateTableOperation(
-            op=op,
-            table_key=table_key,
-            values=raw.get("values") if isinstance(raw.get("values"), dict) else {},
-            match=raw.get("match") if isinstance(raw.get("match"), dict) else {},
-            row_id=str(raw.get("row_id") or "").strip() or None,
-            confidence=safe_float(raw.get("confidence"), 0.7),
-            reason=str(raw.get("reason") or ""),
-        ))
+        operations.append(
+            StateTableOperation(
+                op=op,
+                table_key=table_key,
+                values=raw.get("values") if isinstance(raw.get("values"), dict) else {},
+                match=raw.get("match") if isinstance(raw.get("match"), dict) else {},
+                row_id=str(raw.get("row_id") or "").strip() or None,
+                confidence=safe_float(raw.get("confidence"), 0.7),
+                reason=str(raw.get("reason") or ""),
+            )
+        )
     return operations
 
 

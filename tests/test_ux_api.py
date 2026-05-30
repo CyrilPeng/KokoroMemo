@@ -160,23 +160,28 @@ async def test_inbox_batch_approve():
                 cfg.storage.sqlite.memory_db,
                 inbox_id=f"batch_approve_{i}",
                 candidate_type="card",
-                payload_json=json.dumps({
-                    "content": f"记忆 {i}",
-                    "card_type": "preference",
-                    "scope": "global",
-                    "importance": 0.8,
-                    "confidence": 0.9,
-                }),
+                payload_json=json.dumps(
+                    {
+                        "content": f"记忆 {i}",
+                        "card_type": "preference",
+                        "scope": "global",
+                        "importance": 0.8,
+                        "confidence": 0.9,
+                    }
+                ),
                 user_id="u",
                 character_id="c",
                 conversation_id="v",
             )
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/admin/inbox/batch", json={
-                "action": "approve",
-                "inbox_ids": ["batch_approve_0", "batch_approve_1"],
-            })
+            resp = await client.post(
+                "/admin/inbox/batch",
+                json={
+                    "action": "approve",
+                    "inbox_ids": ["batch_approve_0", "batch_approve_1"],
+                },
+            )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
@@ -196,24 +201,29 @@ async def test_inbox_batch_reject():
             cfg.storage.sqlite.memory_db,
             inbox_id="batch_reject",
             candidate_type="card",
-            payload_json=json.dumps({
-                "content": "test",
-                "card_type": "event",
-                "scope": "global",
-                "importance": 0.5,
-                "confidence": 0.6,
-            }),
+            payload_json=json.dumps(
+                {
+                    "content": "test",
+                    "card_type": "event",
+                    "scope": "global",
+                    "importance": 0.5,
+                    "confidence": 0.6,
+                }
+            ),
             user_id="u",
             character_id="c",
             conversation_id="v",
         )
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/admin/inbox/batch", json={
-                "action": "reject",
-                "inbox_ids": ["batch_reject"],
-                "note": "非长期记忆",
-            })
+            resp = await client.post(
+                "/admin/inbox/batch",
+                json={
+                    "action": "reject",
+                    "inbox_ids": ["batch_reject"],
+                    "note": "非长期记忆",
+                },
+            )
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
@@ -229,10 +239,13 @@ async def test_inbox_batch_rejects_invalid_action():
         make_config(test_dir)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/admin/inbox/batch", json={
-                "action": "invalid",
-                "inbox_ids": ["some_id"],
-            })
+            resp = await client.post(
+                "/admin/inbox/batch",
+                json={
+                    "action": "invalid",
+                    "inbox_ids": ["some_id"],
+                },
+            )
         assert resp.status_code == 400
     finally:
         cleanup_test_dir(test_dir)

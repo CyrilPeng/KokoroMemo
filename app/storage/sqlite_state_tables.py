@@ -120,9 +120,7 @@ class StateTablesMixin:
         where = "" if include_inactive else "WHERE status = 'active'"
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                f"SELECT * FROM state_table_templates {where} ORDER BY is_builtin DESC, name ASC"
-            )
+            cursor = await db.execute(f"SELECT * FROM state_table_templates {where} ORDER BY is_builtin DESC, name ASC")
             return [_row_to_table_template(row) for row in await cursor.fetchall()]
 
     async def get_table_template(self, template_id: str) -> StateTableTemplate | None:
@@ -161,12 +159,13 @@ class StateTablesMixin:
                 return template
         return await self.get_default_table_template()
 
-
     async def save_table_template(self, template: StateTableTemplate) -> StateTableTemplate:
         await self.init_schema()
         template_id = template.template_id or generate_id("tpl_custom_")
         async with aiosqlite.connect(self.db_path) as db:
-            existing_cursor = await db.execute("SELECT is_builtin FROM state_table_templates WHERE template_id = ?", (template_id,))
+            existing_cursor = await db.execute(
+                "SELECT is_builtin FROM state_table_templates WHERE template_id = ?", (template_id,)
+            )
             existing = await existing_cursor.fetchone()
             if existing and int(existing[0]) == 1:
                 raise ValueError("builtin templates cannot be overwritten")
@@ -181,9 +180,19 @@ class StateTablesMixin:
                     status = excluded.status,
                     version = state_table_templates.version + 1,
                     updated_at = datetime('now', 'localtime')""",
-                (template_id, template.name, template.description, template.scenario_type, template.status, template.version),
+                (
+                    template_id,
+                    template.name,
+                    template.description,
+                    template.scenario_type,
+                    template.status,
+                    template.version,
+                ),
             )
-            keep_table_ids = [table.table_id or f"{template_id}__{_slugify_key(table.table_key or table.name, 'tab')}" for table in template.tables]
+            keep_table_ids = [
+                table.table_id or f"{template_id}__{_slugify_key(table.table_key or table.name, 'tab')}"
+                for table in template.tables
+            ]
             if keep_table_ids:
                 placeholders = ",".join("?" for _ in keep_table_ids)
                 await db.execute(
@@ -197,7 +206,10 @@ class StateTablesMixin:
             for table_index, table in enumerate(template.tables):
                 table_key = _slugify_key(table.table_key or table.name, "tab")
                 table_id = table.table_id or f"{template_id}__{table_key}"
-                keep_column_ids = [column.column_id or f"{table_id}__{_slugify_key(column.column_key or column.name, 'col')}" for column in table.columns]
+                keep_column_ids = [
+                    column.column_id or f"{table_id}__{_slugify_key(column.column_key or column.name, 'col')}"
+                    for column in table.columns
+                ]
                 if keep_column_ids:
                     placeholders = ",".join("?" for _ in keep_column_ids)
                     await db.execute(
@@ -228,11 +240,23 @@ class StateTablesMixin:
                         note = excluded.note,
                         updated_at = datetime('now', 'localtime')""",
                     (
-                        table_id, template_id, table_key, table.name, table.description,
+                        table_id,
+                        template_id,
+                        table_key,
+                        table.name,
+                        table.description,
                         table.sort_order if table.sort_order is not None else table_index,
-                        int(table.enabled), int(table.required), int(table.as_status), int(table.include_in_prompt),
-                        int(table.max_prompt_rows), int(table.prompt_priority), table.insert_rule, table.update_rule,
-                        table.delete_rule, table.resolve_rule, table.note,
+                        int(table.enabled),
+                        int(table.required),
+                        int(table.as_status),
+                        int(table.include_in_prompt),
+                        int(table.max_prompt_rows),
+                        int(table.prompt_priority),
+                        table.insert_rule,
+                        table.update_rule,
+                        table.delete_rule,
+                        table.resolve_rule,
+                        table.note,
                     ),
                 )
                 for column_index, column in enumerate(table.columns):
@@ -256,9 +280,17 @@ class StateTablesMixin:
                             options_json = excluded.options_json,
                             updated_at = datetime('now', 'localtime')""",
                         (
-                            column_id, table_id, column_key, column.name, column.description, column.value_type,
-                            int(column.required), column.sort_order if column.sort_order is not None else column_index,
-                            int(column.include_in_prompt), int(column.max_chars), column.default_value,
+                            column_id,
+                            table_id,
+                            column_key,
+                            column.name,
+                            column.description,
+                            column.value_type,
+                            int(column.required),
+                            column.sort_order if column.sort_order is not None else column_index,
+                            int(column.include_in_prompt),
+                            int(column.max_chars),
+                            column.default_value,
                             json.dumps(column.options or {}, ensure_ascii=False),
                         ),
                     )
@@ -334,20 +366,24 @@ class StateTablesMixin:
         column_key = _slugify_key(data.get("column_key") or data.get("name"), "col")
         if any(column.column_key == column_key for column in table.columns):
             raise ValueError("column_key already exists")
-        table.columns.append(StateTableColumn(
-            column_id=None,
-            table_id=table.table_id or f"{template_id}__{table.table_key}",
-            column_key=column_key,
-            name=data.get("name") or column_key,
-            description=data.get("description", ""),
-            required=bool(data.get("required", False)),
-            sort_order=len(table.columns),
-            include_in_prompt=bool(data.get("include_in_prompt", True)),
-            max_chars=int(data.get("max_chars", 240)),
-        ))
+        table.columns.append(
+            StateTableColumn(
+                column_id=None,
+                table_id=table.table_id or f"{template_id}__{table.table_key}",
+                column_key=column_key,
+                name=data.get("name") or column_key,
+                description=data.get("description", ""),
+                required=bool(data.get("required", False)),
+                sort_order=len(table.columns),
+                include_in_prompt=bool(data.get("include_in_prompt", True)),
+                max_chars=int(data.get("max_chars", 240)),
+            )
+        )
         return await self.save_table_template(template)
 
-    async def update_table_in_template(self, template_id: str, table_key: str, data: dict[str, Any]) -> StateTableTemplate:
+    async def update_table_in_template(
+        self, template_id: str, table_key: str, data: dict[str, Any]
+    ) -> StateTableTemplate:
         template = await self.get_table_template(template_id)
         if not template:
             raise ValueError("template not found")
@@ -382,7 +418,9 @@ class StateTablesMixin:
             item.sort_order = index
         return await self.save_table_template(template)
 
-    async def update_column_in_table(self, template_id: str, table_key: str, column_key: str, data: dict[str, Any]) -> StateTableTemplate:
+    async def update_column_in_table(
+        self, template_id: str, table_key: str, column_key: str, data: dict[str, Any]
+    ) -> StateTableTemplate:
         template = await self.get_table_template(template_id)
         if not template:
             raise ValueError("template not found")
@@ -513,7 +551,9 @@ class StateTablesMixin:
                 ),
             )
             column_ids: dict[str, str | None] = {}
-            cursor = await db.execute("SELECT column_key, column_id FROM state_table_columns WHERE table_id = ?", (row.table_id,))
+            cursor = await db.execute(
+                "SELECT column_key, column_id FROM state_table_columns WHERE table_id = ?", (row.table_id,)
+            )
             for column_key, column_id in await cursor.fetchall():
                 column_ids[column_key] = column_id
             for column_key, value in values.items():
@@ -585,18 +625,24 @@ class StateTablesMixin:
             before={column_key: old_value},
             after={column_key: cell_value},
         )
-        return {
-            "cell_id": cell["cell_id"],
-            "column_key": column_key,
-            "value": cell["value"],
-            "confidence": cell["confidence"],
-            "updated_at": cell["updated_at"],
-        } if cell else None
+        return (
+            {
+                "cell_id": cell["cell_id"],
+                "column_key": column_key,
+                "value": cell["value"],
+                "confidence": cell["confidence"],
+                "updated_at": cell["updated_at"],
+            }
+            if cell
+            else None
+        )
 
     async def update_table_row_status(self, row_id: str, status: str, reason: str | None = None) -> bool:
         await self.init_schema()
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT conversation_id, table_key FROM state_table_rows WHERE row_id = ?", (row_id,))
+            cursor = await db.execute(
+                "SELECT conversation_id, table_key FROM state_table_rows WHERE row_id = ?", (row_id,)
+            )
             existing = await cursor.fetchone()
             if not existing:
                 return False
@@ -674,17 +720,19 @@ class StateTablesMixin:
             )
             events = []
             for row in await cursor.fetchall():
-                events.append({
-                    "event_id": row["event_id"],
-                    "event_type": row["event_type"],
-                    "table_key": row["table_key"],
-                    "row_id": row["row_id"],
-                    "before": json.loads(row["before_json"]) if row["before_json"] else None,
-                    "after": json.loads(row["after_json"]) if row["after_json"] else None,
-                    "reason": row["reason"],
-                    "turn_id": row["turn_id"],
-                    "created_at": row["created_at"],
-                })
+                events.append(
+                    {
+                        "event_id": row["event_id"],
+                        "event_type": row["event_type"],
+                        "table_key": row["table_key"],
+                        "row_id": row["row_id"],
+                        "before": json.loads(row["before_json"]) if row["before_json"] else None,
+                        "after": json.loads(row["after_json"]) if row["after_json"] else None,
+                        "reason": row["reason"],
+                        "turn_id": row["turn_id"],
+                        "created_at": row["created_at"],
+                    }
+                )
             return events
 
     async def revert_table_events(self, conversation_id: str, event_ids: list[str]) -> int:
@@ -785,13 +833,15 @@ class StateTablesMixin:
                 after = json.loads(row["after_json"]) if row["after_json"] else {}
                 if column_key not in before and column_key not in after:
                     continue
-                history.append({
-                    "event_id": row["event_id"],
-                    "event_type": row["event_type"],
-                    "old_value": before.get(column_key),
-                    "new_value": after.get(column_key),
-                    "reason": row["reason"],
-                    "turn_id": row["turn_id"],
-                    "created_at": row["created_at"],
-                })
+                history.append(
+                    {
+                        "event_id": row["event_id"],
+                        "event_type": row["event_type"],
+                        "old_value": before.get(column_key),
+                        "new_value": after.get(column_key),
+                        "reason": row["reason"],
+                        "turn_id": row["turn_id"],
+                        "created_at": row["created_at"],
+                    }
+                )
             return history

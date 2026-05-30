@@ -242,10 +242,16 @@ async def merge_character_profile(db_path: str, source_character_id: str, target
             (source_character_id,),
         )
         await db.commit()
-        return {"conversations": conversations.rowcount, "characters": characters.rowcount, "defaults": defaults.rowcount}
+        return {
+            "conversations": conversations.rowcount,
+            "characters": characters.rowcount,
+            "defaults": defaults.rowcount,
+        }
 
 
-async def delete_character_profile(db_path: str, character_id: str, clear_conversations: bool = False) -> dict[str, int]:
+async def delete_character_profile(
+    db_path: str, character_id: str, clear_conversations: bool = False
+) -> dict[str, int]:
     """删除角色档案和默认策略；可选清空会话中的角色归属。"""
     await init_app_db(db_path)
     async with aiosqlite.connect(db_path) as db:

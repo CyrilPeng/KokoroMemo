@@ -87,6 +87,7 @@ async def test_upsert_character_lazy_insert_and_discovered_endpoint():
         set_config(cfg)
 
         from app.storage.sqlite_app import init_app_db, upsert_character, upsert_conversation
+
         await init_app_db(cfg.storage.sqlite.app_db)
         await upsert_conversation(
             cfg.storage.sqlite.app_db,
@@ -182,11 +183,13 @@ def test_retrieval_gate_keyword_only_mode_matches_keyword():
         recent_context_text="",
         scope_filter={"user_id": "default"},
     )
-    decision = decide_retrieval(RetrievalGateInput(
-        query=query,
-        mode="keyword_only",
-        trigger_keywords=["还记得", "上次"],
-    ))
+    decision = decide_retrieval(
+        RetrievalGateInput(
+            query=query,
+            mode="keyword_only",
+            trigger_keywords=["还记得", "上次"],
+        )
+    )
     assert decision.should_retrieve is True
     assert decision.mode == "keyword_only"
     assert decision.reason.startswith("keyword:")
@@ -202,11 +205,13 @@ def test_retrieval_gate_keyword_only_mode_no_match_skips():
         recent_context_text="",
         scope_filter={"user_id": "default"},
     )
-    decision = decide_retrieval(RetrievalGateInput(
-        query=query,
-        mode="keyword_only",
-        trigger_keywords=["还记得"],
-    ))
+    decision = decide_retrieval(
+        RetrievalGateInput(
+            query=query,
+            mode="keyword_only",
+            trigger_keywords=["还记得"],
+        )
+    )
     assert decision.should_retrieve is False
     assert decision.reason == "no_keyword_match"
 
@@ -244,25 +249,43 @@ async def test_admin_memory_graph_returns_nodes_and_edges():
 
         from app.memory.graph import insert_edge
         from app.storage.sqlite_cards import init_cards_db, insert_card
+
         await init_cards_db(cfg.storage.sqlite.memory_db)
         await insert_card(
             cfg.storage.sqlite.memory_db,
-            card_id="card_a", library_id="lib_default", user_id="default",
-            character_id=None, conversation_id=None, scope="global",
-            card_type="preference", content="prefers tea", importance=0.8,
-            confidence=0.9, status="approved",
+            card_id="card_a",
+            library_id="lib_default",
+            user_id="default",
+            character_id=None,
+            conversation_id=None,
+            scope="global",
+            card_type="preference",
+            content="prefers tea",
+            importance=0.8,
+            confidence=0.9,
+            status="approved",
         )
         await insert_card(
             cfg.storage.sqlite.memory_db,
-            card_id="card_b", library_id="lib_default", user_id="default",
-            character_id=None, conversation_id=None, scope="global",
-            card_type="boundary", content="no spoilers", importance=0.7,
-            confidence=0.85, status="approved",
+            card_id="card_b",
+            library_id="lib_default",
+            user_id="default",
+            character_id=None,
+            conversation_id=None,
+            scope="global",
+            card_type="boundary",
+            content="no spoilers",
+            importance=0.7,
+            confidence=0.85,
+            status="approved",
         )
         await insert_edge(
             cfg.storage.sqlite.memory_db,
-            source_card_id="card_a", target_card_id="card_b",
-            edge_type="related", weight=0.6, confidence=0.7,
+            source_card_id="card_a",
+            target_card_id="card_b",
+            edge_type="related",
+            weight=0.6,
+            confidence=0.7,
         )
 
         transport = ASGITransport(app=app)

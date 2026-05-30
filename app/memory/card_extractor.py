@@ -305,11 +305,15 @@ async def _emit_card_event(event_type: str, card_id: str, mem) -> None:
     """Emit a WebSocket event for card extraction activity."""
     try:
         from app.core.events import emit
-        await emit(event_type, {
-            "card_id": card_id,
-            "content": mem.content[:_EVENT_CONTENT_PREVIEW_MAX_CHARS],
-            "memory_type": mem.memory_type,
-            "importance": mem.importance,
-        })
+
+        await emit(
+            event_type,
+            {
+                "card_id": card_id,
+                "content": mem.content[:_EVENT_CONTENT_PREVIEW_MAX_CHARS],
+                "memory_type": mem.memory_type,
+                "importance": mem.importance,
+            },
+        )
     except Exception:  # noqa: S110
         pass

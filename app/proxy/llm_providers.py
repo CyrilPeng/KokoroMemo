@@ -90,6 +90,7 @@ def _make_stream_chunk(content: str, model: str, finish_reason: str | None = Non
 # OpenAI 兼容提供商（Chat Completions）
 # =============================================================================
 
+
 class OpenAICompatibleProvider(LLMProvider):
     """Standard OpenAI Chat Completions API. Works with OpenAI, DeepSeek, Groq, etc."""
 
@@ -114,15 +115,16 @@ class OpenAICompatibleProvider(LLMProvider):
         body["stream"] = True
         client = get_llm_http_client()
         async with client.stream("POST", url, json=body, headers=headers, timeout=timeout) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if line:
-                        yield line
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if line:
+                    yield line
 
 
 # =============================================================================
 # OpenAI Responses API 提供商
 # =============================================================================
+
 
 class OpenAIResponsesProvider(LLMProvider):
     """OpenAI Responses API (newer endpoint)."""
@@ -188,30 +190,31 @@ class OpenAIResponsesProvider(LLMProvider):
         model = body.get("model", self.model)
         client = get_llm_http_client()
         async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    if line == "data: [DONE]":
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                if line == "data: [DONE]":
+                    yield "data: [DONE]"
+                    break
+                try:
+                    event = json.loads(line[6:])
+                    event_type = event.get("type", "")
+                    if event_type == "response.output_text.delta":
+                        delta = event.get("delta", "")
+                        if delta:
+                            yield _make_stream_chunk(delta, model)
+                    elif event_type == "response.completed":
+                        yield _make_stream_chunk("", model, finish_reason="stop")
                         yield "data: [DONE]"
-                        break
-                    try:
-                        event = json.loads(line[6:])
-                        event_type = event.get("type", "")
-                        if event_type == "response.output_text.delta":
-                            delta = event.get("delta", "")
-                            if delta:
-                                yield _make_stream_chunk(delta, model)
-                        elif event_type == "response.completed":
-                            yield _make_stream_chunk("", model, finish_reason="stop")
-                            yield "data: [DONE]"
-                    except json.JSONDecodeError:
-                        pass
+                except json.JSONDecodeError:
+                    pass
 
 
 # =============================================================================
 # Anthropic 提供商（Messages API）
 # =============================================================================
+
 
 class AnthropicProvider(LLMProvider):
     """Anthropic Claude Messages API."""
@@ -300,29 +303,30 @@ class AnthropicProvider(LLMProvider):
         model = body.get("model", self.model)
         client = get_llm_http_client()
         async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    try:
-                        event = json.loads(line[6:])
-                        event_type = event.get("type", "")
-                        if event_type == "content_block_delta":
-                            delta = event.get("delta", {})
-                            if delta.get("type") == "text_delta":
-                                text = delta.get("text", "")
-                                if text:
-                                    yield _make_stream_chunk(text, model)
-                        elif event_type == "message_stop":
-                            yield _make_stream_chunk("", model, finish_reason="stop")
-                            yield "data: [DONE]"
-                    except json.JSONDecodeError:
-                        pass
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    event = json.loads(line[6:])
+                    event_type = event.get("type", "")
+                    if event_type == "content_block_delta":
+                        delta = event.get("delta", {})
+                        if delta.get("type") == "text_delta":
+                            text = delta.get("text", "")
+                            if text:
+                                yield _make_stream_chunk(text, model)
+                    elif event_type == "message_stop":
+                        yield _make_stream_chunk("", model, finish_reason="stop")
+                        yield "data: [DONE]"
+                except json.JSONDecodeError:
+                    pass
 
 
 # =============================================================================
 # Gemini 提供商（Google AI）
 # =============================================================================
+
 
 class GeminiProvider(LLMProvider):
     """Google Gemini API."""
@@ -394,21 +398,21 @@ class GeminiProvider(LLMProvider):
 
         client = get_llm_http_client()
         async with client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    try:
-                        data = json.loads(line[6:])
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            for part in parts:
-                                text = part.get("text", "")
-                                if text:
-                                    yield _make_stream_chunk(text, model)
-                    except json.JSONDecodeError:
-                        pass
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    data = json.loads(line[6:])
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        for part in parts:
+                            text = part.get("text", "")
+                            if text:
+                                yield _make_stream_chunk(text, model)
+                except json.JSONDecodeError:
+                    pass
 
         yield _make_stream_chunk("", model, finish_reason="stop")
         yield "data: [DONE]"
@@ -417,6 +421,7 @@ class GeminiProvider(LLMProvider):
 # =============================================================================
 # 工厂方法
 # =============================================================================
+
 
 def create_llm_provider(provider: str, base_url: str, api_key: str, model: str) -> LLMProvider:
     """Create an LLM provider instance based on provider type string."""

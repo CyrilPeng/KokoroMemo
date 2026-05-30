@@ -141,17 +141,22 @@ async def test_import_conversation_state_bundle_accepts_exported_rows_shape():
             table = template["tables"][0]
             first_col = next(c["column_key"] for c in table["columns"] if c["include_in_prompt"])
 
-            resp = await client.post("/admin/conversations/import", json={
-                "conversation_id": "export_src",
-                "target_conversation_id": "export_dst",
-                "template": template,
-                "rows": [{
-                    "table_key": table["table_key"],
-                    "values": {first_col: "测试导入值"},
-                    "priority": 70,
-                    "confidence": 0.8,
-                }],
-            })
+            resp = await client.post(
+                "/admin/conversations/import",
+                json={
+                    "conversation_id": "export_src",
+                    "target_conversation_id": "export_dst",
+                    "template": template,
+                    "rows": [
+                        {
+                            "table_key": table["table_key"],
+                            "values": {first_col: "测试导入值"},
+                            "priority": 70,
+                            "confidence": 0.8,
+                        }
+                    ],
+                },
+            )
             assert resp.status_code == 200
             assert resp.json()["imported_rows"] == 1
 
@@ -192,9 +197,7 @@ async def test_state_preview_returns_injection_summary():
             data = preview_resp.json()
             assert data["summary"]["template_id"] == template["template_id"]
             assert any(
-                item["table_key"] == table["table_key"]
-                and item["included"]
-                and item["selected_row_count"] == 1
+                item["table_key"] == table["table_key"] and item["included"] and item["selected_row_count"] == 1
                 for item in data["summary"]["tables"]
             )
     finally:
@@ -370,7 +373,9 @@ async def test_state_table_template_tab_and_column_editing():
                 json={"name": "任务", "table_key": "quests"},
             )
             assert add_resp.status_code == 200
-            added_table = next(table for table in add_resp.json()["template"]["tables"] if table["table_key"] == "quests")
+            added_table = next(
+                table for table in add_resp.json()["template"]["tables"] if table["table_key"] == "quests"
+            )
             assert [column["name"] for column in added_table["columns"]] == ["任务"]
 
             rename_resp = await client.patch(
@@ -378,7 +383,9 @@ async def test_state_table_template_tab_and_column_editing():
                 json={"name": "任务列表", "description": "主线与支线"},
             )
             assert rename_resp.status_code == 200
-            renamed_table = next(table for table in rename_resp.json()["template"]["tables"] if table["table_key"] == "quests")
+            renamed_table = next(
+                table for table in rename_resp.json()["template"]["tables"] if table["table_key"] == "quests"
+            )
             assert renamed_table["name"] == "任务列表"
 
             column_resp = await client.patch(
@@ -386,7 +393,9 @@ async def test_state_table_template_tab_and_column_editing():
                 json={"name": "任务名称", "max_chars": 500},
             )
             assert column_resp.status_code == 200
-            edited_table = next(table for table in column_resp.json()["template"]["tables"] if table["table_key"] == "quests")
+            edited_table = next(
+                table for table in column_resp.json()["template"]["tables"] if table["table_key"] == "quests"
+            )
             assert edited_table["columns"][0]["name"] == "任务名称"
             assert edited_table["columns"][0]["max_chars"] == 500
 
@@ -453,17 +462,21 @@ async def test_admin_config_save_keeps_existing_api_keys_when_form_empty(monkeyp
     try:
         config_path = test_dir / "config.yaml"
         config_path.write_text(
-            yaml.dump({
-                "server": {"port": 14514},
-                "storage": {"root_dir": str(test_dir / "data")},
-                "llm": {"api_key": "saved-llm", "model": "old-model"},
-                "embedding": {"api_key": "saved-embedding"},
-                "rerank": {"api_key": "saved-rerank"},
-                "memory": {
-                    "judge": {"api_key": "saved-judge"},
-                    "state_updater": {"api_key": "saved-state"},
+            yaml.dump(
+                {
+                    "server": {"port": 14514},
+                    "storage": {"root_dir": str(test_dir / "data")},
+                    "llm": {"api_key": "saved-llm", "model": "old-model"},
+                    "embedding": {"api_key": "saved-embedding"},
+                    "rerank": {"api_key": "saved-rerank"},
+                    "memory": {
+                        "judge": {"api_key": "saved-judge"},
+                        "state_updater": {"api_key": "saved-state"},
+                    },
                 },
-            }, allow_unicode=True, sort_keys=False),
+                allow_unicode=True,
+                sort_keys=False,
+            ),
             encoding="utf-8",
         )
         monkeypatch.setenv("KOKOROMEMO_CONFIG_PATH", str(config_path))
@@ -479,15 +492,18 @@ async def test_admin_config_save_keeps_existing_api_keys_when_form_empty(monkeyp
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/admin/config", json={
-                "llm": {"api_key": "", "model": "new-model"},
-                "embedding": {"api_key": ""},
-                "rerank": {"api_key": ""},
-                "memory": {
-                    "judge": {"api_key": ""},
-                    "state_updater": {"api_key": ""},
+            resp = await client.post(
+                "/admin/config",
+                json={
+                    "llm": {"api_key": "", "model": "new-model"},
+                    "embedding": {"api_key": ""},
+                    "rerank": {"api_key": ""},
+                    "memory": {
+                        "judge": {"api_key": ""},
+                        "state_updater": {"api_key": ""},
+                    },
                 },
-            })
+            )
         assert resp.status_code == 200
         saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         assert saved["llm"]["api_key"] == "saved-llm"
@@ -522,11 +538,14 @@ async def test_conversation_config_summary_api():
             assert data["state_row_count"] == 0
             assert data["is_new_session"] is True
 
-            resp = await client.post("/admin/conversations/conv_test/config", json={
-                "library_ids": ["lib_default"],
-                "write_library_id": "lib_default",
-                "table_template_id": "tpl_ttrpg_story_tables",
-            })
+            resp = await client.post(
+                "/admin/conversations/conv_test/config",
+                json={
+                    "library_ids": ["lib_default"],
+                    "write_library_id": "lib_default",
+                    "table_template_id": "tpl_ttrpg_story_tables",
+                },
+            )
             assert resp.status_code == 200
             assert resp.json()["status"] == "ok"
 
@@ -588,12 +607,15 @@ async def test_mount_presets_crud():
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             # Create preset
-            resp = await client.post("/admin/memory-mount-presets", json={
-                "name": "TRPG 预设",
-                "description": "用于跑团会话",
-                "library_ids": ["lib_default"],
-                "write_library_id": "lib_default",
-            })
+            resp = await client.post(
+                "/admin/memory-mount-presets",
+                json={
+                    "name": "TRPG 预设",
+                    "description": "用于跑团会话",
+                    "library_ids": ["lib_default"],
+                    "write_library_id": "lib_default",
+                },
+            )
             assert resp.status_code == 200
             data = resp.json()
             assert data["status"] == "ok"
@@ -606,9 +628,12 @@ async def test_mount_presets_crud():
             assert items[0]["name"] == "TRPG 预设"
 
             # Update preset
-            resp = await client.put(f"/admin/memory-mount-presets/{preset_id}", json={
-                "name": "TRPG 预设 v2",
-            })
+            resp = await client.put(
+                f"/admin/memory-mount-presets/{preset_id}",
+                json={
+                    "name": "TRPG 预设 v2",
+                },
+            )
             assert resp.status_code == 200
             assert resp.json()["status"] == "ok"
 

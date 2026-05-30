@@ -151,22 +151,24 @@ class RetrievalGateConfig:
     vector_search_on_new_session: bool = True
     vector_search_every_n_turns: int = 6
     vector_search_when_state_confidence_below: float = 0.65
-    trigger_keywords: list[str] = field(default_factory=lambda: [
-        "记得",
-        "还记得",
-        "上次",
-        "以前",
-        "之前",
-        "曾经",
-        "约定",
-        "我们说过",
-        "你答应过",
-        "那个人",
-        "那个地方",
-        "那个东西",
-        "叫什么",
-        "发生过什么",
-    ])
+    trigger_keywords: list[str] = field(
+        default_factory=lambda: [
+            "记得",
+            "还记得",
+            "上次",
+            "以前",
+            "之前",
+            "曾经",
+            "约定",
+            "我们说过",
+            "你答应过",
+            "那个人",
+            "那个地方",
+            "那个东西",
+            "叫什么",
+            "发生过什么",
+        ]
+    )
     skip_when_latest_user_text_chars_below: int = 4
     skip_when_state_is_sufficient: bool = True
 
@@ -224,7 +226,9 @@ class CompatibilityConfig:
 
 @dataclass
 class ConversationConfig:
-    session_identity_mode: str = "request"  # "request" = use client session/conversation IDs, "api_key" = group by inbound API key
+    session_identity_mode: str = (
+        "request"  # "request" = use client session/conversation IDs, "api_key" = group by inbound API key
+    )
     auto_new_session_gap_minutes: int = 0
     detect_system_prompt_change: bool = False
     detect_message_count_reset: bool = False
@@ -271,8 +275,12 @@ def _merge_dataclass(dc: Any, data: dict) -> Any:
 def _resolve_type_hint(hint: str, dc: Any) -> type | None:
     """Resolve string type hint to actual type for runtime coercion."""
     type_map = {
-        "str": str, "int": int, "float": float, "bool": bool,
-        "list": list, "dict": dict,
+        "str": str,
+        "int": int,
+        "float": float,
+        "bool": bool,
+        "list": list,
+        "dict": dict,
     }
     # Handle Optional / None types by stripping "| None"
     base = hint.split("|")[0].strip()
@@ -308,7 +316,8 @@ def _coerce_value(value: Any, expected_type: type | None) -> Any:
             "Config type coercion failed for key in %s: expected %s, got %s (%r)",
             type(expected_type).__name__ if expected_type else "unknown",
             expected_type.__name__ if expected_type else "None",
-            actual.__name__, value,
+            actual.__name__,
+            value,
         )
     return value
 

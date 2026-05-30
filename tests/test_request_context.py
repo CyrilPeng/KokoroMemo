@@ -1,4 +1,4 @@
-﻿"""Tests for inbound request context resolution."""
+"""Tests for inbound request context resolution."""
 
 from __future__ import annotations
 
@@ -12,10 +12,7 @@ from app.proxy.request_parser import resolve_context
 
 
 def _request(headers: dict[str, str] | None = None, query_string: bytes = b"") -> Request:
-    raw_headers = [
-        (name.lower().encode("latin-1"), value.encode("latin-1"))
-        for name, value in (headers or {}).items()
-    ]
+    raw_headers = [(name.lower().encode("latin-1"), value.encode("latin-1")) for name, value in (headers or {}).items()]
     scope = {
         "type": "http",
         "method": "POST",

@@ -67,7 +67,9 @@ async def test_sqlite_defaults_use_localtime_and_writes_explicit_localtime():
 
         for db_path in (app_db, chat_db):
             with sqlite3.connect(db_path) as conn:
-                schemas = "\n".join(row[0] or "" for row in conn.execute("SELECT sql FROM sqlite_master WHERE type='table'"))
+                schemas = "\n".join(
+                    row[0] or "" for row in conn.execute("SELECT sql FROM sqlite_master WHERE type='table'")
+                )
             assert "datetime('now'))" not in schemas
             assert "datetime('now', 'localtime')" in schemas
 
@@ -91,7 +93,14 @@ async def test_schema_initializes_card_and_chat_tables():
 
         with sqlite3.connect(memory_db) as conn:
             tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert {"memory_cards", "memory_card_versions", "review_actions", "jobs", "memory_libraries", "conversation_memory_mounts"} <= tables
+        assert {
+            "memory_cards",
+            "memory_card_versions",
+            "review_actions",
+            "jobs",
+            "memory_libraries",
+            "conversation_memory_mounts",
+        } <= tables
         libraries = await list_memory_libraries(str(memory_db))
         assert libraries[0]["library_id"] == DEFAULT_MEMORY_LIBRARY_ID
 
@@ -109,13 +118,25 @@ async def test_memory_library_mounts_and_preset_copy():
     try:
         await init_cards_db(str(memory_db))
         await insert_card(
-            str(memory_db), "card_base", "u1", None, None,
-            "global", "preference", "用户喜欢安静的叙事", status="approved",
+            str(memory_db),
+            "card_base",
+            "u1",
+            None,
+            None,
+            "global",
+            "preference",
+            "用户喜欢安静的叙事",
+            status="approved",
         )
         lib_id = await create_memory_library(
-            str(memory_db), "跑团 A", "测试库", source_library_ids=[DEFAULT_MEMORY_LIBRARY_ID],
+            str(memory_db),
+            "跑团 A",
+            "测试库",
+            source_library_ids=[DEFAULT_MEMORY_LIBRARY_ID],
         )
-        await set_conversation_mounts(str(memory_db), "conv1", [DEFAULT_MEMORY_LIBRARY_ID, lib_id], write_library_id=lib_id)
+        await set_conversation_mounts(
+            str(memory_db), "conv1", [DEFAULT_MEMORY_LIBRARY_ID, lib_id], write_library_id=lib_id
+        )
         mounts = await get_conversation_mounts(str(memory_db), "conv1")
         assert [mount["library_id"] for mount in mounts] == [lib_id, DEFAULT_MEMORY_LIBRARY_ID]
         with sqlite3.connect(memory_db) as conn:
@@ -168,23 +189,29 @@ def test_preference_defaults_to_pending_review():
 
 
 def test_model_suggested_auto_approve_can_approve_low_risk_preference():
-    assert auto_review(
-        "preference",
-        importance=0.9,
-        confidence=0.9,
-        risk_level="low",
-        tags=["suggested_action:auto_approve"],
-    ) == "approve"
+    assert (
+        auto_review(
+            "preference",
+            importance=0.9,
+            confidence=0.9,
+            risk_level="low",
+            tags=["suggested_action:auto_approve"],
+        )
+        == "approve"
+    )
 
 
 def test_roleplay_speech_style_can_auto_approve():
-    assert auto_review(
-        "preference",
-        importance=0.9,
-        confidence=0.9,
-        risk_level="low",
-        tags=["roleplay_rule", "speech_style"],
-    ) == "approve"
+    assert (
+        auto_review(
+            "preference",
+            importance=0.9,
+            confidence=0.9,
+            risk_level="low",
+            tags=["roleplay_rule", "speech_style"],
+        )
+        == "approve"
+    )
 
 
 @pytest.mark.asyncio
@@ -193,9 +220,13 @@ async def test_vector_retrieval_filters_deprecated_cards():
     memory_db = test_dir / "memory.sqlite"
     try:
         await init_cards_db(str(memory_db))
-        await insert_card(str(memory_db), "card_old", "u1", "c1", "conv1", "character", "preference", "旧称呼", status="deprecated")
+        await insert_card(
+            str(memory_db), "card_old", "u1", "c1", "conv1", "character", "preference", "旧称呼", status="deprecated"
+        )
 
-        query = RetrievalQuery("称呼", "称呼", "user: 称呼", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
+        query = RetrievalQuery(
+            "称呼", "称呼", "user: 称呼", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"}
+        )
         store = FakeLanceDBStore([{"memory_id": "card_old", "_distance": 0.1}])
         results = await retrieve_cards(query, DummyEmbeddingProvider(8), store, str(memory_db))
 
@@ -210,11 +241,33 @@ async def test_graph_expands_constrains_card():
     memory_db = test_dir / "memory.sqlite"
     try:
         await init_cards_db(str(memory_db))
-        await insert_card(str(memory_db), "card_seed", "u1", "c1", "conv1", "character", "preference", "用户喜欢被叫哥哥", status="approved")
-        await insert_card(str(memory_db), "card_limit", "u1", "c1", "conv1", "character", "boundary", "不要在严肃场景使用亲昵称呼", status="approved")
+        await insert_card(
+            str(memory_db),
+            "card_seed",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "preference",
+            "用户喜欢被叫哥哥",
+            status="approved",
+        )
+        await insert_card(
+            str(memory_db),
+            "card_limit",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "boundary",
+            "不要在严肃场景使用亲昵称呼",
+            status="approved",
+        )
         await insert_edge(str(memory_db), "card_seed", "card_limit", "constrains")
 
-        query = RetrievalQuery("称呼", "称呼", "user: 称呼", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
+        query = RetrievalQuery(
+            "称呼", "称呼", "user: 称呼", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"}
+        )
         store = FakeLanceDBStore([{"memory_id": "card_seed", "_distance": 0.1}])
         results = await retrieve_cards(query, DummyEmbeddingProvider(8), store, str(memory_db), final_top_k=5)
 
@@ -229,11 +282,33 @@ async def test_graph_expands_same_as_bidirectionally():
     memory_db = test_dir / "memory.sqlite"
     try:
         await init_cards_db(str(memory_db))
-        await insert_card(str(memory_db), "card_alias", "u1", "c1", "conv1", "character", "preference", "用户喜欢昵称 A", status="approved")
-        await insert_card(str(memory_db), "card_same", "u1", "c1", "conv1", "character", "preference", "昵称 A 等同昵称 B", status="approved")
+        await insert_card(
+            str(memory_db),
+            "card_alias",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "preference",
+            "用户喜欢昵称 A",
+            status="approved",
+        )
+        await insert_card(
+            str(memory_db),
+            "card_same",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "preference",
+            "昵称 A 等同昵称 B",
+            status="approved",
+        )
         await insert_edge(str(memory_db), "card_alias", "card_same", "same_as")
 
-        query = RetrievalQuery("昵称", "昵称", "user: 昵称", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
+        query = RetrievalQuery(
+            "昵称", "昵称", "user: 昵称", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"}
+        )
         store = FakeLanceDBStore([{"memory_id": "card_same", "_distance": 0.1}])
         results = await retrieve_cards(query, DummyEmbeddingProvider(8), store, str(memory_db), final_top_k=5)
 
@@ -248,15 +323,42 @@ async def test_graph_suppresses_contradicting_card():
     memory_db = test_dir / "memory.sqlite"
     try:
         await init_cards_db(str(memory_db))
-        await insert_card(str(memory_db), "card_current", "u1", "c1", "conv1", "character", "preference", "用户现在喜欢茶", status="approved")
-        await insert_card(str(memory_db), "card_conflict", "u1", "c1", "conv1", "character", "preference", "用户只喜欢咖啡", status="approved")
+        await insert_card(
+            str(memory_db),
+            "card_current",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "preference",
+            "用户现在喜欢茶",
+            status="approved",
+        )
+        await insert_card(
+            str(memory_db),
+            "card_conflict",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "preference",
+            "用户只喜欢咖啡",
+            status="approved",
+        )
         await insert_edge(str(memory_db), "card_current", "card_conflict", "contradicts")
 
-        query = RetrievalQuery("喜欢喝什么", "饮品", "user: 喜欢喝什么", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
-        store = FakeLanceDBStore([
-            {"memory_id": "card_current", "_distance": 0.1},
-            {"memory_id": "card_conflict", "_distance": 0.2},
-        ])
+        query = RetrievalQuery(
+            "喜欢喝什么",
+            "饮品",
+            "user: 喜欢喝什么",
+            {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"},
+        )
+        store = FakeLanceDBStore(
+            [
+                {"memory_id": "card_current", "_distance": 0.1},
+                {"memory_id": "card_conflict", "_distance": 0.2},
+            ]
+        )
         results = await retrieve_cards(query, DummyEmbeddingProvider(8), store, str(memory_db), final_top_k=5)
 
         assert [result.card_id for result in results] == ["card_current"]
@@ -285,20 +387,40 @@ async def test_retrieval_only_uses_mounted_memory_libraries():
         lib_a = await create_memory_library(str(memory_db), "游戏 A")
         lib_b = await create_memory_library(str(memory_db), "游戏 B")
         await insert_card(
-            str(memory_db), "card_a", "u1", "c1", "conv1",
-            "character", "preference", "A 设定", status="approved", library_id=lib_a,
+            str(memory_db),
+            "card_a",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "preference",
+            "A 设定",
+            status="approved",
+            library_id=lib_a,
         )
         await insert_card(
-            str(memory_db), "card_b", "u1", "c1", "conv1",
-            "character", "preference", "B 设定", status="approved", library_id=lib_b,
+            str(memory_db),
+            "card_b",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "preference",
+            "B 设定",
+            status="approved",
+            library_id=lib_b,
         )
         await set_conversation_mounts(str(memory_db), "conv1", [lib_a], write_library_id=lib_a)
 
-        query = RetrievalQuery("设定", "设定", "user: 设定", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
-        store = FakeLanceDBStore([
-            {"memory_id": "card_b", "library_id": lib_b, "_distance": 0.01},
-            {"memory_id": "card_a", "library_id": lib_a, "_distance": 0.02},
-        ])
+        query = RetrievalQuery(
+            "设定", "设定", "user: 设定", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"}
+        )
+        store = FakeLanceDBStore(
+            [
+                {"memory_id": "card_b", "library_id": lib_b, "_distance": 0.01},
+                {"memory_id": "card_a", "library_id": lib_a, "_distance": 0.02},
+            ]
+        )
         results = await retrieve_cards(query, DummyEmbeddingProvider(8), store, str(memory_db), final_top_k=5)
         assert [result.card_id for result in results] == ["card_a"]
     finally:
@@ -311,14 +433,22 @@ async def test_retrieval_applies_rerank_provider_before_truncating():
     memory_db = test_dir / "memory.sqlite"
     try:
         await init_cards_db(str(memory_db))
-        await insert_card(str(memory_db), "card_a", "u1", "c1", "conv1", "character", "preference", "普通候选", status="approved")
-        await insert_card(str(memory_db), "card_b", "u1", "c1", "conv1", "character", "preference", "更相关候选", status="approved")
+        await insert_card(
+            str(memory_db), "card_a", "u1", "c1", "conv1", "character", "preference", "普通候选", status="approved"
+        )
+        await insert_card(
+            str(memory_db), "card_b", "u1", "c1", "conv1", "character", "preference", "更相关候选", status="approved"
+        )
 
-        query = RetrievalQuery("候选", "候选", "user: 候选", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
-        store = FakeLanceDBStore([
-            {"memory_id": "card_a", "_distance": 0.01},
-            {"memory_id": "card_b", "_distance": 0.02},
-        ])
+        query = RetrievalQuery(
+            "候选", "候选", "user: 候选", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"}
+        )
+        store = FakeLanceDBStore(
+            [
+                {"memory_id": "card_a", "_distance": 0.01},
+                {"memory_id": "card_b", "_distance": 0.02},
+            ]
+        )
         results = await retrieve_cards(
             query,
             DummyEmbeddingProvider(8),
@@ -368,7 +498,13 @@ async def test_extraction_writes_to_conversation_write_library(monkeypatch):
     class FakeProvider:
         async def chat(self, body, timeout):
             return {
-                "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户喜欢蓝色茶杯","importance":0.9,"confidence":0.9,"risk_level":"low","suggested_action":"auto_approve","tags":["preference"]}]}'}}]
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户喜欢蓝色茶杯","importance":0.9,"confidence":0.9,"risk_level":"low","suggested_action":"auto_approve","tags":["preference"]}]}'
+                        }
+                    }
+                ]
             }
 
     test_dir = make_test_dir()
@@ -410,7 +546,13 @@ async def test_llm_memory_judge_extracts_addressing(monkeypatch):
     class FakeProvider:
         async def chat(self, body, timeout):
             return {
-                "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"risk_level":"low","suggested_action":"auto_approve","tags":["preference","addressing"]}]}'}}]
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"risk_level":"low","suggested_action":"auto_approve","tags":["preference","addressing"]}]}'
+                        }
+                    }
+                ]
             }
 
     monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
@@ -434,7 +576,13 @@ async def test_llm_memory_judge_extracts_catgirl_speech_rule(monkeypatch):
         async def chat(self, body, timeout):
             captured["system"] = body["messages"][0]["content"]
             return {
-                "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"speech_style","content":"用户要求角色以猫娘身份互动，并在每句话末尾加上“喵~”。","importance":0.9,"confidence":0.9,"risk_level":"low","tags":["roleplay_rule","speech_style"]}]}'}}]
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"speech_style","content":"用户要求角色以猫娘身份互动，并在每句话末尾加上“喵~”。","importance":0.9,"confidence":0.9,"risk_level":"low","tags":["roleplay_rule","speech_style"]}]}'
+                        }
+                    }
+                ]
             }
 
     monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
@@ -491,7 +639,13 @@ async def test_llm_memory_judge_routes_to_approved_card(monkeypatch):
         class FakeProvider:
             async def chat(self, body, timeout):
                 return {
-                    "choices": [{"message": {"content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"risk_level":"low","suggested_action":"auto_approve","tags":["preference","addressing"]}]}'}}]
+                    "choices": [
+                        {
+                            "message": {
+                                "content": '{"memories":[{"should_remember":true,"scope":"character","memory_type":"preference","content":"用户希望被称呼为“主人”。","importance":0.9,"confidence":0.9,"risk_level":"low","suggested_action":"auto_approve","tags":["preference","addressing"]}]}'
+                            }
+                        }
+                    ]
                 }
 
         monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())

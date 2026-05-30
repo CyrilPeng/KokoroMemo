@@ -60,12 +60,22 @@ class RetrievalDecisionsMixin:
                     latest_user_text, state_confidence, state_item_count, avg_state_confidence, turn_index)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    decision_id, request_id, conversation_id, user_id, character_id, world_id, mode,
-                    1 if should_retrieve else 0, reason,
+                    decision_id,
+                    request_id,
+                    conversation_id,
+                    user_id,
+                    character_id,
+                    world_id,
+                    mode,
+                    1 if should_retrieve else 0,
+                    reason,
                     json.dumps(reasons or [], ensure_ascii=False),
                     json.dumps(skipped_routes or [], ensure_ascii=False),
                     json.dumps(triggered_routes or reasons or [], ensure_ascii=False),
-                    latest_user_text, avg_state_confidence, state_item_count, avg_state_confidence,
+                    latest_user_text,
+                    avg_state_confidence,
+                    state_item_count,
+                    avg_state_confidence,
                     turn_index,
                 ),
             )
@@ -188,4 +198,3 @@ class RetrievalDecisionsMixin:
                 )
             await db.commit()
         return trace_id
-

@@ -11,4 +11,3 @@ class MountResolution:
     write_library_id: str
     source: str
     warnings: list[str] = field(default_factory=list)
-

@@ -1,4 +1,4 @@
-﻿"""Health check and admin routes — thin re-export after modular split.
+"""Health check and admin routes — thin re-export after modular split.
 
 The original monolithic routes_admin.py has been decomposed into domain-based
 sub-modules under ``app.api.admin/``. All admin routes are aggregated there and

@@ -32,8 +32,19 @@ async def insert_summary(
                (summary_id, level, summary_type, title, content, user_id,
                 character_id, conversation_id, importance, confidence, source_card_ids_json)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (summary_id, level, summary_type, title, content, user_id,
-             character_id, conversation_id, importance, confidence, source_card_ids_json),
+            (
+                summary_id,
+                level,
+                summary_type,
+                title,
+                content,
+                user_id,
+                character_id,
+                conversation_id,
+                importance,
+                confidence,
+                source_card_ids_json,
+            ),
         )
         await db.commit()
     return summary_id

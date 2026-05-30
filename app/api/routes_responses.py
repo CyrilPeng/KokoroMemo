@@ -36,4 +36,6 @@ async def responses(request: Request):
             return JSONResponse(status_code=pipeline_response.status_code, content=payload)
         return JSONResponse(status_code=pipeline_response.status_code, content=openai_to_responses(payload, raw_body))
 
-    return JSONResponse(status_code=500, content={"error": {"message": "Unexpected proxy response", "type": "proxy_error"}})
+    return JSONResponse(
+        status_code=500, content={"error": {"message": "Unexpected proxy response", "type": "proxy_error"}}
+    )

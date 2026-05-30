@@ -17,6 +17,7 @@ from app.providers.rerank_openai_compatible import OpenAICompatibleRerankProvide
 
 try:
     from app.storage.lancedb_store import LanceDBStore
+
     _LANCEDB_AVAILABLE = True
 except ImportError:
     _LANCEDB_AVAILABLE = False
@@ -185,6 +186,7 @@ class ServiceRegistry:
             )
         else:
             from app.storage.sqlite_vector_store import SqliteVectorStore
+
             sqlite_path = str(Path(lancedb_path) / "vectors.sqlite")
             self.lancedb_store = SqliteVectorStore(
                 db_path=sqlite_path,

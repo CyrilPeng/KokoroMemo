@@ -1,2 +1,1 @@
 """Internal product service layer."""
-

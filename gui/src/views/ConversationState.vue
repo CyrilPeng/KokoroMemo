@@ -29,6 +29,9 @@ import StatePolicyCard from '../components/state/StatePolicyCard.vue'
 import StateSessionToolbar from '../components/state/StateSessionToolbar.vue'
 import StateTableWorkspace from '../components/state/StateTableWorkspace.vue'
 import type { ConversationConfig, StateRow, StateTable } from '../components/state/types'
+import { useTableManagement } from '../composables/useTableManagement'
+import { useBoardEditing } from '../composables/useBoardEditing'
+import { useStateFiller } from '../composables/useStateFiller'
 
 const stateHelpSections = [
   { title: '这是什么', body: '状态板用于追踪当前会话的"热信息"——场景、角色情绪、规则、关系等会随对话演变的内容。它会和长期记忆一起注入到 AI 的 system prompt，帮助 AI 维持连续性。' },
@@ -56,8 +59,6 @@ const conversations = ref<any[]>([])
 const template = ref<any | null>(null)
 const rows = ref<StateRow[]>([])
 const recentEvents = ref<any[]>([])
-const checkedRowKeys = ref<string[]>([])
-const batchPriority = ref<number | null>(80)
 const historyEvents = ref<any[]>([])
 const historyLoading = ref(false)
 const config = ref<ConversationConfig | null>(null)
@@ -73,36 +74,60 @@ const activeTableKey = ref(localStorage.getItem(STATE_ACTIVE_TABLE_STORAGE_KEY) 
 const preview = ref({ preview: '', char_count: 0, max_chars: 0, item_count: 0, summary: null as any })
 const retrievalTraces = ref<any[]>([])
 const retrievalTraceDetail = ref<any | null>(null)
-const showEditModal = ref(false)
-const showFillModal = ref(false)
 const showHelpModal = ref(false)
 const showRenameModal = ref(false)
 const showDefaultDrawer = ref(false)
-const showAddTabModal = ref(false)
-const showEditTabModal = ref(false)
-const showAddColumnModal = ref(false)
-const showEditColumnModal = ref(false)
-const showPresetModal = ref(false)
-const showProfileModal = ref(false)
-const showRenameTemplateModal = ref(false)
-const showFillPreviewModal = ref(false)
-const fillPreviewOps = ref<any[]>([])
-const lastFillEventIds = ref<string[]>([])
-const showUndoAlert = ref(false)
-const editingTable = ref<StateTable | null>(null)
-const editingRow = ref<StateRow | null>(null)
-const editValues = ref<Record<string, string>>({})
-const editMeta = ref({ priority: 80, confidence: 0.9 })
-const fillForm = ref({ user_message: '', assistant_message: '' })
 const renameForm = ref({ title: '' })
-const tabForm = ref({ table_key: '', name: '', description: '' })
-const columnForm = ref({ table_key: '', column_key: '', name: '', description: '', max_chars: 240, required: 0 })
-const editingTabKey = ref('')
-const editingColumnKey = ref('')
-const presetForm = ref({ preset_id: '', name: '', description: '' })
-const profileForm = ref({ profile_id: '', name: '', description: '' })
-const renameTemplateForm = ref({ template_id: '', name: '' })
 
+// ── Composables ──────────────────────────────────────────
+const tableMgmt = useTableManagement({
+  template,
+  config,
+  adminToken,
+  saving,
+  activeTableKey,
+  mountedLibraryIds,
+  writeLibraryId,
+  fetchOptions: fetchOptionsFn,
+  saveConfig: saveConfigFn,
+  fetchBoard: fetchBoardFn,
+})
+const {
+  showAddTabModal, showEditTabModal, tabForm,
+  openAddTab, openEditTab, saveNewTab, saveEditTab, deleteTab,
+  showAddColumnModal, showEditColumnModal, columnForm,
+  openAddColumn, openEditColumn, saveNewColumn, saveEditColumn,
+  showRenameTemplateModal, renameTemplateForm,
+  cloneCurrentTemplate, openRenameTemplate, renameTemplate, deleteTemplate,
+  showPresetModal, presetForm, openPresetModal, savePreset, deletePreset,
+  showProfileModal, profileForm, openProfileModal, saveProfile, deleteProfile,
+} = tableMgmt
+
+const boardEdit = useBoardEditing({
+  conversationId,
+  adminToken,
+  saving,
+  fetchBoard: fetchBoardFn,
+})
+const {
+  showEditModal, editingTable, editingRow, editValues, editMeta,
+  checkedRowKeys, batchPriority,
+  openCreate, openEdit, duplicateRow, saveRow, deleteRow,
+  batchAction, onCellSaved,
+} = boardEdit
+
+const filler = useStateFiller({
+  conversationId,
+  adminToken,
+  saving,
+  fetchBoard: fetchBoardFn,
+})
+const {
+  showFillPreviewModal, fillPreviewOps, showUndoAlert, lastFillEventIds,
+  fillForm, runFillPreview, runFillConfirm, revertLastFill,
+} = filler
+
+// ── Computed ─────────────────────────────────────────────
 const profileOptions = computed(() => profiles.value.map((item) => ({
   label: item.name,
   value: item.profile_id,
@@ -194,6 +219,8 @@ const boardDiagnostics = computed(() => {
   if (!issues.length) issues.push({ label: '状态板健康', type: 'success' })
   return issues
 })
+
+// ── Core helpers ─────────────────────────────────────────
 function conversationDisplayName(item: any) {
   return item?.title?.trim() || item?.conversation_id || '未命名会话'
 }
@@ -240,7 +267,8 @@ function reconcileActiveTable() {
   persistActiveTable()
 }
 
-async function fetchBoard() {
+// ── Data fetching ────────────────────────────────────────
+async function fetchBoardFn() {
   if (!conversationId.value.trim()) {
     message.warning('请输入会话 ID')
     return
@@ -321,7 +349,7 @@ async function fetchConfig() {
   config.value = data
 }
 
-async function fetchOptions() {
+async function fetchOptionsFn() {
   try {
     const [profilesResp, retrievalProfilesResp, tableResp, presetResp, libResp] = await Promise.all([
       apiFetch('/admin/conversation-profiles', { headers: authHeaders() }),
@@ -439,7 +467,7 @@ async function deleteSelectedConversation() {
     config.value = null
     preview.value = { preview: '', char_count: 0, max_chars: 0, item_count: 0, summary: null }
     persistInputs()
-    if (conversationId.value) await fetchBoard()
+    if (conversationId.value) await fetchBoardFn()
     else persistActiveTable()
   } catch (error: any) {
     message.error(error.message || '删除会话失败')
@@ -554,7 +582,7 @@ async function saveDefaultConfig() {
   }
 }
 
-async function saveConfig() {
+async function saveConfigFn() {
   if (!config.value || !conversationId.value.trim()) return
   saving.value = true
   try {
@@ -574,335 +602,9 @@ async function saveConfig() {
     mountedLibraryIds.value = data.config.mounted_library_ids || []
     writeLibraryId.value = data.config.write_library_id || mountedLibraryIds.value[0] || null
     message.success('会话策略已保存')
-    await fetchBoard()
+    await fetchBoardFn()
   } catch (error: any) {
     message.error(error.message || '保存会话策略失败')
-  } finally {
-    saving.value = false
-  }
-}
-
-
-async function applyTemplateUpdate(updatedTemplate: any) {
-  template.value = updatedTemplate
-  await fetchOptions()
-  if (config.value && updatedTemplate?.template_id) {
-    config.value.table_template_id = updatedTemplate.template_id
-    await saveConfig()
-  } else {
-    await fetchBoard()
-  }
-}
-
-function openAddTab() {
-  tabForm.value = { table_key: '', name: '', description: '' }
-  showAddTabModal.value = true
-}
-
-function openEditTab(table: StateTable) {
-  editingTabKey.value = table.table_key
-  tabForm.value = { table_key: table.table_key, name: table.name, description: table.description || '' }
-  showEditTabModal.value = true
-}
-
-function openAddColumn(table: StateTable) {
-  columnForm.value = { table_key: table.table_key, column_key: '', name: '', description: '', max_chars: 240, required: 0 }
-  showAddColumnModal.value = true
-}
-
-function openEditColumn(table: StateTable, column: any) {
-  editingColumnKey.value = column.column_key
-  columnForm.value = {
-    table_key: table.table_key,
-    column_key: column.column_key,
-    name: column.name,
-    description: column.description || '',
-    max_chars: column.max_chars || 240,
-    required: column.required ? 1 : 0,
-  }
-  showEditColumnModal.value = true
-}
-
-async function cloneCurrentTemplate() {
-  if (!template.value?.template_id) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/clone`, {
-      method: 'POST',
-      headers: authHeaders(true),
-      body: JSON.stringify({ name: `${template.value.name || t('state.template.fallbackName')} ${t('state.template.customSuffix')}` }),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || 'Clone template failed')
-    message.success(t('state.messages.templateCloned'))
-    await applyTemplateUpdate(data.template)
-  } catch (error: any) {
-    message.error(error.message || 'Clone template failed')
-  } finally {
-    saving.value = false
-  }
-}
-
-async function saveNewTab() {
-  if (!template.value?.template_id || !tabForm.value.name.trim()) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables`, {
-      method: 'POST',
-      headers: authHeaders(true),
-      body: JSON.stringify(tabForm.value),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.addTabFailed'))
-    showAddTabModal.value = false
-    activeTableKey.value = data.template.tables?.at(-1)?.table_key || activeTableKey.value
-    persistActiveTable()
-    message.success(t('state.messages.tabAdded'))
-    await applyTemplateUpdate(data.template)
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.addTabFailed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function saveEditTab() {
-  if (!template.value?.template_id || !editingTabKey.value || !tabForm.value.name.trim()) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables/${encodeURIComponent(editingTabKey.value)}`, {
-      method: 'PATCH',
-      headers: authHeaders(true),
-      body: JSON.stringify({ name: tabForm.value.name, description: tabForm.value.description }),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存标签页失败')
-    showEditTabModal.value = false
-    message.success('标签页已更新')
-    await applyTemplateUpdate(data.template)
-  } catch (error: any) {
-    message.error(friendlyError(error.message || '', 'state.saveTab'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function deleteTab(table: StateTable) {
-  if (!template.value?.template_id) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables/${encodeURIComponent(table.table_key)}`, {
-      method: 'DELETE',
-      headers: authHeaders(),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '删除标签页失败')
-    if (activeTableKey.value === table.table_key) {
-      activeTableKey.value = data.template.tables?.[0]?.table_key || ''
-      persistActiveTable()
-    }
-    message.success('标签页已删除')
-    await applyTemplateUpdate(data.template)
-  } catch (error: any) {
-    message.error(friendlyError(error.message || '', 'state.deleteTab'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function saveNewColumn() {
-  if (!template.value?.template_id || !columnForm.value.table_key || !columnForm.value.name.trim()) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables/${encodeURIComponent(columnForm.value.table_key)}/columns`, {
-      method: 'POST',
-      headers: authHeaders(true),
-      body: JSON.stringify(columnForm.value),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.addColumnFailed'))
-    showAddColumnModal.value = false
-    message.success(t('state.messages.columnAdded'))
-    await applyTemplateUpdate(data.template)
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.addColumnFailed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function saveEditColumn() {
-  if (!template.value?.template_id || !columnForm.value.table_key || !editingColumnKey.value || !columnForm.value.name.trim()) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(template.value.template_id)}/tables/${encodeURIComponent(columnForm.value.table_key)}/columns/${encodeURIComponent(editingColumnKey.value)}`, {
-      method: 'PATCH',
-      headers: authHeaders(true),
-      body: JSON.stringify(columnForm.value),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存列失败')
-    showEditColumnModal.value = false
-    message.success('列标题已更新')
-    await applyTemplateUpdate(data.template)
-  } catch (error: any) {
-    message.error(friendlyError(error.message || '', 'state.saveColumn'))
-  } finally {
-    saving.value = false
-  }
-}
-
-function openPresetModal(preset?: any) {
-  presetForm.value = {
-    preset_id: preset?.preset_id || '',
-    name: preset?.name || '',
-    description: preset?.description || '',
-  }
-  showPresetModal.value = true
-}
-
-async function savePreset() {
-  if (!presetForm.value.name.trim() || !mountedLibraryIds.value.length) return
-  saving.value = true
-  try {
-    const isEdit = Boolean(presetForm.value.preset_id)
-    const resp = await apiFetch(isEdit ? `/admin/memory-mount-presets/${encodeURIComponent(presetForm.value.preset_id)}` : '/admin/memory-mount-presets', {
-      method: isEdit ? 'PUT' : 'POST',
-      headers: authHeaders(true),
-      body: JSON.stringify({
-        name: presetForm.value.name,
-        description: presetForm.value.description,
-        library_ids: mountedLibraryIds.value,
-        write_library_id: writeLibraryId.value || mountedLibraryIds.value[0],
-      }),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.savePresetFailed'))
-    showPresetModal.value = false
-    message.success(t('state.messages.presetSaved'))
-    await fetchOptions()
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.savePresetFailed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function deletePreset(preset: any) {
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/memory-mount-presets/${encodeURIComponent(preset.preset_id)}`, { method: 'DELETE', headers: authHeaders() })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.deletePresetFailed'))
-    message.success(t('state.messages.presetDeleted'))
-    await fetchOptions()
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.deletePresetFailed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-function openProfileModal(profile?: any) {
-  profileForm.value = {
-    profile_id: profile?.is_builtin === false ? profile.profile_id : '',
-    name: profile?.is_builtin === false ? profile.name : '',
-    description: profile?.is_builtin === false ? profile.description || '' : '',
-  }
-  showProfileModal.value = true
-}
-
-async function saveProfile() {
-  if (!profileForm.value.name.trim() || !config.value) return
-  saving.value = true
-  try {
-    const isEdit = Boolean(profileForm.value.profile_id)
-    const resp = await apiFetch(isEdit ? `/admin/conversation-profiles/${encodeURIComponent(profileForm.value.profile_id)}` : '/admin/conversation-profiles', {
-      method: isEdit ? 'PUT' : 'POST',
-      headers: authHeaders(true),
-      body: JSON.stringify({
-        ...config.value,
-        profile_id: profileForm.value.profile_id || undefined,
-        name: profileForm.value.name,
-        description: profileForm.value.description,
-        table_template_id: config.value.table_template_id,
-        mount_preset_id: config.value.mount_preset_id,
-      }),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.saveProfileFailed'))
-    showProfileModal.value = false
-    message.success(t('state.messages.profileSaved'))
-    await fetchOptions()
-    if (data.profile?.profile_id) config.value.profile_id = data.profile.profile_id
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.saveProfileFailed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function deleteProfile(profile: any) {
-  if (profile?.is_builtin !== false) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/conversation-profiles/${encodeURIComponent(profile.profile_id)}`, { method: 'DELETE', headers: authHeaders() })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.deleteProfileFailed'))
-    message.success(t('state.messages.profileDeleted'))
-    await fetchOptions()
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.deleteProfileFailed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-function openRenameTemplate(tmpl: any) {
-  renameTemplateForm.value = { template_id: tmpl.template_id, name: tmpl.name }
-  showRenameTemplateModal.value = true
-}
-
-async function renameTemplate() {
-  if (!renameTemplateForm.value.name.trim()) return
-  saving.value = true
-  try {
-    const full = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(renameTemplateForm.value.template_id)}`, { headers: authHeaders() })
-    const fullData = await full.json()
-    if (!full.ok) throw new Error(fullData.detail || 'Load failed')
-    fullData.name = renameTemplateForm.value.name.trim()
-    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(renameTemplateForm.value.template_id)}`, {
-      method: 'PUT',
-      headers: authHeaders(true),
-      body: JSON.stringify(fullData),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.templateRenameFailed'))
-    showRenameTemplateModal.value = false
-    message.success(t('state.messages.templateRenamed'))
-    await fetchOptions()
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.templateRenameFailed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function deleteTemplate(tmpl: any) {
-  if (tmpl?.is_builtin !== false) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/state/table-templates/${encodeURIComponent(tmpl.template_id)}`, { method: 'DELETE', headers: authHeaders() })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.templateDeleteFailed'))
-    message.success(t('state.messages.templateDeleted'))
-    await fetchOptions()
-    const currentConfig = config.value
-    if (currentConfig && currentConfig.table_template_id === tmpl.template_id) {
-      currentConfig.table_template_id = null
-    }
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.templateDeleteFailed'))
   } finally {
     saving.value = false
   }
@@ -922,149 +624,6 @@ async function fetchPreview() {
     message.error(error.message || '预览失败')
   } finally {
     previewLoading.value = false
-  }
-}
-
-function openCreate(table: StateTable) {
-  editingTable.value = table
-  editingRow.value = null
-  editValues.value = Object.fromEntries(table.columns.map((column) => [column.column_key, '']))
-  editMeta.value = { priority: table.prompt_priority || 80, confidence: 0.9 }
-  showEditModal.value = true
-}
-
-function openEdit(table: StateTable, row: StateRow) {
-  editingTable.value = table
-  editingRow.value = row
-  editValues.value = Object.fromEntries(table.columns.map((column) => [column.column_key, row.values?.[column.column_key] || '']))
-  editMeta.value = { priority: row.priority ?? table.prompt_priority ?? 80, confidence: row.confidence ?? 0.9 }
-  showEditModal.value = true
-}
-
-function duplicateRow(table: StateTable, row: StateRow) {
-  editingTable.value = table
-  editingRow.value = null
-  editValues.value = Object.fromEntries(table.columns.map((column) => [column.column_key, row.values?.[column.column_key] || '']))
-  editMeta.value = { priority: row.priority ?? table.prompt_priority ?? 80, confidence: row.confidence ?? 0.9 }
-  showEditModal.value = true
-}
-
-async function saveRow() {
-  if (!editingTable.value) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(
-      `/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/tables/${editingTable.value.table_key}/rows`,
-      {
-        method: 'POST',
-        headers: authHeaders(true),
-        body: JSON.stringify({
-          row_id: editingRow.value?.row_id,
-          values: editValues.value,
-          priority: editMeta.value.priority,
-          confidence: editMeta.value.confidence,
-        }),
-      },
-    )
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '保存失败')
-    message.success('状态行已保存')
-    showEditModal.value = false
-    await fetchBoard()
-  } catch (error: any) {
-    message.error(error.message || '保存失败')
-  } finally {
-    saving.value = false
-  }
-}
-
-async function deleteRow(row: StateRow) {
-  try {
-    const resp = await apiFetch(`/admin/state/table-rows/${row.row_id}`, { method: 'DELETE', headers: authHeaders() })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || '删除失败')
-    message.success('状态行已删除')
-    await fetchBoard()
-  } catch (error: any) {
-    message.error(error.message || '删除失败')
-  }
-}
-
-async function runFillPreview() {
-  if (!conversationId.value.trim()) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/fill`, {
-      method: 'POST',
-      headers: authHeaders(true),
-      body: JSON.stringify({ ...fillForm.value, table_only: true, preview: true }),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.fillFailed'))
-    fillPreviewOps.value = data.operations || []
-    if (!fillPreviewOps.value.length) {
-      message.info(t('state.messages.fillNoChanges'))
-    } else {
-      showFillPreviewModal.value = true
-    }
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.fillFailed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function runFillConfirm() {
-  if (!conversationId.value.trim()) return
-  saving.value = true
-  showFillPreviewModal.value = false
-  try {
-    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/fill`, {
-      method: 'POST',
-      headers: authHeaders(true),
-      body: JSON.stringify({ ...fillForm.value, table_only: true, operations: fillPreviewOps.value }),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message || t('state.messages.fillFailed'))
-    message.success(t('state.messages.fillDone', { applied: data.applied, skipped: data.skipped }))
-    showFillModal.value = false
-    await fetchBoard()
-    const eventsResp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/events?limit=20`, { headers: authHeaders() })
-    const eventsData = await eventsResp.json()
-    const recentIds = (eventsData.items || [])
-      .filter((e: any) => e.event_type !== 'revert')
-      .slice(0, data.applied)
-      .map((e: any) => e.event_id)
-    if (recentIds.length) {
-      lastFillEventIds.value = recentIds
-      showUndoAlert.value = true
-    }
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.fillFailed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-async function revertLastFill() {
-  if (!lastFillEventIds.value.length || !conversationId.value.trim()) return
-  saving.value = true
-  try {
-    const resp = await apiFetch(`/admin/conversations/${encodeURIComponent(conversationId.value.trim())}/state/revert`, {
-      method: 'POST',
-      headers: authHeaders(true),
-      body: JSON.stringify({ event_ids: lastFillEventIds.value }),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message)
-    message.success(t('state.messages.reverted', { count: data.reverted }))
-    showUndoAlert.value = false
-    lastFillEventIds.value = []
-    await fetchBoard()
-  } catch (error: any) {
-    message.error(error.message || t('state.messages.revertFailed'))
-  } finally {
-    saving.value = false
   }
 }
 
@@ -1115,7 +674,7 @@ async function importBoard() {
       const result = await resp.json()
       if (!resp.ok || result.status !== 'ok') throw new Error(result.detail || result.message)
       message.success(t('state.messages.importDone', { count: result.imported_rows || 0 }))
-      if (targetId === conversationId.value.trim()) await fetchBoard()
+      if (targetId === conversationId.value.trim()) await fetchBoardFn()
     } catch (error: any) {
       message.error(error.message || t('state.messages.importFailed'))
     }
@@ -1123,51 +682,25 @@ async function importBoard() {
   input.click()
 }
 
-async function batchAction(action: string, value?: any) {
-  if (!checkedRowKeys.value.length) return
-  saving.value = true
-  try {
-    const resp = await apiFetch('/admin/state/table-rows/batch', {
-      method: 'POST',
-      headers: authHeaders(true),
-      body: JSON.stringify({ action, row_ids: checkedRowKeys.value, value }),
-    })
-    const data = await resp.json()
-    if (!resp.ok || data.status !== 'ok') throw new Error(data.detail || data.message)
-    message.success(t('state.batch.done', { count: data.affected }))
-    checkedRowKeys.value = []
-    await fetchBoard()
-  } catch (error: any) {
-    message.error(error.message || t('state.batch.failed'))
-  } finally {
-    saving.value = false
-  }
-}
-
-function onCellSaved(row: StateRow, columnKey: string, value: string) {
-  if (row.values) row.values[columnKey] = value
-}
-
 function onWsEvent(e: any) {
   const data = e.detail
   if (data?.event === 'state_fill_complete' && data?.conversation_id === conversationId.value.trim()) {
-    fetchBoard()
+    fetchBoardFn()
   }
 }
 
 onMounted(async () => {
   window.addEventListener('kokoromemo:event', onWsEvent)
-  fetchOptions()
+  fetchOptionsFn()
   fetchDefaultConfig()
   await fetchConversations()
   if (conversationId.value.trim()) {
-    await fetchBoard()
+    await fetchBoardFn()
   } else if (conversations.value.length > 0) {
-    // 自动选择最近活跃对话
     const first = conversations.value[0]
     conversationId.value = first.conversation_id
     persistInputs()
-    await fetchBoard()
+    await fetchBoardFn()
   } else {
     showDefaultDrawer.value = true
   }
@@ -1194,7 +727,7 @@ onBeforeUnmount(() => {
         :can-rename-conversation="Boolean(selectedConversation)"
         @update:conversation-id="updateConversationId"
         @update:admin-token="updateAdminToken"
-        @load="fetchBoard"
+        @load="fetchBoardFn"
         @export="exportBoard"
         @import="importBoard"
         @rename="openRenameConversation"
@@ -1245,8 +778,8 @@ onBeforeUnmount(() => {
         @delete-template="deleteTemplate"
         @open-preset-modal="openPresetModal"
         @delete-preset="deletePreset"
-        @reload="fetchBoard"
-        @save-config="saveConfig"
+        @reload="fetchBoardFn"
+        @save-config="saveConfigFn"
       />
 
       <NAlert v-if="showUndoAlert" type="success" closable style="margin-bottom: 12px;" @close="showUndoAlert = false">

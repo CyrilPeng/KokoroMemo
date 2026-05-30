@@ -13,25 +13,7 @@ from app.main import app
 from app.memory.card_retriever import MemoryCandidate
 from app.memory.state_schema import StateTableRow
 from app.storage.sqlite_state import SQLiteStateStore
-
-
-class FakeChatProvider:
-    captured_bodies: list[dict] = []
-
-    async def chat(self, body: dict, timeout: int) -> dict:
-        self.captured_bodies.append(body)
-        return {
-            "id": "chatcmpl-test",
-            "object": "chat.completion",
-            "model": body.get("model", "test-model"),
-            "choices": [{"message": {"role": "assistant", "content": "收到"}, "finish_reason": "stop"}],
-        }
-
-    async def stream_chat(self, body: dict, timeout: int):
-        self.captured_bodies.append(body)
-        yield 'data: {"choices":[{"delta":{"content":"收"}}]}'
-        yield 'data: {"choices":[{"delta":{"content":"到"}}]}'
-        yield "data: [DONE]"
+from tests._fakes import FakeChatProvider
 
 
 def make_test_dir() -> Path:

@@ -26,14 +26,7 @@ from app.storage.sqlite_cards import (
     set_conversation_mounts,
 )
 from app.storage.sqlite_conversation import init_chat_db, save_raw_request
-
-
-class FakeLanceDBStore:
-    def __init__(self, rows: list[dict]):
-        self.rows = rows
-
-    def search(self, query_vector, where=None, top_k=30, select_columns=None):
-        return self.rows[:top_k]
+from tests._fakes import FakeLanceDBStore
 
 
 def make_test_dir() -> Path:

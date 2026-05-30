@@ -20,38 +20,7 @@ from app.storage.sqlite_cards import (
     insert_card,
 )
 from app.storage.sqlite_state import SQLiteStateStore
-
-
-class FakeChatProvider:
-    captured_bodies: list[dict] = []
-
-    async def chat(self, body: dict, timeout: int) -> dict:
-        self.captured_bodies.append(body)
-        return {
-            "id": "chatcmpl-test",
-            "object": "chat.completion",
-            "model": body.get("model", "test-model"),
-            "choices": [{"message": {"role": "assistant", "content": "收到"}, "finish_reason": "stop"}],
-        }
-
-    async def stream_chat(self, body: dict, timeout: int):
-        self.captured_bodies.append(body)
-        yield 'data: {"choices":[{"delta":{"content":"收"}}]}'
-        yield 'data: {"choices":[{"delta":{"content":"到"}}]}'
-        yield "data: [DONE]"
-
-
-class FakeLanceDBStore:
-    def __init__(self, rows=None, on_upsert=None):
-        self.rows = rows or []
-        self.on_upsert = on_upsert
-
-    async def search(self, vector, top_k=10, where=None):
-        return self.rows[:top_k]
-
-    async def upsert(self, records):
-        if self.on_upsert:
-            self.on_upsert(records)
+from tests._fakes import FakeChatProvider, FakeLanceDBStore
 
 
 def make_test_dir() -> Path:

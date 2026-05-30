@@ -11,6 +11,15 @@ from typing import Any
 import yaml
 
 
+class _ApiKeyMixin:
+    """Shared mixin for dataclasses that have api_key and api_key_env fields."""
+
+    def get_api_key(self) -> str:
+        if self.api_key:
+            return self.api_key
+        return os.environ.get(self.api_key_env, "")
+
+
 @dataclass
 class ServerConfig:
     host: str = "127.0.0.1"
@@ -29,7 +38,7 @@ class ServerConfig:
 
 
 @dataclass
-class LLMConfig:
+class LLMConfig(_ApiKeyMixin):
     provider: str = "openai_compatible"
     base_url: str = ""
     api_key_env: str = "LLM_API_KEY"
@@ -38,15 +47,9 @@ class LLMConfig:
     timeout_seconds: int = 120
     forward_mode: str = "override"  # "override" = 用本项目配置, "passthrough" = 透传客户端的 Key 和 Model
 
-    def get_api_key(self) -> str:
-        """Get API key: direct value takes priority over env var."""
-        if self.api_key:
-            return self.api_key
-        return os.environ.get(self.api_key_env, "")
-
 
 @dataclass
-class EmbeddingConfig:
+class EmbeddingConfig(_ApiKeyMixin):
     enabled: bool = True
     provider: str = "modelark"
     base_url: str = "https://ai.gitee.com/v1"
@@ -58,14 +61,9 @@ class EmbeddingConfig:
     batch_size: int = 16
     normalize: bool = True
 
-    def get_api_key(self) -> str:
-        if self.api_key:
-            return self.api_key
-        return os.environ.get(self.api_key_env, "")
-
 
 @dataclass
-class RerankConfig:
+class RerankConfig(_ApiKeyMixin):
     enabled: bool = False
     provider: str = "modelark"
     base_url: str = "https://ai.gitee.com/v1"
@@ -76,11 +74,6 @@ class RerankConfig:
     candidate_top_k: int = 30
     final_top_k: int = 8
     max_documents_per_request: int = 20
-
-    def get_api_key(self) -> str:
-        if self.api_key:
-            return self.api_key
-        return os.environ.get(self.api_key_env, "")
 
 
 @dataclass
@@ -116,7 +109,7 @@ class HotContextConfig:
 
 
 @dataclass
-class StateUpdaterConfig:
+class StateUpdaterConfig(_ApiKeyMixin):
     enabled: bool = True
     update_after_each_turn: bool = True
     update_every_n_turns: int = 1
@@ -131,14 +124,9 @@ class StateUpdaterConfig:
     temperature: float = 0.0
     prompt: str = ""
 
-    def get_api_key(self) -> str:
-        if self.api_key:
-            return self.api_key
-        return os.environ.get(self.api_key_env, "")
-
 
 @dataclass
-class MemoryJudgeConfig:
+class MemoryJudgeConfig(_ApiKeyMixin):
     enabled: bool = True
     provider: str = "openai_compatible"
     base_url: str = ""
@@ -150,11 +138,6 @@ class MemoryJudgeConfig:
     mode: str = "model_only"
     user_rules: list[str] = field(default_factory=list)
     prompt: str = ""
-
-    def get_api_key(self) -> str:
-        if self.api_key:
-            return self.api_key
-        return os.environ.get(self.api_key_env, "")
 
 
 @dataclass
@@ -258,17 +241,67 @@ class AppConfig:
 
 
 def _merge_dataclass(dc: Any, data: dict) -> Any:
-    """Recursively merge dict into a dataclass instance."""
+    """Recursively merge dict into a dataclass instance with type coercion."""
     if not data:
         return dc
+    field_types = getattr(dc, "__dataclass_fields__", {})
     for key, value in data.items():
-        if hasattr(dc, key):
-            current = getattr(dc, key)
-            if hasattr(current, "__dataclass_fields__") and isinstance(value, dict):
-                _merge_dataclass(current, value)
-            else:
-                setattr(dc, key, value)
+        if not hasattr(dc, key):
+            # Warn about unknown keys (likely typos in YAML)
+            print(f"Warning: unknown config key '{key}' ignored", file=sys.stderr)
+            continue
+        current = getattr(dc, key)
+        if hasattr(current, "__dataclass_fields__") and isinstance(value, dict):
+            _merge_dataclass(current, value)
+        else:
+            # Coerce common type mismatches
+            if key in field_types:
+                expected = field_types[key].type
+                if isinstance(expected, str):  # from __future__ import annotations
+                    expected = _resolve_type_hint(expected, dc)
+                value = _coerce_value(value, expected)
+            setattr(dc, key, value)
     return dc
+
+
+def _resolve_type_hint(hint: str, dc: Any) -> type | None:
+    """Resolve string type hint to actual type for runtime coercion."""
+    type_map = {
+        "str": str, "int": int, "float": float, "bool": bool,
+        "list": list, "dict": dict,
+    }
+    # Handle Optional / None types by stripping "| None"
+    base = hint.split("|")[0].strip()
+    # Handle list[str] -> list
+    if "[" in base:
+        base = base.split("[")[0]
+    return type_map.get(base)
+
+
+def _coerce_value(value: Any, expected_type: type | None) -> Any:
+    """Coerce value to expected type, handling common YAML→Python mismatches."""
+    if expected_type is None or value is None:
+        return value
+    actual = type(value)
+    if actual is expected_type:
+        return value
+    try:
+        if expected_type is int and actual is str:
+            return int(value)
+        if expected_type is float and actual in (str, int):
+            return float(value)
+        if expected_type is str and actual is int:
+            return str(value)
+        if expected_type is bool:
+            if isinstance(value, str):
+                return value.lower() in ("true", "yes", "1", "on")
+            if actual is int:
+                return bool(value)
+        if expected_type is list and actual is str:
+            return [value] if value else []
+    except (ValueError, TypeError):
+        pass  # If coercion fails, use the raw value (will surface later)
+    return value
 
 
 def _repo_root() -> Path:
@@ -327,7 +360,7 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
 
     if resolved_path and resolved_path.exists():
         cfg.config_path = str(resolved_path)
-        with open(resolved_path, "r", encoding="utf-8") as f:
+        with open(resolved_path, encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
         _merge_dataclass(cfg, raw)
         cfg.config_path = str(resolved_path)

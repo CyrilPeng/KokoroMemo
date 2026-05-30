@@ -101,7 +101,7 @@ function handleMenuUpdate(key: string) {
 
 async function syncCloseToTraySetting() {
   const enabled = localStorage.getItem('kokoromemo.closeToTray') === 'true'
-  if (!(window as any).__TAURI_INTERNALS__) return
+  if (!window.__TAURI_INTERNALS__) return
   try {
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('set_close_to_tray', { enabled })
@@ -116,7 +116,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
 
 async function openGitHub() {
   const url = 'https://github.com/CyrilPeng/KokoroMemo'
-  if ((window as any).__TAURI_INTERNALS__) {
+  if (window.__TAURI_INTERNALS__) {
     try {
       const { open } = await import('@tauri-apps/plugin-shell')
       await open(url)

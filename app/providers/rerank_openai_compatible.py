@@ -43,7 +43,7 @@ class OpenAICompatibleRerankProvider(RerankProvider):
 
     async def health_check(self) -> dict:
         try:
-            result = await self.rerank("test", ["test document"])
+            await self.rerank("test", ["test document"])
             return {"status": "ok"}
         except Exception as e:
             return {"status": "error", "error": str(e)}

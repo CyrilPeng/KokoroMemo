@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-from typing import Any, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 logger = logging.getLogger("kokoromemo.events")
 
@@ -18,10 +20,8 @@ def subscribe(listener: Callable[[str, dict], Coroutine]) -> None:
 
 def unsubscribe(listener: Callable[[str, dict], Coroutine]) -> None:
     """Remove a listener."""
-    try:
+    with contextlib.suppress(ValueError):
         _listeners.remove(listener)
-    except ValueError:
-        pass
 
 
 async def emit(event_type: str, payload: dict[str, Any] | None = None) -> None:

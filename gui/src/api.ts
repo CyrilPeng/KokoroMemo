@@ -7,7 +7,7 @@ let _resolvedUrl: string | null = null
 let _resolvingUrl: Promise<string> | null = null
 
 function isWebMode() {
-  return !(window as any).__TAURI_INTERNALS__
+  return !window.__TAURI_INTERNALS__
 }
 
 function isMobileBrowser() {
@@ -116,7 +116,7 @@ export async function resolveBackendUrl(): Promise<string> {
 
 async function resolveBackendUrlInner(): Promise<string> {
   // 仅在 Tauri 内运行时尝试读取后端端口。
-  if ((window as any).__TAURI_INTERNALS__) {
+  if (window.__TAURI_INTERNALS__) {
     try {
       const { invoke } = await import('@tauri-apps/api/core')
       const port: number = await invoke('get_backend_port')

@@ -10,15 +10,21 @@ from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
 from app.memory.review_policy import auto_review, determine_risk_level
 from app.storage.sqlite_cards import (
     find_card_id_by_content,
+    get_write_library_id,
     insert_card,
     insert_card_version,
     insert_inbox_item,
-    get_write_library_id,
     trim_discarded_inbox,
 )
 from app.storage.vector_sync import enqueue_card_vector_sync, sync_card_vector
 
 logger = logging.getLogger("kokoromemo.card_extractor")
+
+# 证据文本截断长度：保留用户最近消息的前 N 个字符作为记忆卡证据来源
+_EVIDENCE_TEXT_MAX_CHARS = 300
+
+# WebSocket 事件推送中卡片内容预览的最大字符数
+_EVENT_CONTENT_PREVIEW_MAX_CHARS = 100
 
 
 async def extract_and_route(
@@ -81,7 +87,7 @@ async def extract_and_route(
             "importance": mem.importance,
             "confidence": mem.confidence,
             "tags": mem.tags,
-            "evidence_text": user_message[:300],
+            "evidence_text": user_message[:_EVIDENCE_TEXT_MAX_CHARS],
         }
 
         # 去重：精确文本匹配 → 写入 discarded
@@ -147,7 +153,7 @@ async def extract_and_route(
                 importance=mem.importance,
                 confidence=mem.confidence,
                 status="approved",
-                evidence_text=user_message[:300],
+                evidence_text=user_message[:_EVIDENCE_TEXT_MAX_CHARS],
             )
             await insert_card_version(
                 db_path,
@@ -267,10 +273,11 @@ async def _find_semantic_duplicate(
         vectors = await embedding_provider.embed_texts([content])
         if not vectors or not vectors[0]:
             return None
+        safe_user_id = user_id.replace("'", "''")
         results = await lancedb_store.search(
             vectors[0],
             top_k=3,
-            where=f"user_id = '{user_id}' AND status = 'approved'",
+            where=f"user_id = '{safe_user_id}' AND status = 'approved'",
         )
         if not results:
             return None
@@ -293,9 +300,9 @@ async def _emit_card_event(event_type: str, card_id: str, mem) -> None:
         from app.core.events import emit
         await emit(event_type, {
             "card_id": card_id,
-            "content": mem.content[:100],
+            "content": mem.content[:_EVENT_CONTENT_PREVIEW_MAX_CHARS],
             "memory_type": mem.memory_type,
             "importance": mem.importance,
         })
-    except Exception:
+    except Exception:  # noqa: S110
         pass

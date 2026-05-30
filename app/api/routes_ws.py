@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
@@ -39,10 +40,8 @@ async def websocket_endpoint(websocket: WebSocket):
     _active_connections.append(websocket)
 
     async def _listener(event_type: str, payload: dict):
-        try:
+        with contextlib.suppress(Exception):
             await websocket.send_json({"event": event_type, **payload})
-        except Exception:
-            pass
 
     subscribe(_listener)
     try:
@@ -52,7 +51,5 @@ async def websocket_endpoint(websocket: WebSocket):
         pass
     finally:
         unsubscribe(_listener)
-        try:
+        with contextlib.suppress(ValueError):
             _active_connections.remove(websocket)
-        except ValueError:
-            pass

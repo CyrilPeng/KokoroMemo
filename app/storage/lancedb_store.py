@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -109,20 +110,16 @@ class LanceDBStore:
         """Drop table and recreate for full rebuild."""
         if not self._db:
             self.connect()
-        try:
+        with contextlib.suppress(Exception):
             self._db.drop_table(self.table_name)
-        except Exception:
-            pass
         self._table = self._db.create_table(self.table_name, schema=self._get_schema())
 
     def create_staging_table(self, staging_name: str) -> None:
         """Create (or recreate) a staging table parallel to the live one for atomic rebuild."""
         if not self._db:
             self.connect()
-        try:
+        with contextlib.suppress(Exception):
             self._db.drop_table(staging_name)
-        except Exception:
-            pass
         self._db.create_table(staging_name, schema=self._get_schema())
 
     def upsert_into(self, staging_name: str, rows: list[dict[str, Any]]) -> None:
@@ -141,10 +138,8 @@ class LanceDBStore:
         """
         if not self._db:
             self.connect()
-        try:
+        with contextlib.suppress(Exception):
             self._db.drop_table(self.table_name)
-        except Exception:
-            pass
         self._db.rename_table(staging_name, self.table_name)
         self._table = self._db.open_table(self.table_name)
 
@@ -152,7 +147,5 @@ class LanceDBStore:
         """Drop a staging table. Used to clean up after a failed rebuild."""
         if not self._db:
             self.connect()
-        try:
+        with contextlib.suppress(Exception):
             self._db.drop_table(staging_name)
-        except Exception:
-            pass

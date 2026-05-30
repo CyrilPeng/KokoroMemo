@@ -5,9 +5,9 @@ import time
 
 from app.memory.retrieval_embedding_cache import (
     RetrievalEmbeddingCache,
+    _normalize_query,
     get_retrieval_cache,
     init_retrieval_cache,
-    _normalize_query,
 )
 
 
@@ -143,14 +143,17 @@ class TestIntegrationRetrieveCardsUsesCache:
     def test_retrieve_cards_uses_cache_for_embedding(self, tmp_path):
         """Verify retrieve_cards hits the retrieval cache on repeated queries."""
         async def run():
-            from app.memory.query_builder import build_retrieval_query
             from app.memory.card_retriever import retrieve_cards
-            from app.storage.sqlite_cards import (
-                init_cards_db, create_memory_library, insert_card, set_conversation_mounts,
-            )
-            from app.storage.vector_sync import sync_card_vector
+            from app.memory.query_builder import build_retrieval_query
             from app.providers.embedding_dummy import DummyEmbeddingProvider
+            from app.storage.sqlite_cards import (
+                create_memory_library,
+                init_cards_db,
+                insert_card,
+                set_conversation_mounts,
+            )
             from app.storage.sqlite_vector_store import SqliteVectorStore
+            from app.storage.vector_sync import sync_card_vector
 
             db_path = str(tmp_path / "memory.sqlite")
             await init_cards_db(db_path)
@@ -184,10 +187,10 @@ class TestIntegrationRetrieveCardsUsesCache:
     def test_write_path_sync_card_vector_does_not_use_cache(self, tmp_path):
         """sync_card_vector should NOT check the retrieval cache."""
         async def run():
-            from app.storage.sqlite_cards import init_cards_db, insert_card
-            from app.storage.vector_sync import sync_card_vector
             from app.providers.embedding_dummy import DummyEmbeddingProvider
+            from app.storage.sqlite_cards import init_cards_db, insert_card
             from app.storage.sqlite_vector_store import SqliteVectorStore
+            from app.storage.vector_sync import sync_card_vector
 
             db_path = str(tmp_path / "memory.sqlite")
             await init_cards_db(db_path)

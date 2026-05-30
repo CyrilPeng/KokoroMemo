@@ -4,8 +4,8 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.core.config import AppConfig
 from app.core.background import get_background_runner
+from app.core.config import AppConfig
 from app.core.lifecycle import AppLifecycle
 
 

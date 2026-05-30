@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Coroutine
+from collections.abc import Coroutine
+from typing import Any
 
 logger = logging.getLogger("kokoromemo.background")
 

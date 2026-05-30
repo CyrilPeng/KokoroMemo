@@ -4,7 +4,6 @@ import shutil
 import uuid
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from app.storage.sqlite_vector_store import SqliteVectorStore

@@ -1,6 +1,7 @@
-import pytest
 from pathlib import Path
 from uuid import uuid4
+
+import pytest
 
 from app.memory.conversation_policy import get_profile, list_profiles, list_retrieval_profiles
 from app.storage.sqlite_state import SQLiteStateStore

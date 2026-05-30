@@ -1,7 +1,7 @@
 export async function saveJsonExport(defaultFileName: string, data: unknown): Promise<string | null> {
   const contents = JSON.stringify(data, null, 2)
 
-  if ((window as any).__TAURI_INTERNALS__) {
+  if (window.__TAURI_INTERNALS__) {
     const { save } = await import('@tauri-apps/plugin-dialog')
     const { invoke } = await import('@tauri-apps/api/core')
     const selectedPath = await save({
@@ -14,7 +14,7 @@ export async function saveJsonExport(defaultFileName: string, data: unknown): Pr
     return selectedPath
   }
 
-  const filePicker = (window as any).showSaveFilePicker
+  const filePicker = window.showSaveFilePicker
   if (typeof filePicker === 'function') {
     const handle = await filePicker({
       suggestedName: defaultFileName,

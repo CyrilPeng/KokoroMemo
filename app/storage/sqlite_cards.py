@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-import aiosqlite
 from pathlib import Path
+
+import aiosqlite
 
 from app.core.ids import generate_id
 

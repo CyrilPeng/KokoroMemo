@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import Request
 
-from app.core.ids import sanitize_id, generate_id
+from app.core.ids import generate_id, sanitize_id
 
 
 @dataclass
@@ -171,8 +171,9 @@ async def _maybe_new_session(
     cfg,
 ) -> str:
     """Detect if this should be a new session based on time gap and message count."""
-    import aiosqlite
     from datetime import datetime
+
+    import aiosqlite
 
     conv_config = getattr(cfg, "conversation", None)
     if not conv_config:
@@ -217,7 +218,7 @@ async def _maybe_new_session(
                             count_row = await cursor2.fetchone()
                             if count_row and count_row[0] > 5:
                                 return _allocate_new_session_id(base_conv_id, app_db, db)
-    except Exception:
+    except Exception:  # noqa: S110
         pass
 
     return base_conv_id
@@ -234,6 +235,7 @@ async def _existing_character_for_conversation(app_db: str, conversation_id: str
     """Reuse the character already bound to an explicit conversation ID."""
     try:
         import aiosqlite
+
         from app.storage.sqlite_app import init_app_db
 
         await init_app_db(app_db)

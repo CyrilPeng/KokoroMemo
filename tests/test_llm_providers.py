@@ -1,5 +1,5 @@
-﻿import pytest
-import httpx
+﻿import httpx
+import pytest
 
 from app.proxy import llm_providers
 from app.proxy.llm_providers import GeminiProvider, OpenAICompatibleProvider, close_llm_http_client, get_llm_http_client

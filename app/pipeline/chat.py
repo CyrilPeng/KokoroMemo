@@ -21,13 +21,12 @@ from app.memory.card_injector import inject_cards
 from app.memory.conversation_policy import get_retrieval_profile
 from app.memory.query_builder import build_retrieval_query
 from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
+from app.memory.state_filler import StateFillerConfigView
 from app.memory.state_injector import inject_state_board
 from app.memory.state_schema import StateRenderOptions
-from app.memory.state_filler import StateFillerConfigView
 from app.memory.state_table_filler import fill_conversation_state_tables
 from app.memory.state_table_renderer import render_state_tables
 from app.proxy.request_parser import RequestContext, resolve_context
-from app.storage.migrations import apply_startup_migrations
 from app.storage.sqlite_app import upsert_character, upsert_conversation
 from app.storage.sqlite_conversation import (
     get_turn_count,
@@ -422,7 +421,9 @@ async def _persist_injection(ctx: RequestContext, injected_messages: list[dict],
 
 async def _persist_request(cfg, ctx: RequestContext, raw_body: dict) -> None:
     try:
-        await apply_startup_migrations(cfg)
+        # Migrations are already applied once at startup in AppLifecycle.start().
+        # Calling apply_startup_migrations() here on every request was idempotent
+        # but redundant and wasteful.
         await init_chat_db(ctx.chat_db_path)
         await upsert_conversation(
             cfg.storage.sqlite.app_db, ctx.conversation_id,
@@ -447,10 +448,10 @@ async def _apply_character_defaults_if_new(cfg, ctx: RequestContext) -> None:
     if not ctx.character_id:
         return
     try:
+        from app.services.mount_resolver import MountResolver
         from app.storage.sqlite_app import get_character_defaults
         from app.storage.sqlite_cards import set_conversation_mounts
         from app.storage.sqlite_state import SQLiteStateStore
-        from app.services.mount_resolver import MountResolver
 
         resolver = MountResolver(cfg.storage.sqlite.memory_db, cfg.storage.sqlite.app_db)
         if await resolver.conversation_has_custom_mounts(ctx.conversation_id):
@@ -547,7 +548,7 @@ async def _schedule_post_process_turn(
     *,
     name: str,
 ) -> None:
-    task = spawn_background(
+    spawn_background(
         _post_process_turn(
             ctx,
             cfg,
@@ -606,10 +607,11 @@ async def _update_state_and_extract_memories(
         and cfg.memory.state_updater.enabled
         and cfg.memory.state_updater.update_after_each_turn
         and state_update_policy == "auto"
+        and assistant_text
+        and _should_run_state_updater(cfg, turn_index)
     ):
-        if assistant_text and _should_run_state_updater(cfg, turn_index):
-            user_msg = _latest_user_message(original_messages)
-            if user_msg:
+        user_msg = _latest_user_message(original_messages)
+        if user_msg:
                 try:
                     await fill_conversation_state_tables(
                         db_path=cfg.storage.sqlite.memory_db,
@@ -748,7 +750,8 @@ async def _stream_proxy(provider, body: dict, timeout: int, ctx: RequestContext,
         return
     except Exception as e:
         logger.error("Stream proxy error: %s", e)
-        yield f'data: {{"error":{{"message":"Stream error: {e}","type":"proxy_error","code":"upstream_error"}}}}\n\n'
+        error_payload = json.dumps({"error": {"message": f"Stream error: {e}", "type": "proxy_error", "code": "upstream_error"}})
+        yield f"data: {error_payload}\n\n"
         return
 
     full_text = "".join(collected_text)

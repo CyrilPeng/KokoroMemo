@@ -32,7 +32,7 @@ const router = createRouter({
 })
 
 function shouldPreloadViews() {
-  if (!(window as any).__TAURI_INTERNALS__) return false
+  if (!window.__TAURI_INTERNALS__) return false
   return !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
 }
 
@@ -41,13 +41,13 @@ function preloadViews() {
   const run = () => {
     for (const loader of Object.values(viewLoaders)) loader().catch(() => {})
   }
-  const requestIdleCallback = (window as any).requestIdleCallback as undefined | ((cb: () => void, options?: { timeout: number }) => number)
+  const requestIdleCallback = window.requestIdleCallback as undefined | ((cb: () => void, options?: { timeout: number }) => number)
   if (requestIdleCallback) requestIdleCallback(run, { timeout: 2000 })
   else window.setTimeout(run, 800)
 }
 
 function warmupBackendUrl() {
-  if (!(window as any).__TAURI_INTERNALS__) return
+  if (!window.__TAURI_INTERNALS__) return
   resolveBackendUrl().catch((error) => {
     console.warn('Backend port discovery failed; requests will retry:', error)
   })

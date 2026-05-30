@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from app.providers.embedding_base import EmbeddingProvider
@@ -57,7 +58,7 @@ async def rebuild_vector_index_v2(
                 continue
 
             rows = []
-            for card, vec in zip(batch, vectors):
+            for card, vec in zip(batch, vectors, strict=False):
                 rows.append({
                     "memory_id": card["card_id"],
                     "library_id": card.get("library_id") or "lib_default",
@@ -86,13 +87,11 @@ async def rebuild_vector_index_v2(
                 success_count += len(rows)
             except Exception as e:
                 logger.error("LanceDB upsert failed at offset %d: %s", i, e)
-    except Exception as e:
+    except Exception:
         # 发生未预期错误时回滚临时表
         if use_atomic and staging_name:
-            try:
+            with contextlib.suppress(Exception):
                 lancedb_store.drop_staging(staging_name)
-            except Exception:
-                pass
         raise
 
     if use_atomic and staging_name:

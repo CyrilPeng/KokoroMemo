@@ -47,7 +47,7 @@ class VectorSyncWorker:
         while not self._stop_event.is_set():
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_seconds)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await self.run_once()
 
     async def run_once(self) -> dict:

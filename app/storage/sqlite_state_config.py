@@ -7,11 +7,10 @@ from typing import Any
 import aiosqlite
 
 from app.core.ids import generate_id
-
 from app.memory.conversation_policy import (
+    DEFAULT_CONVERSATION_PROFILE_ID,
     ConversationConfig,
     ConversationProfile,
-    DEFAULT_CONVERSATION_PROFILE_ID,
     get_profile,
 )
 
@@ -147,10 +146,7 @@ class ConversationConfigMixin:
 
     async def set_default_conversation_config(self, data: ConversationConfig | dict[str, Any]) -> ConversationConfig:
         await self.init_schema()
-        if isinstance(data, ConversationConfig):
-            payload = data.to_dict()
-        else:
-            payload = dict(data)
+        payload = data.to_dict() if isinstance(data, ConversationConfig) else dict(data)
         profile = get_profile(payload.get("profile_id"))
         profile_id = payload.get("profile_id") or profile.profile_id
         table_template_id = payload.get("table_template_id", profile.table_template_id)

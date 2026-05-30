@@ -132,8 +132,8 @@ async def test_upsert_character_lazy_insert_and_discovered_endpoint():
 
 
 def test_retrieval_gate_keyword_only_mode_matches_keyword():
-    from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
     from app.memory.query_builder import RetrievalQuery
+    from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
 
     query = RetrievalQuery(
         query_text="还记得那个人吗",
@@ -152,8 +152,8 @@ def test_retrieval_gate_keyword_only_mode_matches_keyword():
 
 
 def test_retrieval_gate_keyword_only_mode_no_match_skips():
-    from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
     from app.memory.query_builder import RetrievalQuery
+    from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval
 
     query = RetrievalQuery(
         query_text="hello there",
@@ -242,6 +242,7 @@ async def test_admin_memory_graph_returns_nodes_and_edges():
 def test_retrieve_cards_returns_empty_when_all_scopes_disabled():
     """allowed_scopes=set() should short-circuit and return [] without hitting DB."""
     import asyncio as _asyncio
+
     from app.memory.card_retriever import retrieve_cards
     from app.memory.query_builder import RetrievalQuery
 

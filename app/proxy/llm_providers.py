@@ -7,11 +7,11 @@ All providers accept OpenAI-format messages and return OpenAI-format responses.
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
-import logging
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 

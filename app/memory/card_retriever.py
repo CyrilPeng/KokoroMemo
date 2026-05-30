@@ -16,13 +16,16 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.core.time_util import naive_local_now
-
+from app.memory.graph import get_active_edges_for_cards
 from app.memory.query_builder import RetrievalQuery
 from app.memory.retrieval_embedding_cache import get_retrieval_cache
 from app.providers.embedding_base import EmbeddingProvider
-from app.memory.graph import get_active_edges_for_cards
-from app.storage.sqlite_cards import get_cards_by_ids, get_pinned_cards, get_recent_important_cards
-from app.storage.sqlite_cards import get_mounted_library_ids
+from app.storage.sqlite_cards import (
+    get_cards_by_ids,
+    get_mounted_library_ids,
+    get_pinned_cards,
+    get_recent_important_cards,
+)
 
 logger = logging.getLogger("kokoromemo.card_retriever")
 
@@ -46,16 +49,45 @@ class MemoryCandidate:
     scope_score: float = 0.0
     confidence_score: float = 0.0
 
+    @classmethod
+    def from_card(
+        cls,
+        card: dict,
+        *,
+        source: str,
+        vector_score: float = 0.5,
+        final_score: float = 0.0,
+    ) -> MemoryCandidate:
+        """Build a MemoryCandidate from a raw card dict, avoiding repetition at each retrieval path."""
+        importance = card.get("importance", 0.5)
+        confidence = card.get("confidence", 0.5)
+        scope = card.get("scope", "")
+        return cls(
+            card_id=card.get("card_id", ""),
+            content=card.get("content", ""),
+            scope=scope,
+            card_type=card.get("card_type", ""),
+            importance=importance,
+            confidence=confidence,
+            vector_score=vector_score,
+            final_score=final_score,
+            source=source,
+            library_id=card.get("library_id", ""),
+            source_conversation_id=card.get("conversation_id"),
+            source_character_id=card.get("character_id"),
+            importance_score=importance,
+            recency_score=_recency_score(card.get("created_at")),
+            scope_score=_scope_score(scope),
+            confidence_score=confidence,
+        )
+
 
 def _recency_score(created_at: str | None) -> float:
     if not created_at:
         return 0.5
     try:
         dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        if dt.tzinfo is not None:
-            now = datetime.now(dt.tzinfo)
-        else:
-            now = naive_local_now()
+        now = datetime.now(dt.tzinfo) if dt.tzinfo is not None else naive_local_now()
         days = (now - dt).total_seconds() / 86400
     except Exception:
         return 0.5
@@ -132,29 +164,17 @@ async def retrieve_cards(
     try:
         pinned = await get_pinned_cards(cards_db_path, user_id, character_id, mounted_library_ids)
         for card in pinned:
-            cid = card["card_id"]
+            cid = card.get("card_id", "")
             if cid in seen_ids:
                 continue
             if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
                 continue
             seen_ids.add(cid)
-            all_candidates.append(MemoryCandidate(
-                card_id=cid,
-                content=card["content"],
-                scope=card["scope"],
-                card_type=card["card_type"],
-                importance=card["importance"],
-                confidence=card["confidence"],
+            all_candidates.append(MemoryCandidate.from_card(
+                card,
+                source="pinned",
                 vector_score=1.0,  # 置顶卡片始终保持高优先级
                 final_score=1.0,
-                source="pinned",
-                library_id=card.get("library_id", ""),
-                source_conversation_id=card.get("conversation_id"),
-                source_character_id=card.get("character_id"),
-                importance_score=card["importance"],
-                recency_score=_recency_score(card.get("created_at")),
-                scope_score=_scope_score(card["scope"]),
-                confidence_score=card["confidence"],
             ))
     except Exception as e:
         logger.warning("Pinned cards retrieval failed: %s", e)
@@ -163,8 +183,9 @@ async def retrieve_cards(
     try:
         query_vector = await _resolve_query_vector(embedding_provider, query)
 
-        # 构建作用域过滤条件
-        clauses = ["status = 'active'", f"user_id = '{user_id}'"]
+        # 构建作用域过滤条件（所有用户可控 ID 必须转义单引号，防止 filter 注入）
+        safe_user_id = user_id.replace("'", "''")
+        clauses = ["status = 'active'", f"user_id = '{safe_user_id}'"]
         if mounted_library_ids:
             escaped_ids = [library_id.replace("'", "''") for library_id in mounted_library_ids]
             library_filter = ", ".join(f"'{library_id}'" for library_id in escaped_ids)
@@ -173,9 +194,11 @@ async def retrieve_cards(
         if "global" in allowed_scopes:
             scope_clauses.append("scope = 'global'")
         if "character" in allowed_scopes and character_id:
-            scope_clauses.append(f"(scope = 'character' AND character_id = '{character_id}')")
+            safe_character_id = character_id.replace("'", "''")
+            scope_clauses.append(f"(scope = 'character' AND character_id = '{safe_character_id}')")
         if "conversation" in allowed_scopes and conversation_id:
-            scope_clauses.append(f"(scope = 'conversation' AND conversation_id = '{conversation_id}')")
+            safe_conversation_id = conversation_id.replace("'", "''")
+            scope_clauses.append(f"(scope = 'conversation' AND conversation_id = '{safe_conversation_id}')")
         if not scope_clauses:
             raise RuntimeError("no_scope_eligible")
         clauses.append(f"({' OR '.join(scope_clauses)})")
@@ -211,23 +234,11 @@ async def retrieve_cards(
                 + conf * weights["confidence_weight"]
             )
 
-            all_candidates.append(MemoryCandidate(
-                card_id=cid,
-                content=card.get("content", ""),
-                scope=card.get("scope", ""),
-                card_type=card.get("card_type", ""),
-                importance=imp,
-                confidence=conf,
+            all_candidates.append(MemoryCandidate.from_card(
+                card,
+                source="vector",
                 vector_score=vs,
                 final_score=final,
-                source="vector",
-                library_id=card.get("library_id", ""),
-                source_conversation_id=card.get("conversation_id"),
-                source_character_id=card.get("character_id"),
-                importance_score=imp,
-                recency_score=rec,
-                scope_score=sc,
-                confidence_score=conf,
             ))
     except Exception as e:
         logger.warning("Vector retrieval failed (degraded): %s", e)
@@ -236,29 +247,17 @@ async def retrieve_cards(
     try:
         recent = await get_recent_important_cards(cards_db_path, user_id, character_id, library_ids=mounted_library_ids)
         for card in recent:
-            cid = card["card_id"]
+            cid = card.get("card_id", "")
             if cid in seen_ids:
                 continue
             if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
                 continue
             seen_ids.add(cid)
-            all_candidates.append(MemoryCandidate(
-                card_id=cid,
-                content=card["content"],
-                scope=card["scope"],
-                card_type=card["card_type"],
-                importance=card["importance"],
-                confidence=card["confidence"],
-                vector_score=0.5,
-                final_score=card["importance"] * 0.8,
+            all_candidates.append(MemoryCandidate.from_card(
+                card,
                 source="recent",
-                library_id=card.get("library_id", ""),
-                source_conversation_id=card.get("conversation_id"),
-                source_character_id=card.get("character_id"),
-                importance_score=card["importance"],
-                recency_score=_recency_score(card.get("created_at")),
-                scope_score=_scope_score(card["scope"]),
-                confidence_score=card["confidence"],
+                vector_score=0.5,
+                final_score=card.get("importance", 0.5) * 0.8,
             ))
     except Exception as e:
         logger.warning("Recent cards retrieval failed: %s", e)
@@ -304,25 +303,14 @@ async def retrieve_cards(
                     continue
                 if mounted_library_set and card.get("library_id") not in mounted_library_set:
                     continue
-                cid = card["card_id"]
+                cid = card.get("card_id", "")
                 seen_ids.add(cid)
-                all_candidates.append(MemoryCandidate(
-                    card_id=cid,
-                    content=card["content"],
-                    scope=card["scope"],
-                    card_type=card["card_type"],
-                    importance=card["importance"],
-                    confidence=card["confidence"],
-                    vector_score=0.6,
-                    final_score=max(0.75, card["importance"] * 0.9),
+                importance = card.get("importance", 0.5)
+                all_candidates.append(MemoryCandidate.from_card(
+                    card,
                     source="graph",
-                    library_id=card.get("library_id", ""),
-                    source_conversation_id=card.get("conversation_id"),
-                    source_character_id=card.get("character_id"),
-                    importance_score=card["importance"],
-                    recency_score=_recency_score(card.get("created_at")),
-                    scope_score=_scope_score(card["scope"]),
-                    confidence_score=card["confidence"],
+                    vector_score=0.6,
+                    final_score=max(0.75, importance * 0.9),
                 ))
     except Exception as e:
         logger.warning("Graph expansion failed: %s", e)

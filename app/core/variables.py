@@ -6,7 +6,7 @@ Supports {{variable}} placeholders in system prompts and injection templates.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.core.time_util import datetime_now, naive_local_now
 
@@ -29,10 +29,7 @@ def resolve_variables(
     tz_offset_hours: float | None = None,
 ) -> str:
     """Replace all {{variable}} placeholders in text."""
-    if tz_offset_hours is not None:
-        now = datetime.now(timezone(timedelta(hours=tz_offset_hours)))
-    else:
-        now = datetime_now()
+    now = datetime.now(timezone(timedelta(hours=tz_offset_hours))) if tz_offset_hours is not None else datetime_now()
 
     variables = {
         "date": now.strftime("%Y-%m-%d"),
@@ -62,10 +59,7 @@ def relative_time_label(created_at: str | None) -> str:
         return ""
     try:
         dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        if dt.tzinfo is not None:
-            now = datetime.now(dt.tzinfo)
-        else:
-            now = naive_local_now()
+        now = datetime.now(dt.tzinfo) if dt.tzinfo is not None else naive_local_now()
         delta = now - dt
         seconds = delta.total_seconds()
 

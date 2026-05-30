@@ -1,8 +1,8 @@
 """Regression tests for core KokoroMemo functionality."""
 from __future__ import annotations
 
-import sqlite3
 import shutil
+import sqlite3
 import uuid
 from pathlib import Path
 
@@ -12,8 +12,13 @@ from httpx import ASGITransport, AsyncClient
 from app.core.config import AppConfig
 from app.core.state import set_config
 from app.main import app
-from app.storage.sqlite_cards import create_memory_library, create_mount_preset, get_conversation_mounts, init_cards_db, insert_card
-from app.storage.sqlite_state import SQLiteStateStore
+from app.storage.sqlite_cards import (
+    create_memory_library,
+    create_mount_preset,
+    get_conversation_mounts,
+    init_cards_db,
+    insert_card,
+)
 from app.storage.sqlite_state import SQLiteStateStore
 
 
@@ -95,7 +100,7 @@ async def test_v1_models_endpoint(monkeypatch):
 async def test_non_stream_chat_completion_basic(monkeypatch):
     test_dir = make_test_dir()
     try:
-        cfg = configure_app(test_dir)
+        configure_app(test_dir)
         provider = FakeChatProvider()
         FakeChatProvider.captured_bodies.clear()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
@@ -121,26 +126,28 @@ async def test_non_stream_chat_completion_basic(monkeypatch):
 async def test_stream_chat_completion_basic(monkeypatch):
     test_dir = make_test_dir()
     try:
-        cfg = configure_app(test_dir)
+        configure_app(test_dir)
         provider = FakeChatProvider()
         FakeChatProvider.captured_bodies.clear()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
         collected_lines = []
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            async with client.stream("POST", "/v1/chat/completions", json={
+        async with (
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
+            client.stream("POST", "/v1/chat/completions", json={
                 "model": "fake-model",
                 "stream": True,
                 "messages": [{"role": "user", "content": "你好"}],
                 "metadata": {"conversation_id": "conv_stream_basic"},
-            }) as resp:
-                assert resp.status_code == 200
-                async for line in resp.aiter_lines():
+            }) as resp,
+        ):
+            assert resp.status_code == 200
+            async for line in resp.aiter_lines():
                     if line.strip():
                         collected_lines.append(line)
 
-        data_lines = [l for l in collected_lines if l.startswith("data:") and "[DONE]" not in l]
-        done_lines = [l for l in collected_lines if "[DONE]" in l]
+        data_lines = [line for line in collected_lines if line.startswith("data:") and "[DONE]" not in line]
+        done_lines = [line for line in collected_lines if "[DONE]" in line]
         assert len(data_lines) >= 1
         assert len(done_lines) >= 1
     finally:
@@ -151,7 +158,7 @@ async def test_stream_chat_completion_basic(monkeypatch):
 async def test_raw_request_persisted(monkeypatch):
     test_dir = make_test_dir()
     try:
-        cfg = configure_app(test_dir)
+        configure_app(test_dir)
         provider = FakeChatProvider()
         FakeChatProvider.captured_bodies.clear()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)

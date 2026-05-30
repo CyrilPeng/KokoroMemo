@@ -4,8 +4,6 @@ import shutil
 import uuid
 from pathlib import Path
 
-import pytest
-
 from app.core.prompts import HOT_CONTEXT_HEADER
 from app.memory.query_builder import RetrievalQuery
 from app.memory.retrieval_gate import RetrievalGateInput, decide_retrieval

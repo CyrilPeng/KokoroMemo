@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import aiosqlite
 
-from app.core.ids import generate_id
 from app.memory.conversation_policy import (
     DEFAULT_CONVERSATION_PROFILE_ID,
     get_profile,
 )
-
 
 _STATE_SCHEMA = """
 PRAGMA journal_mode = WAL;

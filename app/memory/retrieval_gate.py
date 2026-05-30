@@ -61,13 +61,11 @@ def decide_retrieval(gate_input: RetrievalGateInput) -> RetrievalGateDecision:
             break
 
     every_n = gate_input.vector_search_every_n_turns
-    if every_n > 0 and gate_input.turn_index is not None and gate_input.turn_index > 0:
-        if gate_input.turn_index % every_n == 0:
-            reasons.append(f"periodic:{every_n}")
+    if every_n > 0 and gate_input.turn_index is not None and gate_input.turn_index > 0 and gate_input.turn_index % every_n == 0:
+        reasons.append(f"periodic:{every_n}")
 
-    if state_count > 0 and avg_confidence is not None:
-        if avg_confidence < gate_input.vector_search_when_state_confidence_below:
-            reasons.append("low_state_confidence")
+    if state_count > 0 and avg_confidence is not None and avg_confidence < gate_input.vector_search_when_state_confidence_below:
+        reasons.append("low_state_confidence")
 
     if reasons:
         return _decision(True, reasons[0], reasons, mode, state_count, avg_confidence)

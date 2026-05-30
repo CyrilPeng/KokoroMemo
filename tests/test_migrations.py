@@ -11,7 +11,6 @@ from app.storage.migrations.manager import (
     get_schema_version,
 )
 
-
 _WORK_ROOT = Path(".test_migrations_work")
 
 

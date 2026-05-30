@@ -37,3 +37,50 @@ packages = ["app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes (unused imports, undefined names)
+    "I",      # isort
+    "B",      # flake8-bugbear (common pitfalls)
+    "SIM",    # flake8-simplify
+    "UP",     # pyupgrade
+    "S",      # flake8-bandit (security)
+]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "S101",   # assert used — acceptable in tests
+    "S104",   # possible binding to all interfaces — intentional
+    "S105",   # hardcoded password string — false positives on config keys
+    "S106",   # hardcoded password argument — false positives
+    "S603",   # subprocess call with shell=false — acceptable
+    "S607",   # starting a process with a partial executable path — acceptable
+    "B008",   # function call in default argument — FastAPI Depends pattern
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]          # security checks not needed in tests
+"benchmarks/*" = ["S"]     # security checks not needed in benchmarks
+"app/storage/migrations/*" = ["S608"]  # parameterized SQL with hardcoded table/version strings
+"app/storage/sqlite_cards.py" = ["S608"]  # parameterized SQL with placeholders f-string
+"app/storage/sqlite_state.py" = ["S608", "E402"]  # parameterized SQL; mixin imports at end
+"app/storage/sqlite_state_tables.py" = ["S608"]  # parameterized SQL with placeholders f-string
+"app/storage/sqlite_state_config.py" = ["S608"]  # parameterized SQL with dynamic WHERE
+"app/storage/sqlite_conversation.py" = ["S608"]  # parameterized SQL with table-name in loop
+"app/storage/sqlite_app.py" = ["S608"]  # parameterized SQL with dynamic WHERE/ORDER
+"app/storage/sqlite_vector_store.py" = ["S608"]  # parameterized SQL with self.table_name
+"app/storage/rebuild_v2.py" = ["S608"]  # parameterized SQL with placeholders f-string
+"app/storage/manager.py" = ["S608"]  # parameterized SQL with SCHEMA_VERSION_TABLE constant
+"app/storage/vector_sync.py" = ["E402"]  # logger defined before app imports
+"app/memory/graph.py" = ["S608"]  # parameterized SQL with placeholders f-string
+"app/api/routes_admin.py" = ["S608"]  # parameterized SQL with dynamic WHERE clauses
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

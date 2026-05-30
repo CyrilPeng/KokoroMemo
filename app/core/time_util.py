@@ -6,7 +6,7 @@ instead of bare datetime.now() to ensure consistent local time.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 _configured_tz: timezone | None = None

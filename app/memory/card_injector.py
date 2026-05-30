@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.core.variables import resolve_variables, relative_time_label
+from app.core.variables import relative_time_label, resolve_variables
 from app.memory.card_retriever import MemoryCandidate
 
 _INJECTION_TEMPLATE = """【KokoroMemo 长期记忆】

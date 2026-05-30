@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import aiosqlite
-from pathlib import Path
 
 from app.memory.conversation_policy import get_profile
 

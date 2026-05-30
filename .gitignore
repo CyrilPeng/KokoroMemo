@@ -34,3 +34,13 @@ config.yaml
 # 项目临时文件
 .port
 .test_tmp/
+.test_dbs/
+.test_lifecycle/
+.test_port_file/
+.test_sqlite_vector_store/
+.test_vector_sync/
+.tmp_pr_review/
+.tmp_pytest/
+.pytest_cache/
+pytest-cache-files-*/
+_function_names.txt

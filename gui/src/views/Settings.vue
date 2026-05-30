@@ -19,7 +19,7 @@ const message = useMessage()
 const { t } = useI18n()
 
 async function tauriInvoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (!(window as any).__TAURI_INTERNALS__) throw new Error('not tauri')
+  if (!window.__TAURI_INTERNALS__) throw new Error('not tauri')
   const { invoke } = await import('@tauri-apps/api/core')
   return await invoke<T>(command, args)
 }
@@ -373,7 +373,7 @@ function applyConfigToForm(data: any) {
   timezone.value = data.server?.timezone || ''
   if (data.server?.actual_port) {
     actualServerPort.value = data.server.actual_port
-    const actualUrl = (window as any).__TAURI_INTERNALS__
+    const actualUrl = window.__TAURI_INTERNALS__
       ? `http://127.0.0.1:${data.server.actual_port}`
       : window.location.origin
     backendUrl.value = actualUrl

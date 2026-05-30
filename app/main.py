@@ -2,47 +2,15 @@
 
 from __future__ import annotations
 
-import sys
 import os
+import tomllib
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    tomllib = None  # type: ignore[assignment]
-
-
-def _read_version() -> str:
-    """从 pyproject.toml 读取版本号，作为版本单一来源。"""
-    env_version = os.getenv("KOKOROMEMO_VERSION")
-    if env_version:
-        return env_version.lstrip("v")
-
-    if tomllib is not None:
-        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
-        if pyproject.exists():
-            try:
-                data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-                return data.get("project", {}).get("version", "0.0.0")
-            except Exception:
-                pass
-    try:
-        from importlib.metadata import version as _get_version
-        return _get_version("kokoromemo")
-    except Exception:
-        pass
-
-    try:
-        from app._version import __version__
-        return __version__
-    except Exception:
-        return "0.0.0"
-
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
@@ -54,8 +22,43 @@ from app.core.state import set_config
 from app.core.time_util import set_configured_timezone
 
 
+def _read_version() -> str:
+    """从 pyproject.toml 读取版本号，作为版本单一来源。"""
+    env_version = os.getenv("KOKOROMEMO_VERSION")
+    if env_version:
+        return env_version
+
+    pyproject = Path(__file__).parent.parent / "pyproject.toml"
+    if pyproject.exists():
+        with open(pyproject) as f:
+            data = tomllib.loads(f.read())
+            return data.get("project", {}).get("version", "0.0.0")
+
+    try:
+        from importlib.metadata import version as _get_version
+        return _get_version("kokoromemo")
+    except Exception:  # noqa: S110
+        pass
+
+    try:
+        from kokoromemo._version import __version__
+        return __version__
+    except Exception:
+        return "0.0.0"
+
+
 def _android_compat_enabled() -> bool:
     return os.getenv("KOKOROMEMO_ANDROID_COMPAT", "0").lower() in {"1", "true", "yes"}
+
+
+# 回退端口选择范围：当用户配置的首选端口不可用时，从此范围中随机选择
+_FALLBACK_PORT_MIN = 20000
+_FALLBACK_PORT_MAX = 40000
+_FALLBACK_PORT_RETRIES = 50
+
+# 静态资源缓存 TTL（秒）：打包产物使用不可变长缓存，HTML 使用不缓存
+_STATIC_ASSET_MAX_AGE = 365 * 24 * 3600  # 1 年（打包资源带 content hash）
+_HTML_MAX_AGE = 3600  # 1 小时（SPA 入口页不缓存，保证新版本即时生效）
 
 
 @asynccontextmanager
@@ -74,14 +77,13 @@ async def lifespan(app: FastAPI):
     logger.info("KokoroMemo started on %s:%d", cfg.server.host, cfg.server.port)
 
     # 安全提醒：未配置管理令牌时绑定非回环地址存在风险。
-    if cfg.server.host not in {"127.0.0.1", "localhost", "::1"}:
-        if not cfg.server.get_admin_token():
-            logger.warning(
-                "Server bound to %s without an admin_token; admin endpoints will refuse remote "
-                "requests unless server.allow_remote_access is true. Set ADMIN_TOKEN or "
-                "admin_token in config to enable secure remote access.",
-                cfg.server.host,
-            )
+    if cfg.server.host not in {"127.0.0.1", "localhost", "::1"} and not cfg.server.get_admin_token():
+        logger.warning(
+            "Server bound to %s without an admin_token; admin endpoints will refuse remote "
+            "requests unless server.allow_remote_access is true. Set ADMIN_TOKEN or "
+            "admin_token in config to enable secure remote access.",
+            cfg.server.host,
+        )
 
     yield
 
@@ -89,13 +91,15 @@ async def lifespan(app: FastAPI):
     await lifecycle.stop()
 
 
-app = FastAPI(title="KokoroMemo", version=_read_version(), lifespan=lifespan)
-app.state.app_version = app.version
-app.state.actual_port = None
-
-
 def create_app() -> FastAPI:
-    """创建并配置 FastAPI 应用。"""
+    """Create and fully configure the FastAPI application.
+
+    The entire app (routing, middleware, static serving) is constructed in
+    this single factory call, eliminating the previous split between a
+    bare `FastAPI(...)` instance and a separate `create_app()` invocation
+    at import time. This avoids redundant config loads and makes the
+    module safe to import without side effects beyond app creation.
+    """
     from app.api.routes_admin import router as admin_router
     from app.api.routes_anthropic import router as anthropic_router
     from app.api.routes_gemini import router as gemini_router
@@ -103,36 +107,40 @@ def create_app() -> FastAPI:
     from app.api.routes_responses import router as responses_router
     from app.api.routes_ws import router as ws_router
 
-    app.include_router(admin_router)
-    app.include_router(anthropic_router)
-    app.include_router(gemini_router)
-    app.include_router(openai_router)
-    app.include_router(responses_router)
-    app.include_router(ws_router)
+    application = FastAPI(title="KokoroMemo", version=_read_version(), lifespan=lifespan)
+    application.state.app_version = application.version
+    application.state.actual_port = None
+
+    application.include_router(admin_router)
+    application.include_router(anthropic_router)
+    application.include_router(gemini_router)
+    application.include_router(openai_router)
+    application.include_router(responses_router)
+    application.include_router(ws_router)
 
     if not _android_compat_enabled():
-        app.add_middleware(GZipMiddleware, minimum_size=1024)
+        application.add_middleware(GZipMiddleware, minimum_size=1024)
 
     class CacheStaticFiles(StaticFiles):
         def file_response(self, *args, **kwargs) -> Response:
             response = super().file_response(*args, **kwargs)
-            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+            response.headers.setdefault("Cache-Control", f"public, max-age={_STATIC_ASSET_MAX_AGE}, immutable")
             return response
 
     # 如果存在预构建前端，则提供 Vue SPA 静态资源（Web UI / Termux 模式）。
     _web_dist_env = os.getenv("KOKOROMEMO_WEB_DIST", "").strip()
     _gui_dist = Path(_web_dist_env).expanduser() if _web_dist_env else Path(__file__).resolve().parent.parent / "gui" / "dist"
     if _gui_dist.is_dir():
-        app.mount("/assets", CacheStaticFiles(directory=_gui_dist / "assets"), name="static-assets")
+        application.mount("/assets", CacheStaticFiles(directory=_gui_dist / "assets"), name="static-assets")
 
         _API_PREFIXES = ("/admin", "/v1", "/v1beta", "/anthropic", "/responses", "/health", "/ws")
 
-        @app.get("/.port")
+        @application.get("/.port")
         async def serve_actual_port():
-            actual_port = getattr(app.state, "actual_port", None) or os.getenv("KOKOROMEMO_ACTUAL_PORT")
+            actual_port = getattr(application.state, "actual_port", None) or os.getenv("KOKOROMEMO_ACTUAL_PORT")
             return Response(str(actual_port or ""), media_type="text/plain")
 
-        @app.get("/{path:path}")
+        @application.get("/{path:path}")
         async def serve_spa(path: str):
             # 让 API 路由自行处理所属路径
             if any(path.startswith(p.lstrip("/")) for p in _API_PREFIXES):
@@ -140,13 +148,13 @@ def create_app() -> FastAPI:
             file = _gui_dist / path
             if file.is_file():
                 response = FileResponse(file)
-                response.headers.setdefault("Cache-Control", "public, max-age=3600")
+                response.headers.setdefault("Cache-Control", f"public, max-age={_HTML_MAX_AGE}")
                 return response
             response = FileResponse(_gui_dist / "index.html")
             response.headers.setdefault("Cache-Control", "no-cache")
             return response
 
-    @app.middleware("http")
+    @application.middleware("http")
     async def admin_auth_middleware(request, call_next):
         if request.url.path.startswith("/admin"):
             from app.api.routes_admin import _require_admin
@@ -169,22 +177,22 @@ def create_app() -> FastAPI:
             "tauri://localhost",
             "http://tauri.localhost",
         ]
-        app.add_middleware(
+        application.add_middleware(
             CORSMiddleware,
             allow_origins=allowed_origins,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=["*"],
         )
 
-    return app
+    return application
 
 
-# 导入时自动完成 FastAPI 应用配置。
-create_app()
+# 模块级唯一 FastAPI 实例：由工厂函数一次性创建并配置，不再有分散的初始化。
+app = create_app()
 
 
 def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
-    """优先使用配置端口；不可用时选择 20000 以上的随机端口。"""
+    """优先使用配置端口；不可用时从回退范围中选择随机端口。"""
     import errno
     import socket
     strict_port = os.getenv("KOKOROMEMO_STRICT_PORT", "0").lower() in {"1", "true", "yes"}
@@ -212,8 +220,8 @@ def _find_available_port(host: str, preferred: int) -> tuple[int, str | None]:
     reason = _describe_port_unavailable(preferred_error)
 
     import random
-    for _ in range(50):
-        port = random.randint(20000, 40000)
+    for _ in range(_FALLBACK_PORT_RETRIES):
+        port = random.randint(_FALLBACK_PORT_MIN, _FALLBACK_PORT_MAX)  # noqa: S311
         ok, _ = _try_bind(port)
         if ok:
             return port, reason
@@ -247,7 +255,7 @@ def _write_port_file(port: int) -> None:
         tmp_file = base_dir / ".port.tmp"
         tmp_file.write_text(str(port), encoding="utf-8")
         tmp_file.replace(port_file)
-    except Exception:
+    except Exception:  # noqa: S110
         pass
 
 

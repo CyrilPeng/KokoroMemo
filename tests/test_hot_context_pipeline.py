@@ -139,7 +139,7 @@ async def test_state_only_policy_skips_memory_retrieval(monkeypatch):
 async def test_short_text_skips_vector_retrieval(monkeypatch):
     test_dir = make_test_dir()
     try:
-        cfg = configure_app(test_dir)
+        configure_app(test_dir)
         provider = FakeChatProvider()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
@@ -233,7 +233,7 @@ async def test_retrieval_profile_controls_retrieval_limits(monkeypatch):
 async def test_retrieval_trace_records_selected_candidates(monkeypatch):
     test_dir = make_test_dir()
     try:
-        cfg = configure_app(test_dir)
+        configure_app(test_dir)
         provider = FakeChatProvider()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 

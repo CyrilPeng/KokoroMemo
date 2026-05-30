@@ -10,7 +10,7 @@ const GITEE_LATEST_RELEASE_API = 'https://gitee.com/api/v5/repos/CyrilPeng/Kokor
 const CURRENT_VERSION_FALLBACK = '0.8.0'
 
 async function getTauriAppVersion(): Promise<string> {
-  if (!(window as any).__TAURI_INTERNALS__) throw new Error('not tauri')
+  if (!window.__TAURI_INTERNALS__) throw new Error('not tauri')
   const { getVersion } = await import('@tauri-apps/api/app')
   return await getVersion()
 }
@@ -199,7 +199,7 @@ export function useUpdateCheck(
 
   async function openExternal(url: string) {
     try {
-      if (!(window as any).__TAURI_INTERNALS__) throw new Error('not tauri')
+      if (!window.__TAURI_INTERNALS__) throw new Error('not tauri')
       const { open } = await import('@tauri-apps/plugin-shell')
       await open(url)
     } catch {

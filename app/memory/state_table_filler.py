@@ -192,7 +192,7 @@ async def fill_conversation_state_tables(
                 "applied": result.applied,
                 "skipped": result.skipped,
             })
-        except Exception:
+        except Exception:  # noqa: S110
             pass
 
     return result

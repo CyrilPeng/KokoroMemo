@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Literal
 
-
 MemoryWritePolicy = Literal["disabled", "candidate", "stable_only", "auto"]
 StateUpdatePolicy = Literal["disabled", "manual", "auto"]
 InjectionPolicy = Literal["none", "memory_only", "state_only", "state_first", "mixed"]

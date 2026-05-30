@@ -102,9 +102,8 @@ def test_websocket_requires_token_when_configured(monkeypatch):
     set_config(AppConfig())
 
     with TestClient(app) as client:
-        with pytest.raises(WebSocketDisconnect) as exc_info:
-            with client.websocket_connect("/ws"):
-                pass
+        with pytest.raises(WebSocketDisconnect) as exc_info, client.websocket_connect("/ws"):
+            pass
         assert exc_info.value.code == 1008
 
 
@@ -112,18 +111,16 @@ def test_websocket_accepts_query_token_when_configured(monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "secret")
     set_config(AppConfig())
 
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws?token=secret") as ws:
-            assert ws is not None
+    with TestClient(app) as client, client.websocket_connect("/ws?token=secret") as ws:
+        assert ws is not None
 
 
 def test_websocket_accepts_bearer_token_when_configured(monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "secret")
     set_config(AppConfig())
 
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws", headers={"Authorization": "Bearer secret"}) as ws:
-            assert ws is not None
+    with TestClient(app) as client, client.websocket_connect("/ws", headers={"Authorization": "Bearer secret"}) as ws:
+        assert ws is not None
 
 
 @pytest.mark.asyncio
@@ -254,7 +251,7 @@ async def test_apply_character_defaults_expands_mount_preset():
         cfg.storage.sqlite.memory_db = str(test_dir / "memory.sqlite")
         set_config(cfg)
 
-        from app.storage.sqlite_app import init_app_db, upsert_character, upsert_conversation, set_character_defaults
+        from app.storage.sqlite_app import init_app_db, set_character_defaults, upsert_character, upsert_conversation
         from app.storage.sqlite_cards import create_memory_library, create_mount_preset, get_conversation_mounts
 
         character_id = "char_preset"

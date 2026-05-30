@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import sqlite3
 import shutil
+import sqlite3
 import uuid
 from pathlib import Path
 
 import pytest
 
 from app.core.variables import relative_time_label
-from app.memory.card_retriever import retrieve_cards
 from app.memory.card_extractor import extract_and_route
-from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
+from app.memory.card_retriever import retrieve_cards
 from app.memory.graph import insert_edge
+from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
 from app.memory.query_builder import RetrievalQuery
 from app.memory.review_policy import auto_review
 from app.providers.embedding_dummy import DummyEmbeddingProvider

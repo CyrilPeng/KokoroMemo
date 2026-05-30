@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import aiosqlite
 from pathlib import Path
+
+import aiosqlite
 
 _CHAT_SCHEMA = """
 PRAGMA journal_mode = WAL;

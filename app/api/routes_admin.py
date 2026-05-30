@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 import httpx
 import yaml
-from fastapi import APIRouter, Query, Body, Request, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 
 router = APIRouter()
 
@@ -350,6 +351,7 @@ async def get_stats(request: Request):
     """Return memory system statistics for the dashboard."""
     _require_admin(request)
     import aiosqlite
+
     from app.core.state import get_config
 
     cfg = get_config()
@@ -471,8 +473,9 @@ async def get_config_status(request: Request):
 async def get_action_items(request: Request):
     """返回需要用户关注的待处理项计数。"""
     _require_admin(request)
-    from app.core.state import get_config
     import aiosqlite
+
+    from app.core.state import get_config
 
     cfg = get_config()
     items = []
@@ -506,7 +509,7 @@ async def get_action_items(request: Request):
                     "action": "navigate",
                     "target": "/settings",
                 })
-    except Exception:
+    except Exception:  # noqa: S110
         pass
 
     return {"status": "ok", "items": items}
@@ -853,7 +856,7 @@ async def save_config(data: dict = Body(...)):
     # 读取现有 YAML
     existing = {}
     if config_path and config_path.exists():
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             existing = yaml.safe_load(f) or {}
 
     # 检测需要重启的字段是否变更
@@ -951,9 +954,10 @@ async def list_memories(
     status: str = Query(default="approved"),
 ):
     """List memory cards."""
+    import aiosqlite
+
     from app.core.state import get_config
     from app.storage.sqlite_cards import init_cards_db
-    import aiosqlite
 
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
@@ -1091,8 +1095,9 @@ async def merge_character_api(character_id: str, request: Request, data: dict = 
     """将一个重复角色合并到当前目标角色。"""
     _require_admin(request)
     from pathlib import Path
+
     from app.core.state import get_config
-    from app.storage.sqlite_app import merge_character_profile, list_characters
+    from app.storage.sqlite_app import list_characters, merge_character_profile
     from app.storage.sqlite_cards import merge_character_refs
     from app.storage.sqlite_conversation import merge_character_turn_refs
     from app.storage.sqlite_state import SQLiteStateStore
@@ -1407,6 +1412,7 @@ async def list_conversations_api(
     """按最近活跃时间列出会话，并补充摘要与诊断信息。"""
     _require_admin(request)
     from pathlib import Path
+
     from app.core.state import get_config
     from app.storage.sqlite_app import list_conversations
     from app.storage.sqlite_conversation import get_conversation_message_summary
@@ -1444,11 +1450,11 @@ async def list_conversations_api(
 
 
 @router.patch("/admin/conversations/{conversation_id}")
-async def update_conversation_profile_api(conversation_id: str, request: Request, data: dict = Body(...)):
+async def update_conversation_fields_api(conversation_id: str, request: Request, data: dict = Body(...)):
     """Update user-facing conversation profile fields."""
     _require_admin(request)
     from app.core.state import get_config
-    from app.storage.sqlite_app import update_conversation_profile
+    from app.storage.sqlite_app import list_conversations, update_conversation_profile
 
     cfg = get_config()
     old_item = next((item for item in (await list_conversations(cfg.storage.sqlite.app_db, limit=500, offset=0, status="all"))[0] if item.get("conversation_id") == conversation_id), None)
@@ -1464,6 +1470,7 @@ async def update_conversation_profile_api(conversation_id: str, request: Request
     sync_result = None
     if "character_id" in data and (old_item or {}).get("character_id") != item.get("character_id"):
         from pathlib import Path
+
         from app.storage.sqlite_cards import update_conversation_character_refs
         from app.storage.sqlite_conversation import update_conversation_character
         from app.storage.sqlite_state import SQLiteStateStore
@@ -1484,6 +1491,7 @@ async def delete_conversation_api(conversation_id: str, request: Request):
     _require_admin(request)
     import shutil
     from pathlib import Path
+
     from app.core.state import get_config
     from app.storage.sqlite_app import delete_conversation
     from app.storage.sqlite_cards import delete_conversation_memory_data
@@ -1621,11 +1629,12 @@ async def create_memory_card(data: dict = Body(...)):
 @router.put("/admin/memories/{card_id}")
 async def update_memory_card(card_id: str, data: dict = Body(...)):
     """Edit a memory card's content, type, or importance."""
+    import aiosqlite
+
     from app.core.services import get_embedding_provider, get_lancedb_store
     from app.core.state import get_config
     from app.storage.sqlite_cards import insert_card_version, mark_card_vector_unsynced
     from app.storage.vector_sync import enqueue_card_vector_sync, sync_card_vector
-    import aiosqlite
 
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
@@ -1674,9 +1683,10 @@ async def update_memory_card(card_id: str, data: dict = Body(...)):
 @router.delete("/admin/memories/{card_id}")
 async def delete_memory_card(card_id: str):
     """Soft-delete a memory card."""
+    import aiosqlite
+
     from app.core.services import get_lancedb_store
     from app.core.state import get_config
-    import aiosqlite
 
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
@@ -1690,10 +1700,8 @@ async def delete_memory_card(card_id: str):
 
     store = get_lancedb_store(cfg)
     if store:
-        try:
+        with contextlib.suppress(Exception):
             store.delete(f"memory_id = '{card_id}'")
-        except Exception:
-            pass
 
     return {"status": "ok"}
 
@@ -1723,10 +1731,11 @@ async def memory_diagnostics_api(
 @router.post("/admin/memories/{card_id}/deprecate")
 async def deprecate_memory_card(card_id: str, note: str = Body(default="")):
     """Mark a memory card as deprecated so it is no longer recalled by default."""
+    import aiosqlite
+
     from app.core.services import get_lancedb_store
     from app.core.state import get_config
     from app.storage.sqlite_cards import insert_review_action
-    import aiosqlite
 
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
@@ -1742,10 +1751,8 @@ async def deprecate_memory_card(card_id: str, note: str = Body(default="")):
 
     store = get_lancedb_store(cfg)
     if store:
-        try:
+        with contextlib.suppress(Exception):
             store.delete(f"memory_id = '{card_id}'")
-        except Exception:
-            pass
 
     return {"status": "ok", "card_id": card_id}
 
@@ -1827,12 +1834,18 @@ async def list_inbox(
 async def approve_inbox_item(inbox_id: str):
     """Approve an inbox item → create approved card + vector sync."""
     import json as json_mod
+
+    from app.core.ids import generate_id
     from app.core.services import get_embedding_provider, get_lancedb_store
     from app.core.state import get_config
-    from app.core.ids import generate_id
     from app.storage.sqlite_cards import (
-        get_inbox_item, update_inbox_status, insert_card, insert_card_version,
-        insert_review_action, get_write_library_id, transition_inbox_status,
+        get_inbox_item,
+        get_write_library_id,
+        insert_card,
+        insert_card_version,
+        insert_review_action,
+        transition_inbox_status,
+        update_inbox_status,
     )
     from app.storage.vector_sync import enqueue_card_vector_sync, sync_card_vector
 
@@ -2532,10 +2545,8 @@ async def reject_inbox_item(inbox_id: str, data=Body(default="")):
     discarded_keep_limit = cfg.memory.extraction.discarded_keep_limit
     if discarded_keep_limit > 0:
         from app.storage.sqlite_cards import trim_discarded_inbox
-        try:
+        with contextlib.suppress(Exception):
             await trim_discarded_inbox(db_path, discarded_keep_limit)
-        except Exception:
-            pass
     return {"status": "ok"}
 
 
@@ -2825,9 +2836,10 @@ async def delete_memory_mount_preset_api(preset_id: str):
 @router.get("/admin/memory-libraries/{library_id}/export")
 async def export_memory_library(library_id: str):
     """Export a memory library with all its cards as JSON."""
+    import aiosqlite
+
     from app.core.state import get_config
     from app.storage.sqlite_cards import init_cards_db
-    import aiosqlite
 
     cfg = get_config()
     db_path = cfg.storage.sqlite.memory_db
@@ -2949,9 +2961,10 @@ async def export_mount_preset(preset_id: str):
 @router.post("/admin/memory-mount-presets/import")
 async def import_mount_preset(data: dict = Body(...)):
     """Import a memory mount preset from exported JSON."""
+    import json as json_mod
+
     from app.core.state import get_config
     from app.storage.sqlite_cards import create_mount_preset
-    import json as json_mod
 
     preset_data = data.get("preset", data)
     library_ids = json_mod.loads(preset_data.get("library_ids_json", "[]"))
@@ -2979,6 +2992,7 @@ async def get_memory_graph(
     """Return graph data (nodes + edges) for visualization."""
     _require_admin(request)
     import aiosqlite
+
     from app.core.state import get_config
 
     cfg = get_config()
@@ -3027,7 +3041,7 @@ async def get_memory_graph(
                         "weight": row["weight"],
                         "confidence": row["confidence"],
                     })
-    except Exception:
+    except Exception:  # noqa: S110
         pass
 
     return {"nodes": nodes, "edges": edges}
@@ -3153,7 +3167,7 @@ async def extract_memories_from_import(conversation_id: str, request: Request, d
                 lang=cfg.language,
             )
             extracted_count += 1
-        except Exception:
+        except Exception:  # noqa: S112
             continue
 
     return {"status": "ok", "extracted_pairs": extracted_count, "total_pairs": len(pairs)}

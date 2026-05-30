@@ -53,7 +53,7 @@ async function fetchHealth() {
     const resp = await apiFetch('/health', { timeoutMs: 4000 })
     health.value = await resp.json()
     if (health.value?.actual_port) {
-      const actualUrl = (window as any).__TAURI_INTERNALS__
+      const actualUrl = window.__TAURI_INTERNALS__
         ? `http://127.0.0.1:${health.value.actual_port}`
         : window.location.origin
       serverUrl.value = actualUrl

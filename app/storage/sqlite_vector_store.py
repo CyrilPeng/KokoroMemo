@@ -115,13 +115,10 @@ class SqliteVectorStore:
 
         results: list[tuple[float, dict[str, Any]]] = []
         for row in rows_raw:
-            meta = dict(zip(_META_COLUMNS, row[:-1]))
+            meta = dict(zip(_META_COLUMNS, row[:-1], strict=False))
             vec = self._blob_to_vector(row[-1])
             v_norm = np.linalg.norm(vec)
-            if v_norm == 0:
-                dist = 1.0
-            else:
-                dist = 1.0 - float(np.dot(q, vec) / (q_norm * v_norm))
+            dist = 1.0 if v_norm == 0 else 1.0 - float(np.dot(q, vec) / (q_norm * v_norm))
             meta["_distance"] = dist
             results.append((dist, meta))
 
@@ -180,7 +177,7 @@ class SqliteVectorStore:
         try:
             conn.execute(f"DROP TABLE IF EXISTS {staging_name}")
             conn.commit()
-        except Exception:
+        except Exception:  # noqa: S110
             pass
 
     @staticmethod

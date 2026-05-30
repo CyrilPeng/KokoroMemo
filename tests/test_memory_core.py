@@ -29,6 +29,17 @@ from app.storage.sqlite_conversation import init_chat_db, save_raw_request
 from tests._fakes import FakeLanceDBStore
 
 
+class FakeRerankProvider:
+    provider_name = "fake"
+    model = "fake-reranker"
+
+    async def rerank(self, query: str, documents: list[str]) -> list[tuple[int, float]]:
+        return [(1, 0.99), (0, 0.1)]
+
+    async def health_check(self) -> dict:
+        return {"status": "ok"}
+
+
 def make_test_dir() -> Path:
     root = Path(".test_tmp") / uuid.uuid4().hex
     root.mkdir(parents=True, exist_ok=True)
@@ -213,6 +224,59 @@ async def test_graph_expands_constrains_card():
 
 
 @pytest.mark.asyncio
+async def test_graph_expands_same_as_bidirectionally():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        await insert_card(str(memory_db), "card_alias", "u1", "c1", "conv1", "character", "preference", "用户喜欢昵称 A", status="approved")
+        await insert_card(str(memory_db), "card_same", "u1", "c1", "conv1", "character", "preference", "昵称 A 等同昵称 B", status="approved")
+        await insert_edge(str(memory_db), "card_alias", "card_same", "same_as")
+
+        query = RetrievalQuery("昵称", "昵称", "user: 昵称", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
+        store = FakeLanceDBStore([{"memory_id": "card_same", "_distance": 0.1}])
+        results = await retrieve_cards(query, DummyEmbeddingProvider(8), store, str(memory_db), final_top_k=5)
+
+        assert {result.card_id for result in results} == {"card_alias", "card_same"}
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_graph_suppresses_contradicting_card():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        await insert_card(str(memory_db), "card_current", "u1", "c1", "conv1", "character", "preference", "用户现在喜欢茶", status="approved")
+        await insert_card(str(memory_db), "card_conflict", "u1", "c1", "conv1", "character", "preference", "用户只喜欢咖啡", status="approved")
+        await insert_edge(str(memory_db), "card_current", "card_conflict", "contradicts")
+
+        query = RetrievalQuery("喜欢喝什么", "饮品", "user: 喜欢喝什么", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
+        store = FakeLanceDBStore([
+            {"memory_id": "card_current", "_distance": 0.1},
+            {"memory_id": "card_conflict", "_distance": 0.2},
+        ])
+        results = await retrieve_cards(query, DummyEmbeddingProvider(8), store, str(memory_db), final_top_k=5)
+
+        assert [result.card_id for result in results] == ["card_current"]
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_insert_edge_rejects_unknown_edge_type():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        with pytest.raises(ValueError, match="unsupported memory edge_type"):
+            await insert_edge(str(memory_db), "card_a", "card_b", "unknown")
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_retrieval_only_uses_mounted_memory_libraries():
     test_dir = make_test_dir()
     memory_db = test_dir / "memory.sqlite"
@@ -237,6 +301,34 @@ async def test_retrieval_only_uses_mounted_memory_libraries():
         ])
         results = await retrieve_cards(query, DummyEmbeddingProvider(8), store, str(memory_db), final_top_k=5)
         assert [result.card_id for result in results] == ["card_a"]
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_retrieval_applies_rerank_provider_before_truncating():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        await insert_card(str(memory_db), "card_a", "u1", "c1", "conv1", "character", "preference", "普通候选", status="approved")
+        await insert_card(str(memory_db), "card_b", "u1", "c1", "conv1", "character", "preference", "更相关候选", status="approved")
+
+        query = RetrievalQuery("候选", "候选", "user: 候选", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"})
+        store = FakeLanceDBStore([
+            {"memory_id": "card_a", "_distance": 0.01},
+            {"memory_id": "card_b", "_distance": 0.02},
+        ])
+        results = await retrieve_cards(
+            query,
+            DummyEmbeddingProvider(8),
+            store,
+            str(memory_db),
+            final_top_k=1,
+            rerank_provider=FakeRerankProvider(),
+        )
+
+        assert [result.card_id for result in results] == ["card_b"]
     finally:
         cleanup_test_dir(test_dir)
 

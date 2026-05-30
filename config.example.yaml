@@ -72,6 +72,7 @@ memory:
   extraction:
     min_importance: 0.45
     min_confidence: 0.55
+    semantic_dedup_threshold: 0.92  # 语义去重相似度阈值，越低越容易判为重复
     extract_after_each_turn: true
     fallback_rule_based: true
     discarded_keep_limit: 200

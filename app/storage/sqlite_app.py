@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS characters (
   notes TEXT,
   source TEXT,
   system_prompt_hash TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS character_defaults (
   library_ids_json TEXT NOT NULL DEFAULT '["lib_default"]',
   write_library_id TEXT,
   auto_apply INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
@@ -69,6 +71,7 @@ _CHARACTER_COLUMNS = {
     "aliases_json": "TEXT NOT NULL DEFAULT '[]'",
     "notes": "TEXT",
     "source": "TEXT",
+    "status": "TEXT NOT NULL DEFAULT 'active'",
 }
 
 
@@ -80,6 +83,7 @@ _CHARACTER_DEFAULT_COLUMNS = {
     "state_update_policy": "TEXT",
     "injection_policy": "TEXT",
     "retrieval_profile_id": "TEXT",
+    "status": "TEXT NOT NULL DEFAULT 'active'",
 }
 
 
@@ -153,6 +157,7 @@ async def upsert_character(
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(character_id) DO UPDATE SET
               updated_at = datetime('now', 'localtime'),
+              status = 'active',
               display_name = COALESCE(excluded.display_name, characters.display_name),
               system_prompt_hash = COALESCE(excluded.system_prompt_hash, characters.system_prompt_hash),
               source = COALESCE(excluded.source, characters.source)
@@ -182,6 +187,7 @@ async def update_character_profile(
               aliases_json = excluded.aliases_json,
               notes = excluded.notes,
               source = excluded.source,
+              status = 'active',
               updated_at = datetime('now', 'localtime')
             """,
             (character_id, user_id, display_name, aliases_json, notes, source),
@@ -196,9 +202,15 @@ async def merge_character_profile(db_path: str, source_character_id: str, target
         return {"conversations": 0, "characters": 0, "defaults": 0}
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM characters WHERE character_id = ?", (source_character_id,))
+        cursor = await db.execute(
+            "SELECT * FROM characters WHERE character_id = ? AND status = 'active'",
+            (source_character_id,),
+        )
         source = await cursor.fetchone()
-        cursor = await db.execute("SELECT * FROM characters WHERE character_id = ?", (target_character_id,))
+        cursor = await db.execute(
+            "SELECT * FROM characters WHERE character_id = ? AND status = 'active'",
+            (target_character_id,),
+        )
         target = await cursor.fetchone()
         if not source or not target:
             return {"conversations": 0, "characters": 0, "defaults": 0}
@@ -221,8 +233,14 @@ async def merge_character_profile(db_path: str, source_character_id: str, target
             "UPDATE conversations SET character_id = ? WHERE character_id = ?",
             (target_character_id, source_character_id),
         )
-        defaults = await db.execute("DELETE FROM character_defaults WHERE character_id = ?", (source_character_id,))
-        characters = await db.execute("DELETE FROM characters WHERE character_id = ?", (source_character_id,))
+        defaults = await db.execute(
+            "UPDATE character_defaults SET status = 'deleted', updated_at = datetime('now', 'localtime') WHERE character_id = ? AND status != 'deleted'",
+            (source_character_id,),
+        )
+        characters = await db.execute(
+            "UPDATE characters SET status = 'merged', updated_at = datetime('now', 'localtime') WHERE character_id = ? AND status != 'merged'",
+            (source_character_id,),
+        )
         await db.commit()
         return {"conversations": conversations.rowcount, "characters": characters.rowcount, "defaults": defaults.rowcount}
 
@@ -238,8 +256,14 @@ async def delete_character_profile(db_path: str, character_id: str, clear_conver
                 (character_id,),
             )
             conversations_count = conversations.rowcount
-        defaults = await db.execute("DELETE FROM character_defaults WHERE character_id = ?", (character_id,))
-        characters = await db.execute("DELETE FROM characters WHERE character_id = ?", (character_id,))
+        defaults = await db.execute(
+            "UPDATE character_defaults SET status = 'deleted', updated_at = datetime('now', 'localtime') WHERE character_id = ? AND status != 'deleted'",
+            (character_id,),
+        )
+        characters = await db.execute(
+            "UPDATE characters SET status = 'deleted', updated_at = datetime('now', 'localtime') WHERE character_id = ? AND status != 'deleted'",
+            (character_id,),
+        )
         await db.commit()
         return {"characters": characters.rowcount, "defaults": defaults.rowcount, "conversations": conversations_count}
 
@@ -249,7 +273,7 @@ async def get_character_defaults(db_path: str, character_id: str) -> dict | None
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM character_defaults WHERE character_id = ?",
+            "SELECT * FROM character_defaults WHERE character_id = ? AND status = 'active'",
             (character_id,),
         )
         row = await cursor.fetchone()
@@ -316,6 +340,7 @@ async def set_character_defaults(
               library_ids_json = excluded.library_ids_json,
               write_library_id = excluded.write_library_id,
               auto_apply = excluded.auto_apply,
+              status = 'active',
               updated_at = datetime('now', 'localtime')
             """,
             (
@@ -352,8 +377,9 @@ async def list_characters(db_path: str) -> list[dict]:
               MIN(conv.first_seen_at) AS first_seen_at,
               MAX(conv.last_seen_at) AS last_seen_at
             FROM characters c
-            LEFT JOIN character_defaults cd ON c.character_id = cd.character_id
+            LEFT JOIN character_defaults cd ON c.character_id = cd.character_id AND cd.status = 'active'
             LEFT JOIN conversations conv ON c.character_id = conv.character_id
+            WHERE c.status = 'active'
             GROUP BY c.character_id
             ORDER BY COALESCE(MAX(conv.last_seen_at), c.updated_at) DESC
             """
@@ -423,9 +449,14 @@ async def discover_characters(db_path: str) -> list[dict]:
               cd.write_library_id AS write_library_id,
               cd.auto_apply AS auto_apply
             FROM conversations c
-            LEFT JOIN characters ch ON c.character_id = ch.character_id
-            LEFT JOIN character_defaults cd ON c.character_id = cd.character_id
+            LEFT JOIN characters ch ON c.character_id = ch.character_id AND ch.status = 'active'
+            LEFT JOIN character_defaults cd ON c.character_id = cd.character_id AND cd.status = 'active'
             WHERE c.character_id IS NOT NULL AND c.character_id != ''
+              AND (ch.status IS NULL OR ch.status = 'active')
+              AND NOT EXISTS (
+                SELECT 1 FROM characters deleted_ch
+                WHERE deleted_ch.character_id = c.character_id AND deleted_ch.status != 'active'
+              )
             GROUP BY c.character_id
             ORDER BY MAX(c.last_seen_at) DESC
             """

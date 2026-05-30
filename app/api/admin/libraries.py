@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Request
+
+from app.api.admin._helpers import _require_admin
 
 router = APIRouter()
 
 
 @router.get("/admin/memory-libraries")
-async def list_memory_libraries_api():
+async def list_memory_libraries_api(request: Request):
     """List long-term memory libraries."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_cards import list_memory_libraries
 
@@ -19,8 +22,9 @@ async def list_memory_libraries_api():
 
 
 @router.post("/admin/memory-libraries")
-async def create_memory_library_api(data: dict = Body(...)):
+async def create_memory_library_api(request: Request, data: dict = Body(...)):
     """Create a memory library or save selected libraries as a new preset."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_cards import create_memory_library
 
@@ -35,8 +39,9 @@ async def create_memory_library_api(data: dict = Body(...)):
 
 
 @router.put("/admin/memory-libraries/{library_id}")
-async def update_memory_library_api(library_id: str, data: dict = Body(...)):
+async def update_memory_library_api(library_id: str, request: Request, data: dict = Body(...)):
     """Rename or describe a memory library."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_cards import update_memory_library
 
@@ -51,8 +56,9 @@ async def update_memory_library_api(library_id: str, data: dict = Body(...)):
 
 
 @router.delete("/admin/memory-libraries/{library_id}")
-async def delete_memory_library_api(library_id: str):
+async def delete_memory_library_api(library_id: str, request: Request):
     """Soft-delete a custom memory library."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_cards import delete_memory_library
 
@@ -62,8 +68,9 @@ async def delete_memory_library_api(library_id: str):
 
 
 @router.get("/admin/memory-mount-presets")
-async def list_memory_mount_presets_api():
+async def list_memory_mount_presets_api(request: Request):
     """List all active memory mount presets."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_cards import list_mount_presets
 
@@ -73,8 +80,9 @@ async def list_memory_mount_presets_api():
 
 
 @router.post("/admin/memory-mount-presets")
-async def create_memory_mount_preset_api(data: dict = Body(...)):
+async def create_memory_mount_preset_api(request: Request, data: dict = Body(...)):
     """Create a new memory mount preset."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_cards import create_mount_preset
 
@@ -90,8 +98,9 @@ async def create_memory_mount_preset_api(data: dict = Body(...)):
 
 
 @router.put("/admin/memory-mount-presets/{preset_id}")
-async def update_memory_mount_preset_api(preset_id: str, data: dict = Body(...)):
+async def update_memory_mount_preset_api(preset_id: str, request: Request, data: dict = Body(...)):
     """Update a memory mount preset."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_cards import update_mount_preset
 
@@ -108,8 +117,9 @@ async def update_memory_mount_preset_api(preset_id: str, data: dict = Body(...))
 
 
 @router.delete("/admin/memory-mount-presets/{preset_id}")
-async def delete_memory_mount_preset_api(preset_id: str):
+async def delete_memory_mount_preset_api(preset_id: str, request: Request):
     """Delete a memory mount preset."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_cards import delete_mount_preset
 
@@ -119,8 +129,9 @@ async def delete_memory_mount_preset_api(preset_id: str):
 
 
 @router.get("/admin/memory-libraries/{library_id}/export")
-async def export_memory_library(library_id: str):
+async def export_memory_library(library_id: str, request: Request):
     """Export a memory library with all its cards as JSON."""
+    _require_admin(request)
     import aiosqlite
 
     from app.core.state import get_config
@@ -160,8 +171,9 @@ async def export_memory_library(library_id: str):
 
 
 @router.post("/admin/memory-libraries/import")
-async def import_memory_library(data: dict = Body(...)):
+async def import_memory_library(request: Request, data: dict = Body(...)):
     """Import a memory library from exported JSON."""
+    _require_admin(request)
     from app.core.ids import generate_id
     from app.core.services import get_embedding_provider, get_lancedb_store
     from app.core.state import get_config
@@ -222,8 +234,9 @@ async def import_memory_library(data: dict = Body(...)):
 
 
 @router.get("/admin/memory-mount-presets/{preset_id}/export")
-async def export_mount_preset(preset_id: str):
+async def export_mount_preset(preset_id: str, request: Request):
     """Export a memory mount preset as JSON."""
+    _require_admin(request)
     from app.core.state import get_config
     from app.storage.sqlite_cards import get_mount_preset
 
@@ -244,8 +257,9 @@ async def export_mount_preset(preset_id: str):
 
 
 @router.post("/admin/memory-mount-presets/import")
-async def import_mount_preset(data: dict = Body(...)):
+async def import_mount_preset(request: Request, data: dict = Body(...)):
     """Import a memory mount preset from exported JSON."""
+    _require_admin(request)
     import json as json_mod
 
     from app.core.state import get_config

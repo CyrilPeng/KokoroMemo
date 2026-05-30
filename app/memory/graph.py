@@ -7,6 +7,19 @@ import aiosqlite
 from app.core.ids import generate_id
 
 
+ALLOWED_EDGE_TYPES = {
+    "supports",
+    "constrains",
+    "contradicts",
+    "supersedes",
+    "elaborates",
+    "belongs_to",
+    "continues",
+    "same_as",
+    "related",
+}
+
+
 async def insert_edge(
     db_path: str,
     source_card_id: str,
@@ -16,6 +29,9 @@ async def insert_edge(
     confidence: float = 0.8,
 ) -> str:
     """Insert a directed edge between two cards."""
+    if edge_type not in ALLOWED_EDGE_TYPES:
+        raise ValueError(f"unsupported memory edge_type: {edge_type}")
+
     edge_id = generate_id("edge_")
     async with aiosqlite.connect(db_path) as db:
         await db.execute(

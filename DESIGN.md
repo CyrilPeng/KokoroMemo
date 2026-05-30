@@ -98,8 +98,8 @@ GitHub Actions 中 `build-android-packages` job 会在 CI 构建 `gui/dist`，�
 
 | 表 | 用途 |
 |---|---|
-| `characters` | 角色档案，包含 `display_name`、`aliases_json`、`notes`、`source`、最近更新时间等 |
-| `character_defaults` | 角色默认会话策略，包含 `profile_id`、旧字段模板、表格模板、挂载预设、长期记忆写入策略、状态更新策略、注入策略、默认挂载库和写入库 |
+| `characters` | 角色档案，包含 `display_name`、`aliases_json`、`notes`、`source`、`status`、最近更新时间等；删除/合并使用软删除状态保留审计 |
+| `character_defaults` | 角色默认会话策略，包含 `profile_id`、旧字段模板、表格模板、挂载预设、长期记忆写入策略、状态更新策略、注入策略、默认挂载库、写入库和 `status` |
 
 新会话策略优先级：
 
@@ -139,7 +139,7 @@ KokoroMemo 的核心设计决策是**分层记忆**，避免每轮都做昂贵�
 - **职责**：维护当前会话的实时上下文状态（场景、心情、任务、关系等）
 - **存储**：使用 `state_table_rows` + `state_table_cells`，由 v2 表格状态板独占维护
 - **注入时机**：每轮请求前，渲染为文本注入系统提示词
-- **更新时机**：每轮对话后，由 State Filler 模型自动更新
+- **更新时机**：每轮对话后，由 State Filler 模型自动更新；代码入口为 `state_table_filler.fill_conversation_state_tables`，`state_filler.py` 仅保留配置视图
 - **数据结构**：表格模板 → 表结构 → 行 → 单元格；旧结构为模板 → 标签页 → 字段
 - **生命周期**：当前会话临时状态，不跨会话
 
@@ -148,7 +148,7 @@ KokoroMemo 的核心设计决策是**分层记忆**，避免每轮都做昂贵�
 - **职责**：存储经审核的跨会话长期记忆
 - **存储**：SQLite `memory_cards` + `memory_edges` 表
 - **注入时机**：由 Retrieval Gate 按需触发
-- **数据结构**：记忆卡片（typed, scoped, tagged） + 关系边（supports, constrains, contradicts, supersedes, elaborates, belongs_to, continues, same_as）
+- **数据结构**：记忆卡片（typed, scoped, tagged） + 关系边（supports, constrains, contradicts, supersedes, elaborates, belongs_to, continues, same_as；兼容旧版 related）
 - **生命周期**：永久，可编辑/废弃/替代
 
 ### 冷记忆（Semantic Index）— 向量索引
@@ -198,7 +198,7 @@ KokoroMemo 的核心设计决策是**分层记忆**，避免每轮都做昂贵�
 [11] 流式/非流式返回响应
         │
 [12] 后台异步任务:
-        ├─ state_filler: 更新会话状态板字段
+        ├─ state_table_filler: 更新会话状态板表格
         └─ judge + card_extractor: 提取候选记忆 → 审核策略 → 入库/待审/拒绝
 ```
 
@@ -288,7 +288,7 @@ KokoroMemo 使用 4 种模型，各司其职：
 [过滤] confidence < 0.55 → 丢弃
     │
     ▼
-[语义去重] Embedding 相似度 > 0.92 → 跳过
+[语义去重] Embedding 相似度 > memory.extraction.semantic_dedup_threshold（默认 0.92）→ 跳过
     │
     ▼
 [审核策略 review_policy]
@@ -338,6 +338,25 @@ GUI 入口：记忆库页"导入 SillyTavern"按钮，导入完成后弹窗确�
 | `state_table_debug_runs` | v2 调试运行记录预留 |
 | `retrieval_decisions` | Retrieval Gate 每轮决策记录 |
 
+`memory.sqlite` 中长期记忆与检索相关表：
+
+| 表 | 用途 |
+|---|---|
+| `memory_cards` | 长期记忆卡片本体，SQLite 是权威数据源 |
+| `memory_edges` | 卡片关系边，支持 supports、constrains、contradicts、supersedes、elaborates、belongs_to、continues、same_as 和兼容 related |
+| `memory_tags` / `memory_card_tags` | 标签字典与卡片标签多对多关系 |
+| `memory_card_versions` | 卡片内容版本历史 |
+| `memory_card_events` | 卡片创建、编辑、废弃等操作事件 |
+| `memory_inbox` | 待审核、拒绝和去重丢弃的候选记忆收件箱 |
+| `review_actions` | 审核操作审计记录 |
+| `memory_summaries` | 卡片摘要缓存 |
+| `memory_libraries` | 记忆库定义，用于跨角色/跨场景隔离 |
+| `conversation_memory_mounts` | 会话挂载的记忆库及写入目标 |
+| `memory_mount_presets` | 可复用的记忆库挂载预设 |
+| `conversation_profiles` | 内置与自定义召回/注入策略方案 |
+| `retrieval_traces` / `retrieval_trace_candidates` | 每次长期记忆检索 trace 及候选详情 |
+| `jobs` | 向量同步等异步任务队列 |
+
 ### LanceDB / SQLite 向量存储
 
 | 路径 | 内容 |
@@ -364,14 +383,20 @@ GUI 入口：记忆库页"导入 SillyTavern"按钮，导入完成后弹窗确�
 | `/dashboard` | Dashboard.vue | 服务状态、记忆系统统计、待审核数点击直达 |
 | `/memories` | Memories.vue | 记忆卡片 CRUD、记忆库管理、SillyTavern 导入 |
 | `/inbox` | Inbox.vue | 待审核候选记忆批准/拒绝（带备注） |
+| `/conversations` | Conversations.vue | 会话列表、归档、导入导出和会话级管理入口 |
 | `/state` | ConversationState.vue | 会话状态板管理（模板、标签页、字段） |
 | `/characters` | Characters.vue | 已发现角色的默认状态板模板/挂载库绑定 |
 | `/memory-graph` | MemoryGraph.vue | 记忆卡片关系图谱可视化（力导向布局） |
-| `/settings` | Settings.vue | 全局配置（5 标签页：模型 / 记忆 / 状态填表 / 服务 / 高级） |
+| `/settings` | Settings.vue | 全局配置（快速向导 + 模型 / 记忆 / 状态填表 / 服务 / 高级） |
 
 ### 全局组件
 
 - `EventBridge.vue` — 全局 WebSocket 事件桥；连接 `/ws`、自动 5s 重连、把 `card_approved` / `inbox_new` 事件转为 toast 通知 + 通过 window CustomEvent 派发给各页面触发自动刷新
+- `CommandPalette.vue` — 全局命令面板，提供页面跳转和常用操作入口
+- `ConfigHealthCard.vue` — 设置页配置健康度提示卡
+- `HelpModal.vue` — 设置页和高级参数帮助弹窗
+- `PageHeader.vue` — 页面标题、说明和操作区统一组件
+- `components/state/*` — 状态板工作区、侧栏、策略卡、诊断面板和编辑控件
 
 ### UI 设计原则
 
@@ -383,10 +408,11 @@ GUI 入口：记忆库页"导入 SillyTavern"按钮，导入完成后弹窗确�
 - 所有确认操作使用 NPopconfirm + i18n 按钮文本
 - 中英双语（vue-i18n）
 
-### 设置页 5 标签页
+### 设置页结构
 
 | 标签 | 内容 |
 |---|---|
+| 快速向导 | 简单模式下的一键推荐方案与关键配置入口 |
 | 模型配置 | 对话大模型、记忆判断模型、Embedding、Rerank |
 | 记忆配置 | 长期记忆系统基础参数、向量索引维护（重建 / 异步迁移 / sync 重试） |
 | 状态板填表 | 填表模型独立配置 |
@@ -631,7 +657,7 @@ return False
 5. 合并 pinned、recent、vector 和 graph 路径候选。
 6. 对所有路径结果执行记忆库、scope、角色 ID 和会话 ID 可见性过滤。
 7. 加权评分（vector 55% + importance 20% + recency 10% + scope 10% + confidence 5%）。
-8. 可选 Rerank 重排序。
+8. 可选 Rerank 重排序：启用 `rerank.enabled` 时，由 `ServiceRegistry.get_rerank_provider` 创建 reranker，`card_retriever` 在截断前重排候选；服务失败时降级为原始加权排序。
 9. 按 `final_top_k` 和 `max_injected_chars` 截取最终注入记忆。
 10. 写入 `retrieval_traces` 和 `retrieval_trace_candidates`，记录触发原因、挂载库、召回策略参数、来源库、分数和注入原因。
 

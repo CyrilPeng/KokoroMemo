@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import sqlite3
 import uuid
 from pathlib import Path
 
@@ -124,6 +125,46 @@ async def test_upsert_character_lazy_insert_and_discovered_endpoint():
             resp4 = await client.get("/admin/discovered-characters")
             updated = resp4.json()["items"]
             assert any(c["character_id"] == "char_aria" and c["template_id"] == "tpl_x" for c in updated)
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_delete_character_profile_uses_soft_delete():
+    test_dir = make_test_dir()
+    try:
+        cfg = _make_cfg(test_dir)
+        set_config(cfg)
+
+        from app.storage.sqlite_app import (
+            delete_character_profile,
+            get_character_defaults,
+            init_app_db,
+            list_characters,
+            set_character_defaults,
+            upsert_character,
+        )
+
+        await init_app_db(cfg.storage.sqlite.app_db)
+        await upsert_character(cfg.storage.sqlite.app_db, "char_deleted", "default")
+        await set_character_defaults(cfg.storage.sqlite.app_db, "char_deleted", template_id="tpl_x")
+
+        result = await delete_character_profile(cfg.storage.sqlite.app_db, "char_deleted")
+
+        assert result["characters"] == 1
+        assert result["defaults"] == 1
+        assert await list_characters(cfg.storage.sqlite.app_db) == []
+        assert await get_character_defaults(cfg.storage.sqlite.app_db, "char_deleted") is None
+
+        with sqlite3.connect(cfg.storage.sqlite.app_db) as conn:
+            character_status = conn.execute(
+                "SELECT status FROM characters WHERE character_id = 'char_deleted'",
+            ).fetchone()[0]
+            defaults_status = conn.execute(
+                "SELECT status FROM character_defaults WHERE character_id = 'char_deleted'",
+            ).fetchone()[0]
+        assert character_status == "deleted"
+        assert defaults_status == "deleted"
     finally:
         cleanup_test_dir(test_dir)
 

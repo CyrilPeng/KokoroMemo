@@ -209,6 +209,7 @@ class ChatPipeline:
 
             ep = self.services.get_embedding_provider(cfg)
             store = self.services.get_lancedb_store(cfg)
+            reranker = self.services.get_rerank_provider(cfg)
             if not ep or not store:
                 return
 
@@ -222,6 +223,9 @@ class ChatPipeline:
                 vector_top_k=retrieval_profile.vector_top_k,
                 final_top_k=retrieval_profile.final_top_k,
                 allowed_scopes=allowed_scopes,
+                rerank_provider=reranker,
+                rerank_top_k=cfg.rerank.candidate_top_k,
+                rerank_batch_size=cfg.rerank.max_documents_per_request,
             )
             await self._record_retrieval_trace(
                 prepared,
@@ -684,6 +688,7 @@ async def _update_state_and_extract_memories(
             lancedb_store=store,
             min_importance=cfg.memory.extraction.min_importance,
             min_confidence=cfg.memory.extraction.min_confidence,
+            semantic_dedup_threshold=cfg.memory.extraction.semantic_dedup_threshold,
             judge_config=judge_config,
             lang=cfg.language,
             discarded_keep_limit=cfg.memory.extraction.discarded_keep_limit,

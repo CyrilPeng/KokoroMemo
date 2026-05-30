@@ -20,6 +20,7 @@ from app.memory.graph import get_active_edges_for_cards
 from app.memory.query_builder import RetrievalQuery
 from app.memory.retrieval_embedding_cache import get_retrieval_cache
 from app.providers.embedding_base import EmbeddingProvider
+from app.providers.rerank_base import RerankProvider
 from app.storage.sqlite_cards import (
     get_cards_by_ids,
     get_mounted_library_ids,
@@ -132,6 +133,9 @@ async def retrieve_cards(
     final_top_k: int = 8,
     scoring_weights: dict | None = None,
     allowed_scopes: set[str] | None = None,
+    rerank_provider: RerankProvider | None = None,
+    rerank_top_k: int | None = None,
+    rerank_batch_size: int = 20,
 ) -> list[MemoryCandidate]:
     """Multi-path retrieval of approved memory cards.
 
@@ -265,6 +269,7 @@ async def retrieve_cards(
     # --- 路径 4：图关系扩展 ---
     try:
         seed_ids = [c.card_id for c in all_candidates]
+        candidate_scores = {c.card_id: c.final_score for c in all_candidates}
         edges = await get_active_edges_for_cards(cards_db_path, seed_ids)
         expand_ids: set[str] = set()
         suppress_ids: set[str] = set()
@@ -274,18 +279,28 @@ async def retrieve_cards(
             target_id = edge["target_card_id"]
             edge_type = edge["edge_type"]
 
-            if edge_type == "constrains":
+            if edge_type in {"constrains", "same_as"}:
                 if source_id in seen_ids and target_id not in seen_ids:
                     expand_ids.add(target_id)
                 if target_id in seen_ids and source_id not in seen_ids:
                     expand_ids.add(source_id)
+            elif edge_type == "contradicts":
+                if source_id in seen_ids and target_id in seen_ids:
+                    if candidate_scores.get(source_id, 0.0) >= candidate_scores.get(target_id, 0.0):
+                        suppress_ids.add(target_id)
+                    else:
+                        suppress_ids.add(source_id)
+                elif source_id in seen_ids:
+                    suppress_ids.add(target_id)
+                elif target_id in seen_ids:
+                    suppress_ids.add(source_id)
             elif edge_type == "supersedes":
                 if source_id in seen_ids:
                     suppress_ids.add(target_id)
                 elif target_id in seen_ids:
                     expand_ids.add(source_id)
                     suppress_ids.add(target_id)
-            elif edge_type in ("supports", "related"):
+            elif edge_type in {"supports", "elaborates", "belongs_to", "continues", "related"}:
                 if source_id in seen_ids and target_id not in seen_ids:
                     expand_ids.add(target_id)
 
@@ -315,9 +330,62 @@ async def retrieve_cards(
     except Exception as e:
         logger.warning("Graph expansion failed: %s", e)
 
+    if rerank_provider and all_candidates:
+        all_candidates = await _rerank_candidates(
+            query,
+            all_candidates,
+            rerank_provider,
+            candidate_top_k=rerank_top_k or len(all_candidates),
+            batch_size=rerank_batch_size,
+        )
+
     # 排序：置顶卡片优先（保证 score=1.0），然后按 final_score 排序
     all_candidates.sort(key=lambda c: c.final_score, reverse=True)
     return all_candidates[:final_top_k]
+
+
+async def _rerank_candidates(
+    query: RetrievalQuery,
+    candidates: list[MemoryCandidate],
+    rerank_provider: RerankProvider,
+    *,
+    candidate_top_k: int,
+    batch_size: int,
+) -> list[MemoryCandidate]:
+    pinned = [candidate for candidate in candidates if candidate.source == "pinned"]
+    rerankable = [candidate for candidate in candidates if candidate.source != "pinned"]
+    if not rerankable:
+        return candidates
+
+    rerankable.sort(key=lambda candidate: candidate.final_score, reverse=True)
+    selected = rerankable[: max(1, candidate_top_k)]
+    untouched = rerankable[len(selected):]
+    batch_size = max(1, batch_size)
+
+    reranked: list[MemoryCandidate] = []
+    for start in range(0, len(selected), batch_size):
+        batch = selected[start:start + batch_size]
+        documents = [candidate.content for candidate in batch]
+        try:
+            results = await rerank_provider.rerank(query.query_text, documents)
+        except Exception as exc:
+            logger.warning("Rerank failed (degraded): %s", exc)
+            return candidates
+
+        used_indexes: set[int] = set()
+        for index, score in results:
+            if index < 0 or index >= len(batch) or index in used_indexes:
+                continue
+            used_indexes.add(index)
+            candidate = batch[index]
+            candidate.final_score = max(0.0, min(1.0, score))
+            reranked.append(candidate)
+
+        for index, candidate in enumerate(batch):
+            if index not in used_indexes:
+                reranked.append(candidate)
+
+    return pinned + reranked + untouched
 
 
 def _is_card_visible_for_query(

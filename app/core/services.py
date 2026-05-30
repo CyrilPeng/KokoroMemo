@@ -11,6 +11,9 @@ from app.core.config import AppConfig
 from app.providers.embedding_base import EmbeddingProvider
 from app.providers.embedding_dummy import DummyEmbeddingProvider
 from app.providers.embedding_openai_compatible import OpenAICompatibleEmbeddingProvider
+from app.providers.rerank_base import RerankProvider
+from app.providers.rerank_none import NoRerankProvider
+from app.providers.rerank_openai_compatible import OpenAICompatibleRerankProvider
 
 try:
     from app.storage.lancedb_store import LanceDBStore
@@ -27,6 +30,8 @@ class ServiceRegistry:
     def __init__(self) -> None:
         self.embedding_provider: EmbeddingProvider | None = None
         self.embedding_signature: tuple | None = None
+        self.rerank_provider: RerankProvider | None = None
+        self.rerank_signature: tuple | None = None
         self.lancedb_store: Any = None
         self.lancedb_signature: tuple | None = None
         self.index_migration_status: dict | None = None
@@ -34,6 +39,8 @@ class ServiceRegistry:
     def reset(self) -> None:
         self.embedding_provider = None
         self.embedding_signature = None
+        self.rerank_provider = None
+        self.rerank_signature = None
         self.lancedb_store = None
         self.lancedb_signature = None
 
@@ -125,6 +132,37 @@ class ServiceRegistry:
         self.embedding_signature = signature
         return self.embedding_provider
 
+    def get_rerank_provider(self, cfg: AppConfig) -> RerankProvider | None:
+        signature = (
+            cfg.rerank.enabled,
+            cfg.rerank.provider,
+            cfg.rerank.base_url,
+            cfg.rerank.get_api_key(),
+            cfg.rerank.model,
+            cfg.rerank.timeout_seconds,
+        )
+        if self.rerank_provider and self.rerank_signature == signature:
+            return self.rerank_provider
+
+        if not cfg.rerank.enabled:
+            return None
+
+        api_key = cfg.rerank.get_api_key()
+        if not api_key:
+            logger.warning("No rerank API key configured, using no-op rerank provider")
+            self.rerank_provider = NoRerankProvider()
+            self.rerank_signature = signature
+            return self.rerank_provider
+
+        self.rerank_provider = OpenAICompatibleRerankProvider(
+            base_url=cfg.rerank.base_url,
+            api_key=api_key,
+            model=cfg.rerank.model,
+            timeout=cfg.rerank.timeout_seconds,
+        )
+        self.rerank_signature = signature
+        return self.rerank_provider
+
     def get_lancedb_store(self, cfg: AppConfig) -> Any:
         lancedb_path = resolve_lancedb_path(cfg)
         signature = (
@@ -205,6 +243,10 @@ def resolve_lancedb_path(cfg: AppConfig) -> str:
 
 def get_embedding_provider(cfg: AppConfig) -> EmbeddingProvider | None:
     return _service_registry.get_embedding_provider(cfg)
+
+
+def get_rerank_provider(cfg: AppConfig) -> RerankProvider | None:
+    return _service_registry.get_rerank_provider(cfg)
 
 
 def get_lancedb_store(cfg: AppConfig) -> Any:

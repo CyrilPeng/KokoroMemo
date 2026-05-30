@@ -183,6 +183,7 @@ const config = ref({
   // 高级：提取
   ext_min_importance: 0.45,
   ext_min_confidence: 0.55,
+  ext_semantic_dedup_threshold: 0.92,
   ext_after_each_turn: true,
   ext_fallback_rule_based: true,
   ext_discarded_keep_limit: 200,
@@ -438,6 +439,7 @@ const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform
   ['scope_conversation',                 'memory.scopes.include_conversation',                true],
   ['ext_min_importance',                 'memory.extraction.min_importance',                  0.45],
   ['ext_min_confidence',                 'memory.extraction.min_confidence',                  0.55],
+  ['ext_semantic_dedup_threshold',       'memory.extraction.semantic_dedup_threshold',        0.92],
   ['ext_after_each_turn',                'memory.extraction.extract_after_each_turn',         true],
   ['ext_fallback_rule_based',            'memory.extraction.fallback_rule_based',             true],
   ['ext_discarded_keep_limit',           'memory.extraction.discarded_keep_limit',            200],
@@ -542,6 +544,7 @@ async function saveConfig(): Promise<boolean> {
         extraction: {
           min_importance: config.value.ext_min_importance,
           min_confidence: config.value.ext_min_confidence,
+          semantic_dedup_threshold: config.value.ext_semantic_dedup_threshold,
           extract_after_each_turn: config.value.ext_after_each_turn,
           fallback_rule_based: config.value.ext_fallback_rule_based,
           discarded_keep_limit: config.value.ext_discarded_keep_limit,
@@ -1321,6 +1324,9 @@ onMounted(() => {
                   <NFormItem :label="$t('settings.adv.extMinConfidence')">
                     <NSlider v-model:value="config.ext_min_confidence" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 360px;" />
                   </NFormItem>
+                  <NFormItem :label="$t('settings.adv.extSemanticDedupThreshold')">
+                    <NSlider v-model:value="config.ext_semantic_dedup_threshold" :min="0.5" :max="1" :step="0.01" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 360px;" />
+                  </NFormItem>
                   <NFormItem :label="$t('settings.adv.extAfterEachTurn')"><NSwitch v-model:value="config.ext_after_each_turn" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.extFallbackRules')"><NSwitch v-model:value="config.ext_fallback_rule_based" /></NFormItem>
                   <NFormItem :label="$t('settings.adv.extDiscardedKeepLimit')">
@@ -1473,6 +1479,7 @@ onMounted(() => {
         <p>{{ $t('settings.adv.helpDetail.extraction.intro') }}</p>
         <p><strong>{{ $t('settings.adv.extMinImportance') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.importance') }}</p>
         <p><strong>{{ $t('settings.adv.extMinConfidence') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.confidence') }}</p>
+        <p><strong>{{ $t('settings.adv.extSemanticDedupThreshold') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.semanticDedup') }}</p>
         <p><strong>{{ $t('settings.adv.extAfterEachTurn') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.afterEachTurn') }}</p>
         <p><strong>{{ $t('settings.adv.extFallbackRules') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.fallback') }}</p>
       </div>

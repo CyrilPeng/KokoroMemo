@@ -125,8 +125,12 @@ async def extract_memories_from_import(conversation_id: str, request: Request, d
                 conversation_id=conversation_id,
                 embedding_provider=ep,
                 lancedb_store=store,
+                min_importance=cfg.memory.extraction.min_importance,
+                min_confidence=cfg.memory.extraction.min_confidence,
+                semantic_dedup_threshold=cfg.memory.extraction.semantic_dedup_threshold,
                 judge_config=judge_config,
                 lang=cfg.language,
+                discarded_keep_limit=cfg.memory.extraction.discarded_keep_limit,
             )
             extracted_count += 1
         except Exception:  # noqa: S112

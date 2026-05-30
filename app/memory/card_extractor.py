@@ -38,6 +38,7 @@ async def extract_and_route(
     lancedb_store=None,
     min_importance: float = 0.45,
     min_confidence: float = 0.55,
+    semantic_dedup_threshold: float = 0.92,
     judge_config: MemoryJudgeConfigView | None = None,
     lang: str = "zh",
     discarded_keep_limit: int = 200,
@@ -111,7 +112,13 @@ async def extract_and_route(
 
         # 语义去重：通过向量相似度
         if embedding_provider and lancedb_store:
-            sem_match = await _find_semantic_duplicate(embedding_provider, lancedb_store, user_id, mem.content)
+            sem_match = await _find_semantic_duplicate(
+                embedding_provider,
+                lancedb_store,
+                user_id,
+                mem.content,
+                threshold=semantic_dedup_threshold,
+            )
             if sem_match:
                 await _write_discarded(
                     db_path,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -9,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger("kokoromemo.config")
 
 
 class _ApiKeyMixin:
@@ -89,6 +92,7 @@ class ScoringConfig:
 class ExtractionConfig:
     min_importance: float = 0.45
     min_confidence: float = 0.55
+    semantic_dedup_threshold: float = 0.92
     extract_after_each_turn: bool = True
     fallback_rule_based: bool = True
     discarded_keep_limit: int = 200
@@ -248,7 +252,7 @@ def _merge_dataclass(dc: Any, data: dict) -> Any:
     for key, value in data.items():
         if not hasattr(dc, key):
             # Warn about unknown keys (likely typos in YAML)
-            print(f"Warning: unknown config key '{key}' ignored", file=sys.stderr)
+            logger.warning("Unknown config key '%s' ignored in %s", key, type(dc).__name__)
             continue
         current = getattr(dc, key)
         if hasattr(current, "__dataclass_fields__") and isinstance(value, dict):
@@ -300,7 +304,12 @@ def _coerce_value(value: Any, expected_type: type | None) -> Any:
         if expected_type is list and actual is str:
             return [value] if value else []
     except (ValueError, TypeError):
-        pass  # If coercion fails, use the raw value (will surface later)
+        logger.warning(
+            "Config type coercion failed for key in %s: expected %s, got %s (%r)",
+            type(expected_type).__name__ if expected_type else "unknown",
+            expected_type.__name__ if expected_type else "None",
+            actual.__name__, value,
+        )
     return value
 
 

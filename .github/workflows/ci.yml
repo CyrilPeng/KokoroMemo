@@ -55,10 +55,10 @@ jobs:
         run: uv sync --extra dev --frozen
 
       - name: 运行后端测试
-        run: pytest tests/ -q
+        run: uv run pytest tests/ -q
 
       - name: 运行 AIRP 基准冒烟测试
-        run: python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports
+        run: uv run python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports
 
   frontend:
     name: 前端构建（vue-tsc + Vite）

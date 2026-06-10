@@ -2,6 +2,18 @@ export default {
   state: {
     title: 'Session State',
     subtitle: 'Manage session config, state board template, and memory mounts.',
+    continuity: {
+      title: 'Continuity Summary',
+      rows: 'state rows',
+      scene: 'Current Scene',
+      relationship: 'Relationship',
+      rules: 'Roleplay Rules',
+      tasks: 'Promises & Tasks',
+      empty: 'No state yet. It will appear after a conversation or manual fill.',
+      emptyLine: 'No summary content yet',
+      noUpdate: 'No update time',
+      openTable: 'Open table',
+    },
     statusLabels: {
       active: 'Active',
       resolved: 'Resolved',

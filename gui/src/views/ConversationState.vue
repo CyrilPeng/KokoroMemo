@@ -3,6 +3,7 @@ import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   NAlert,
   NButton,
+  NCard,
   NForm,
   NFormItem,
   NGrid,
@@ -208,6 +209,53 @@ const rowsByTable = computed(() => {
   }
   return result
 })
+const continuityCards = computed(() => {
+  const specs = [
+    {
+      key: 'scene',
+      title: t('state.continuity.scene'),
+      tableKeys: ['current_scene', 'current_interaction', 'colony_overview'],
+      fields: ['scene', 'location', 'topic', 'name', 'situation', 'focus', 'next_step', 'risk'],
+    },
+    {
+      key: 'relationship',
+      title: t('state.continuity.relationship'),
+      tableKeys: ['relationship_state', 'pawn_relationships'],
+      fields: ['subject', 'object', 'relationship', 'attitude', 'recent_change', 'change'],
+    },
+    {
+      key: 'rules',
+      title: t('state.continuity.rules'),
+      tableKeys: ['roleplay_rules'],
+      fields: ['rule', 'scope', 'source'],
+    },
+    {
+      key: 'tasks',
+      title: t('state.continuity.tasks'),
+      tableKeys: ['promises_tasks', 'quests_clues', 'threats_events', 'story_flags'],
+      fields: ['task', 'item', 'event', 'flag', 'status', 'owner', 'due', 'note', 'impact', 'response'],
+    },
+  ]
+
+  return specs.map((spec) => {
+    const tableKey = spec.tableKeys.find((key) => (rowsByTable.value[key] || []).length)
+      || spec.tableKeys.find((key) => tables.value.some((table) => table.table_key === key))
+      || spec.tableKeys[0]
+    const tableRows = (rowsByTable.value[tableKey] || [])
+      .slice()
+      .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+      .slice(0, 2)
+    const table = tables.value.find((item) => item.table_key === tableKey)
+    return {
+      ...spec,
+      tableKey,
+      tableName: table?.name || '',
+      count: rowsByTable.value[tableKey]?.length || 0,
+      lines: tableRows.map((row) => summarizeRow(row, spec.fields)),
+      updatedAt: tableRows[0]?.updated_at || '',
+    }
+  })
+})
 const boardDiagnostics = computed(() => {
   const issues: { label: string, type: 'default' | 'info' | 'success' | 'warning' | 'error' }[] = []
   if (!conversationId.value.trim()) issues.push({ label: '未选择会话', type: 'warning' })
@@ -223,6 +271,19 @@ const boardDiagnostics = computed(() => {
 // ── Core helpers ─────────────────────────────────────────
 function conversationDisplayName(item: any) {
   return item?.title?.trim() || item?.conversation_id || '未命名会话'
+}
+
+function summarizeRow(row: StateRow, preferredKeys: string[]) {
+  const values = row.values || {}
+  const selected = preferredKeys
+    .map((key) => values[key])
+    .filter((value) => value && String(value).trim())
+    .slice(0, 3)
+  const fallback = Object.values(values)
+    .filter((value) => value && String(value).trim())
+    .slice(0, 3)
+  const parts = (selected.length ? selected : fallback).map((value) => String(value).trim())
+  return parts.join(' · ') || t('state.continuity.emptyLine')
 }
 
 function authHeaders(json = false) {
@@ -782,6 +843,38 @@ onBeforeUnmount(() => {
         @save-config="saveConfigFn"
       />
 
+      <NCard class="continuity-overview-card">
+        <template #header>
+          <div class="continuity-header">
+            <span>{{ $t('state.continuity.title') }}</span>
+            <NTag size="small" round>{{ rows.length }} {{ $t('state.continuity.rows') }}</NTag>
+          </div>
+        </template>
+        <div class="continuity-grid">
+          <div v-for="card in continuityCards" :key="card.key" class="continuity-card">
+            <div class="continuity-card__top">
+              <div>
+                <div class="continuity-card__title">{{ card.title }}</div>
+                <div class="continuity-card__table">{{ card.tableName || card.tableKey }}</div>
+              </div>
+              <NTag size="small" :type="card.count ? 'success' : 'default'" round>
+                {{ card.count }}
+              </NTag>
+            </div>
+            <div v-if="card.lines.length" class="continuity-card__lines">
+              <div v-for="(line, idx) in card.lines" :key="idx" class="continuity-card__line">{{ line }}</div>
+            </div>
+            <div v-else class="continuity-card__empty">{{ $t('state.continuity.empty') }}</div>
+            <div class="continuity-card__footer">
+              <span>{{ card.updatedAt || $t('state.continuity.noUpdate') }}</span>
+              <NButton size="tiny" quaternary @click="updateActiveTable(card.tableKey)">
+                {{ $t('state.continuity.openTable') }}
+              </NButton>
+            </div>
+          </div>
+        </div>
+      </NCard>
+
       <NAlert v-if="showUndoAlert" type="success" closable style="margin-bottom: 12px;" @close="showUndoAlert = false">
         {{ $t('state.fill.undoHint', { count: lastFillEventIds.length }) }}
         <NButton size="tiny" type="warning" style="margin-left: 12px;" :loading="saving" @click="revertLastFill">{{ $t('state.fill.undoBtn') }}</NButton>
@@ -1034,6 +1127,82 @@ onBeforeUnmount(() => {
   margin: 4px 0 0 0;
 }
 
+.continuity-overview-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+}
+
+.continuity-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #e4e4e7;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.continuity-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.continuity-card {
+  min-height: 176px;
+  padding: 12px;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  background: #111113;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.continuity-card__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.continuity-card__title {
+  color: #f4f4f5;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.continuity-card__table,
+.continuity-card__footer,
+.continuity-card__empty {
+  color: #71717a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.continuity-card__lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.continuity-card__line {
+  color: #e4e4e7;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.continuity-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid #27272a;
+  padding-top: 8px;
+}
+
 @media (max-width: 768px) {
   .state-page {
     padding: 0;
@@ -1050,6 +1219,16 @@ onBeforeUnmount(() => {
 
   .state-page :deep(.n-grid-item) {
     grid-column: span 1 / span 1 !important;
+  }
+
+  .continuity-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1180px) {
+  .continuity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

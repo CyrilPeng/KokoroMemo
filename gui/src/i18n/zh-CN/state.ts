@@ -2,6 +2,18 @@ export default {
   state: {
     title: '会话状态板',
     subtitle: '管理当前会话配置、状态板模板和长期记忆挂载。',
+    continuity: {
+      title: '连续性摘要',
+      rows: '行状态',
+      scene: '当前场景',
+      relationship: '关系变化',
+      rules: '扮演规则',
+      tasks: '承诺与任务',
+      empty: '暂无状态，完成一次对话或手动填表后会显示。',
+      emptyLine: '暂无可摘要内容',
+      noUpdate: '暂无更新时间',
+      openTable: '查看表格',
+    },
     statusLabels: {
       active: '活跃',
       resolved: '已解决',

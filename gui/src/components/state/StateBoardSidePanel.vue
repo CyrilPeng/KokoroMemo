@@ -33,6 +33,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const estimatedTokens = computed(() => Math.ceil((props.preview.char_count || 0) / 2.5))
 const stateSummaryTables = computed(() => props.preview.summary?.tables || [])
+const traceCandidates = computed(() => props.retrievalTraceDetail?.candidates || [])
+const traceSelectedCount = computed(() => traceCandidates.value.filter((item: any) => item.selected).length)
+const traceFilteredCount = computed(() => traceCandidates.value.filter((item: any) => !item.selected).length)
 
 function updateFillForm(key: 'user_message' | 'assistant_message', value: string) {
   emit('update:fillForm', { ...props.fillForm, [key]: value })
@@ -73,6 +76,34 @@ function retrievalProfile(trace: any): Record<string, any> {
 
 function score(value: any) {
   return typeof value === 'number' ? value.toFixed(3) : '-'
+}
+
+function routeLabel(route?: string | null) {
+  if (!route) return '-'
+  const key = `state.trace.route.${route}`
+  const translated = t(key)
+  return translated === key ? route : translated
+}
+
+function reasonLabel(raw?: string | null, selected = false) {
+  if (!raw) return selected ? t('state.trace.reason.selected') : t('state.trace.reason.notSelected')
+  const normalized = String(raw).toLowerCase()
+  const keys = [
+    'library_not_mounted',
+    'character_mismatch',
+    'conversation_mismatch',
+    'scope_disabled',
+    'score_too_low',
+    'budget_limited',
+    'final_top_k',
+    'pinned',
+    'recent',
+    'vector',
+    'graph',
+  ]
+  const match = keys.find((key) => normalized.includes(key))
+  if (!match) return raw
+  return t(`state.trace.reason.${match}`)
 }
 </script>
 
@@ -147,6 +178,23 @@ function score(value: any) {
         </div>
 
         <div v-if="retrievalTraceDetail" class="candidate-list">
+          <div class="trace-summary-card">
+            <div class="candidate-title">{{ t('state.trace.summaryTitle') }}</div>
+            <NSpace size="small" wrap>
+              <NTag size="tiny" :type="retrievalTraceDetail.should_retrieve ? 'success' : 'warning'">
+                {{ retrievalTraceDetail.should_retrieve ? t('state.trace.retrieved') : t('state.trace.skipped') }}
+              </NTag>
+              <NTag size="tiny">{{ t('state.trace.candidates', { count: traceCandidates.length }) }}</NTag>
+              <NTag size="tiny" type="success">{{ t('state.trace.injected', { count: traceSelectedCount }) }}</NTag>
+              <NTag size="tiny" :type="traceFilteredCount ? 'warning' : 'default'">{{ t('state.trace.notInjected', { count: traceFilteredCount }) }}</NTag>
+            </NSpace>
+            <div class="trace-summary-line">
+              <span>{{ t('state.trace.trigger') }}: </span>{{ retrievalTraceDetail.trigger_reason || '-' }}
+            </div>
+            <div class="trace-summary-line">
+              <span>{{ t('state.trace.query') }}: </span>{{ retrievalTraceDetail.query_text || '-' }}
+            </div>
+          </div>
           <div v-if="retrievalTraceDetail.retrieval_profile_id" class="profile-summary">
             <div class="candidate-title">召回策略参数</div>
             <NSpace size="small" wrap>
@@ -164,13 +212,13 @@ function score(value: any) {
               <NTag size="tiny" :type="candidate.selected ? 'success' : 'default'">
                 {{ candidate.selected ? '已注入' : '未注入' }}
               </NTag>
-              <NTag size="tiny">{{ candidate.route || '-' }}</NTag>
+              <NTag size="tiny">{{ routeLabel(candidate.route) }}</NTag>
               <NTag size="tiny" type="info">{{ candidate.library_id || '-' }}</NTag>
               <span class="candidate-score">score {{ score(candidate.final_score) }}</span>
             </NSpace>
             <div class="candidate-preview">{{ candidate.content_preview || candidate.card_id || '-' }}</div>
             <div class="candidate-meta">
-              {{ candidate.injection_reason || candidate.filtered_reason || '-' }}
+              {{ reasonLabel(candidate.injection_reason || candidate.filtered_reason, Boolean(candidate.selected)) }}
             </div>
           </div>
         </div>
@@ -291,6 +339,27 @@ function score(value: any) {
   flex-direction: column;
   gap: 8px;
   padding-bottom: 4px;
+}
+
+.trace-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #111113;
+  border: 1px solid #2f2f36;
+  border-radius: 6px;
+}
+
+.trace-summary-line {
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.trace-summary-line span {
+  color: #888;
 }
 
 .state-source-list {

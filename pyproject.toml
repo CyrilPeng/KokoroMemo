@@ -66,7 +66,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S"]          # security checks not needed in tests
-"benchmarks/*" = ["S"]     # security checks not needed in benchmarks
+"benchmarks/*" = ["S", "E402"]     # security checks not needed in benchmarks; runner adjusts sys.path
 "app/storage/migrations/*" = ["S608"]  # parameterized SQL with hardcoded table/version strings
 "app/storage/sqlite_cards.py" = ["S608"]  # parameterized SQL with placeholders f-string
 "app/storage/sqlite_state.py" = ["S608", "E402"]  # parameterized SQL; mixin imports at end

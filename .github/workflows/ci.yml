@@ -28,10 +28,10 @@ jobs:
         run: pip install ruff
 
       - name: 运行 Ruff 静态检查
-        run: ruff check app/ tests/
+        run: ruff check app/ tests/ benchmarks/
 
       - name: 运行 Ruff 格式检查
-        run: ruff format --check app/ tests/
+        run: ruff format --check app/ tests/ benchmarks/
 
   backend:
     name: 后端测试（pytest）
@@ -59,6 +59,13 @@ jobs:
 
       - name: 运行 AIRP 基准冒烟测试
         run: uv run python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports
+
+      - name: 上传 AIRP 基准报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: airp-benchmark-smoke
+          path: benchmarks/reports/
 
   frontend:
     name: 前端构建（vue-tsc + Vite）

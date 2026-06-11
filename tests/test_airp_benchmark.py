@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.run_airp_benchmark import run_benchmark
+from benchmarks.run_airp_benchmark import _compare_reports, run_benchmark
 
 
 @pytest.mark.asyncio
@@ -58,8 +58,48 @@ async def test_airp_benchmark_compares_with_previous_report(tmp_path: Path) -> N
     comparison = report["comparison"]
     assert comparison["metrics"]["failed_cases"]["delta"] == -1
     assert comparison["metrics"]["recall_accuracy"]["delta"] == pytest.approx(0.333)
+    assert comparison["quality_regression"] is False
+    assert comparison["regression_reasons"] == []
     assert comparison["improved_cases"] == ["nickname_memory"]
     assert comparison["regressed_cases"] == []
     assert comparison["added_cases"] == ["library_isolation"]
     assert comparison["removed_cases"] == ["removed_case"]
     assert "Compared With Previous Report" in (report_dir / "airp_benchmark.md").read_text(encoding="utf-8")
+
+
+def test_airp_benchmark_marks_quality_regression(tmp_path: Path) -> None:
+    baseline = {
+        "summary": {
+            "total_cases": 1,
+            "passed_cases": 1,
+            "failed_cases": 0,
+            "recall_accuracy": 1.0,
+            "false_positive_rate": 0.0,
+            "avg_injected_tokens": 4.0,
+        },
+        "results": [{"case_id": "nickname_memory", "passed": True}],
+    }
+    baseline_path = tmp_path / "airp_benchmark.json"
+    baseline_path.write_text(json.dumps(baseline, ensure_ascii=False), encoding="utf-8")
+    current = {
+        "summary": {
+            "total_cases": 1,
+            "passed_cases": 0,
+            "failed_cases": 1,
+            "recall_accuracy": 0.5,
+            "false_positive_rate": 0.5,
+            "avg_injected_tokens": 4.0,
+        },
+        "results": [{"case_id": "nickname_memory", "passed": False}],
+    }
+
+    comparison = _compare_reports(current, baseline_path)
+
+    assert comparison["quality_regression"] is True
+    assert comparison["regressed_cases"] == ["nickname_memory"]
+    assert comparison["regression_reasons"] == [
+        "case regressed from PASS to FAIL",
+        "failed_cases increased",
+        "recall_accuracy decreased",
+        "false_positive_rate increased",
+    ]

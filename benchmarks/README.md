@@ -28,12 +28,18 @@ python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/full
 python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/release --compare-to benchmarks/reports/previous
 ```
 
+在脚本或发布门禁中阻止退化：
+
+```bash
+python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/release --compare-to benchmarks/reports/previous --fail-on-regression
+```
+
 报告会生成：
 
 - `airp_benchmark.json`：机器可读结果。
 - `airp_benchmark.md`：发布和人工审查用摘要。
 
-`--compare-to` 可以指向旧的 `airp_benchmark.json`，也可以指向包含该文件的报告目录。Markdown 报告会列出关键指标 delta、退化 case、改善 case、新增 case 和移除 case。
+`--compare-to` 可以指向旧的 `airp_benchmark.json`，也可以指向包含该文件的报告目录。Markdown 报告会列出关键指标 delta、退化 case、改善 case、新增 case 和移除 case。加上 `--fail-on-regression` 后，如果失败数上升、召回率下降、误召回率上升，或原本通过的 case 变失败，命令会返回非零退出码。
 
 ## 当前覆盖
 
@@ -57,6 +63,7 @@ python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/release 
 - `false_positive_rate`：禁止召回卡片中实际泄漏进注入结果的比例。
 - `avg_injected_tokens`：本轮注入文本的粗略 token 估算，用于观察上下文成本。
 - `comparison`：使用 `--compare-to` 时生成，展示当前报告相对上一份报告的变化。
+- `quality_regression`：使用 `--compare-to` 时生成；可配合 `--fail-on-regression` 做自动门禁。
 
 发布前建议：
 

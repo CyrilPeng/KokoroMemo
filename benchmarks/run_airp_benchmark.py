@@ -119,19 +119,35 @@ def _compare_reports(report: dict, compare_to: Path) -> dict:
         if isinstance(result, dict) and "case_id" in result
     }
     shared_ids = set(baseline_results) & set(current_results)
+    regressed_cases = sorted(
+        case_id
+        for case_id in shared_ids
+        if baseline_results[case_id].get("passed") and not current_results[case_id].get("passed")
+    )
+    improved_cases = sorted(
+        case_id
+        for case_id in shared_ids
+        if not baseline_results[case_id].get("passed") and current_results[case_id].get("passed")
+    )
+    regression_reasons = []
+    failed_delta = metrics["failed_cases"]["delta"]
+    recall_delta = metrics["recall_accuracy"]["delta"]
+    false_positive_delta = metrics["false_positive_rate"]["delta"]
+    if regressed_cases:
+        regression_reasons.append("case regressed from PASS to FAIL")
+    if isinstance(failed_delta, (int, float)) and failed_delta > 0:
+        regression_reasons.append("failed_cases increased")
+    if isinstance(recall_delta, (int, float)) and recall_delta < 0:
+        regression_reasons.append("recall_accuracy decreased")
+    if isinstance(false_positive_delta, (int, float)) and false_positive_delta > 0:
+        regression_reasons.append("false_positive_rate increased")
     return {
         "baseline_path": str(baseline_path),
         "metrics": metrics,
-        "regressed_cases": sorted(
-            case_id
-            for case_id in shared_ids
-            if baseline_results[case_id].get("passed") and not current_results[case_id].get("passed")
-        ),
-        "improved_cases": sorted(
-            case_id
-            for case_id in shared_ids
-            if not baseline_results[case_id].get("passed") and current_results[case_id].get("passed")
-        ),
+        "quality_regression": bool(regression_reasons),
+        "regression_reasons": regression_reasons,
+        "regressed_cases": regressed_cases,
+        "improved_cases": improved_cases,
         "added_cases": sorted(set(current_results) - set(baseline_results)),
         "removed_cases": sorted(set(baseline_results) - set(current_results)),
     }
@@ -143,6 +159,8 @@ def _comparison_markdown(comparison: dict) -> list[str]:
         "## Compared With Previous Report",
         "",
         f"- Baseline: `{comparison['baseline_path']}`",
+        f"- Quality regression: {'yes' if comparison['quality_regression'] else 'no'}",
+        f"- Regression reasons: {', '.join(comparison['regression_reasons']) or '-'}",
         f"- Regressed cases: {', '.join(comparison['regressed_cases']) or '-'}",
         f"- Improved cases: {', '.join(comparison['improved_cases']) or '-'}",
         f"- Added cases: {', '.join(comparison['added_cases']) or '-'}",
@@ -298,6 +316,11 @@ def main() -> int:
         default=None,
         help="Previous airp_benchmark.json or report directory to compare against",
     )
+    parser.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="Exit non-zero when --compare-to detects an AIRP quality regression",
+    )
     args = parser.parse_args()
     report = asyncio.run(
         run_benchmark(
@@ -307,6 +330,8 @@ def main() -> int:
         )
     )
     print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+    if args.fail_on_regression and report.get("comparison", {}).get("quality_regression"):
+        return 1
     return 0 if report["summary"]["failed_cases"] == 0 else 1
 
 

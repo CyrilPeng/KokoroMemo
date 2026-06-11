@@ -27,7 +27,6 @@ import {
   ChatbubblesOutline,
   MailOutline,
   PersonOutline,
-  GitNetworkOutline,
   SettingsOutline,
   LogoGithub,
   MenuOutline,
@@ -85,12 +84,11 @@ function renderIcon(icon: any) {
 
 const menuOptions = computed<MenuOption[]>(() => [
   { label: t('nav.dashboard'), key: '/dashboard', icon: renderIcon(HomeOutline) },
-  { label: t('nav.memories'), key: '/memories', icon: renderIcon(BulbOutline) },
-  { label: t('nav.memoryGraph'), key: '/memory-graph', icon: renderIcon(GitNetworkOutline) },
-  { label: t('nav.inbox'), key: '/inbox', icon: renderIcon(MailOutline) },
-  { label: '会话管理', key: '/conversations', icon: renderIcon(ChatbubblesOutline) },
-  { label: t('nav.state'), key: '/state', icon: renderIcon(ReaderOutline) },
   { label: t('nav.characters'), key: '/characters', icon: renderIcon(PersonOutline) },
+  { label: t('nav.state'), key: '/state', icon: renderIcon(ReaderOutline) },
+  { label: t('nav.inbox'), key: '/inbox', icon: renderIcon(MailOutline) },
+  { label: t('nav.memories'), key: '/memories', icon: renderIcon(BulbOutline) },
+  { label: t('nav.conversations'), key: '/conversations', icon: renderIcon(ChatbubblesOutline) },
   { label: t('nav.settings'), key: '/settings', icon: renderIcon(SettingsOutline) },
 ])
 

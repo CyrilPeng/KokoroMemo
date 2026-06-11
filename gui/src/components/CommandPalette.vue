@@ -23,20 +23,22 @@ const inputRef = ref<InstanceType<typeof NInput> | null>(null)
 const commands = computed<Command[]>(() => {
   const nav = [
     { id: 'nav_dashboard', label: t('nav.dashboard'), path: '/dashboard', category: t('command.category.pages') },
-    { id: 'nav_memories', label: t('nav.memories'), path: '/memories', category: t('command.category.pages') },
-    { id: 'nav_memoryGraph', label: t('nav.memoryGraph'), path: '/memory-graph', category: t('command.category.pages') },
-    { id: 'nav_inbox', label: t('nav.inbox'), path: '/inbox', category: t('command.category.pages') },
-    { id: 'nav_conversations', label: '会话管理', path: '/conversations', category: t('command.category.pages') },
-    { id: 'nav_state', label: t('nav.state'), path: '/state', category: t('command.category.pages') },
     { id: 'nav_characters', label: t('nav.characters'), path: '/characters', category: t('command.category.pages') },
+    { id: 'nav_state', label: t('nav.state'), path: '/state', category: t('command.category.pages') },
+    { id: 'nav_inbox', label: t('nav.inbox'), path: '/inbox', category: t('command.category.pages') },
+    { id: 'nav_memories', label: t('nav.memories'), path: '/memories', category: t('command.category.pages') },
+    { id: 'nav_conversations', label: t('nav.conversations'), path: '/conversations', category: t('command.category.pages') },
     { id: 'nav_settings', label: t('nav.settings'), path: '/settings', category: t('command.category.pages') },
   ]
   const actions = [
     { id: 'action_testConnectivity', label: t('command.actions.testConnectivity'), path: '/settings', category: t('command.category.actions') },
-    { id: 'action_rebuildIndex', label: t('command.actions.rebuildIndex'), path: '/settings', category: t('command.category.actions') },
-    { id: 'action_exportMemories', label: t('command.actions.exportMemories'), path: '/memories', category: t('command.category.actions') },
+    { id: 'action_openStateBoard', label: t('command.actions.openStateBoard'), path: '/state', category: t('command.category.actions') },
+    { id: 'action_reviewInbox', label: t('command.actions.reviewInbox'), path: '/inbox', category: t('command.category.actions') },
   ]
-  const raw = [...nav, ...actions]
+  const experimental = [
+    { id: 'nav_memoryGraph', label: t('nav.memoryGraph'), path: '/memory-graph', category: t('command.category.experimental') },
+  ]
+  const raw = [...nav, ...actions, ...experimental]
   const q = query.value.trim().toLowerCase()
   const filtered = q ? raw.filter(c => c.label.toLowerCase().includes(q) || c.category.toLowerCase().includes(q)) : raw
   return filtered.map(c => ({

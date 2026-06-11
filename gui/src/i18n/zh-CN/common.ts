@@ -33,7 +33,7 @@ export default {
     builtin: '内置',
     unnamed: '未命名',
     none: '无',
-    tagline: '本地长期记忆',
+    tagline: 'AIRP 角色连续性',
   },
   errors: {
     generic: '发生了一些错误，请稍后再试。',
@@ -44,12 +44,13 @@ export default {
     cardApproved: '已自动批准记忆：{content}',
   },
   nav: {
-    dashboard: '仪表盘',
-    memories: '记忆管理',
-    memoryGraph: '记忆图谱',
-    inbox: '待审核',
-    state: '会话状态板',
-    characters: '角色',
+    dashboard: '总览',
+    memories: '长期记忆',
+    memoryGraph: '记忆图谱（实验）',
+    inbox: '记忆审核',
+    conversations: '会话管理',
+    state: '状态板',
+    characters: '角色中心',
     settings: '设置',
   },
   command: {
@@ -58,11 +59,12 @@ export default {
     category: {
       pages: '页面',
       actions: '操作',
+      experimental: '实验功能',
     },
     actions: {
       testConnectivity: '测试连通性',
-      rebuildIndex: '重建向量索引',
-      exportMemories: '导出记忆库',
+      openStateBoard: '打开状态板',
+      reviewInbox: '审核记忆',
     },
     footer: {
       navigate: '导航',

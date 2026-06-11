@@ -33,7 +33,7 @@ export default {
     builtin: 'Built-in',
     unnamed: 'Unnamed',
     none: 'None',
-    tagline: 'Local Long-term Memory',
+    tagline: 'AIRP Role Continuity',
   },
   errors: {
     generic: 'Something went wrong. Please try again later.',
@@ -44,12 +44,13 @@ export default {
     cardApproved: 'Memory auto-approved: {content}',
   },
   nav: {
-    dashboard: 'Dashboard',
-    memories: 'Memories',
-    memoryGraph: 'Memory Graph',
-    inbox: 'Inbox',
-    state: 'Session State',
-    characters: 'Characters',
+    dashboard: 'Overview',
+    memories: 'Long-term Memory',
+    memoryGraph: 'Memory Graph (Experimental)',
+    inbox: 'Memory Review',
+    conversations: 'Conversations',
+    state: 'State Board',
+    characters: 'Role Center',
     settings: 'Settings',
   },
   command: {
@@ -58,11 +59,12 @@ export default {
     category: {
       pages: 'Pages',
       actions: 'Actions',
+      experimental: 'Experimental',
     },
     actions: {
       testConnectivity: 'Test Connectivity',
-      rebuildIndex: 'Rebuild Vector Index',
-      exportMemories: 'Export Memories',
+      openStateBoard: 'Open State Board',
+      reviewInbox: 'Review Memories',
     },
     footer: {
       navigate: 'navigate',

@@ -1,5 +1,22 @@
 # Changelog
 
+## 未发布
+
+### 新增
+
+- **AIRP 官方演示流程** - 新增 `examples/airp-demo`，围绕“不忘、不串、状态板维护当前剧情”提供可复述的三段演示路径。
+- **AIRP Benchmark 发布检查文档** - 新增 `benchmarks/README.md`，说明 smoke/full benchmark、指标含义、发布前检查清单和 demo 展示顺序。
+- **Benchmark 报告对比** - `benchmarks/run_airp_benchmark.py` 支持 `--compare-to`，可对比上一份 `airp_benchmark.json` 或报告目录，输出指标 delta、退化 case、改善 case、新增 case 和移除 case。
+
+### 改进
+
+- **产品定位收窄到 AIRP 角色连续性** - README、仪表盘、主导航、设置向导、记忆审核、状态板连续性摘要和检索解释面板聚焦“不忘、不串、不乱记”。
+- **AIRP 质量门禁强化** - CI 将 `benchmarks/` 纳入 Ruff 检查，上传 smoke benchmark 报告；Release workflow 在打包前运行完整 AIRP benchmark 并上传发布基准报告。
+
+### 修复
+
+- **Windows 测试收集兼容** - 后端读取 `pyproject.toml` 版本号时显式使用 UTF-8，避免 Windows 默认 GBK 环境下 pytest 收集失败。
+
 ## v0.13.0 (2026-05-31)
 
 ### 新增

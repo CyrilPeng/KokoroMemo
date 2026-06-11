@@ -30,7 +30,7 @@ def _read_version() -> str:
 
     pyproject = Path(__file__).parent.parent / "pyproject.toml"
     if pyproject.exists():
-        with open(pyproject) as f:
+        with open(pyproject, encoding="utf-8") as f:
             data = tomllib.loads(f.read())
             return data.get("project", {}).get("version", "0.0.0")
 

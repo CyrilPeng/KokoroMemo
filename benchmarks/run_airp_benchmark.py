@@ -28,6 +28,16 @@ from app.storage.sqlite_cards import (
 from benchmarks.metrics import evaluate_case, summarize
 
 
+SUMMARY_METRICS = (
+    "total_cases",
+    "passed_cases",
+    "failed_cases",
+    "recall_accuracy",
+    "false_positive_rate",
+    "avg_injected_tokens",
+)
+
+
 class FakeEmbeddingProvider:
     async def embed_text(self, _text: str) -> list[float]:
         return [1.0, 0.0, 0.0, 0.0]
@@ -68,6 +78,87 @@ def _case_files(smoke: bool) -> list[Path]:
     cases_dir = Path(__file__).resolve().parent / "airp_cases"
     files = sorted(cases_dir.glob("*.json"))
     return files[:3] if smoke else files
+
+
+def _resolve_compare_path(compare_to: Path) -> Path:
+    return compare_to / "airp_benchmark.json" if compare_to.is_dir() else compare_to
+
+
+def _format_metric_value(value: Any) -> str:
+    if isinstance(value, float):
+        return f"{value:.3f}"
+    if isinstance(value, int):
+        return str(value)
+    return "-"
+
+
+def _compare_reports(report: dict, compare_to: Path) -> dict:
+    baseline_path = _resolve_compare_path(compare_to)
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    baseline_summary = baseline.get("summary", {})
+    current_summary = report.get("summary", {})
+    metrics = {}
+    for key in SUMMARY_METRICS:
+        previous = baseline_summary.get(key)
+        current = current_summary.get(key)
+        can_compare = isinstance(previous, (int, float)) and isinstance(current, (int, float))
+        metrics[key] = {
+            "previous": previous,
+            "current": current,
+            "delta": current - previous if can_compare else None,
+        }
+
+    baseline_results = {
+        result["case_id"]: result
+        for result in baseline.get("results", [])
+        if isinstance(result, dict) and "case_id" in result
+    }
+    current_results = {
+        result["case_id"]: result
+        for result in report.get("results", [])
+        if isinstance(result, dict) and "case_id" in result
+    }
+    shared_ids = set(baseline_results) & set(current_results)
+    return {
+        "baseline_path": str(baseline_path),
+        "metrics": metrics,
+        "regressed_cases": sorted(
+            case_id
+            for case_id in shared_ids
+            if baseline_results[case_id].get("passed") and not current_results[case_id].get("passed")
+        ),
+        "improved_cases": sorted(
+            case_id
+            for case_id in shared_ids
+            if not baseline_results[case_id].get("passed") and current_results[case_id].get("passed")
+        ),
+        "added_cases": sorted(set(current_results) - set(baseline_results)),
+        "removed_cases": sorted(set(baseline_results) - set(current_results)),
+    }
+
+
+def _comparison_markdown(comparison: dict) -> list[str]:
+    lines = [
+        "",
+        "## Compared With Previous Report",
+        "",
+        f"- Baseline: `{comparison['baseline_path']}`",
+        f"- Regressed cases: {', '.join(comparison['regressed_cases']) or '-'}",
+        f"- Improved cases: {', '.join(comparison['improved_cases']) or '-'}",
+        f"- Added cases: {', '.join(comparison['added_cases']) or '-'}",
+        f"- Removed cases: {', '.join(comparison['removed_cases']) or '-'}",
+        "",
+        "| Metric | Previous | Current | Delta |",
+        "|---|---:|---:|---:|",
+    ]
+    for key in SUMMARY_METRICS:
+        metric = comparison["metrics"][key]
+        delta = metric["delta"]
+        lines.append(
+            f"| {key} | {_format_metric_value(metric['previous'])} | "
+            f"{_format_metric_value(metric['current'])} | {_format_metric_value(delta)} |"
+        )
+    return lines
 
 
 async def _run_case(case_path: Path, work_root: Path):
@@ -151,7 +242,11 @@ async def _run_case(case_path: Path, work_root: Path):
     )
 
 
-async def run_benchmark(smoke: bool = False, report_dir: Path | None = None) -> dict:
+async def run_benchmark(
+    smoke: bool = False,
+    report_dir: Path | None = None,
+    compare_to: Path | None = None,
+) -> dict:
     work_root = Path(mkdtemp(prefix="kokoromemo_benchmark_"))
     try:
         results = [await _run_case(path, work_root) for path in _case_files(smoke)]
@@ -160,6 +255,8 @@ async def run_benchmark(smoke: bool = False, report_dir: Path | None = None) -> 
             "summary": summary,
             "results": [asdict(result) for result in results],
         }
+        if compare_to:
+            report["comparison"] = _compare_reports(report, compare_to)
         if report_dir:
             report_dir.mkdir(parents=True, exist_ok=True)
             (report_dir / "airp_benchmark.json").write_text(
@@ -184,6 +281,8 @@ async def run_benchmark(smoke: bool = False, report_dir: Path | None = None) -> 
                     f"{', '.join(result['missing_card_ids']) or '-'} | "
                     f"{', '.join(result['leaked_card_ids']) or '-'} |"
                 )
+            if "comparison" in report:
+                lines.extend(_comparison_markdown(report["comparison"]))
             (report_dir / "airp_benchmark.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
         return report
     finally:
@@ -194,12 +293,22 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke", action="store_true", help="Run the minimal smoke case set")
     parser.add_argument("--report-dir", default="benchmarks/reports", help="Directory for JSON/Markdown reports")
+    parser.add_argument(
+        "--compare-to",
+        default=None,
+        help="Previous airp_benchmark.json or report directory to compare against",
+    )
     args = parser.parse_args()
-    report = asyncio.run(run_benchmark(smoke=args.smoke, report_dir=Path(args.report_dir)))
+    report = asyncio.run(
+        run_benchmark(
+            smoke=args.smoke,
+            report_dir=Path(args.report_dir),
+            compare_to=Path(args.compare_to) if args.compare_to else None,
+        )
+    )
     print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
     return 0 if report["summary"]["failed_cases"] == 0 else 1
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

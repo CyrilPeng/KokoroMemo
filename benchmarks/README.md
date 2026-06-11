@@ -22,10 +22,18 @@ python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/
 python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/full
 ```
 
+与上一份报告对比：
+
+```bash
+python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/release --compare-to benchmarks/reports/previous
+```
+
 报告会生成：
 
 - `airp_benchmark.json`：机器可读结果。
 - `airp_benchmark.md`：发布和人工审查用摘要。
+
+`--compare-to` 可以指向旧的 `airp_benchmark.json`，也可以指向包含该文件的报告目录。Markdown 报告会列出关键指标 delta、退化 case、改善 case、新增 case 和移除 case。
 
 ## 当前覆盖
 
@@ -48,6 +56,7 @@ python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/full
 - `recall_accuracy`：应召回卡片中实际进入注入结果的比例。
 - `false_positive_rate`：禁止召回卡片中实际泄漏进注入结果的比例。
 - `avg_injected_tokens`：本轮注入文本的粗略 token 估算，用于观察上下文成本。
+- `comparison`：使用 `--compare-to` 时生成，展示当前报告相对上一份报告的变化。
 
 发布前建议：
 
@@ -83,4 +92,3 @@ python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/release
 1. 用 `examples/airp-demo` 解释 KokoroMemo 为什么不是通用长期记忆助手。
 2. 用 `benchmarks/run_airp_benchmark.py` 证明核心召回和隔离行为没有退化。
 3. 用 GUI 的“状态板 / 记忆审核 / 注入来源”展示用户能看懂并控制这套记忆系统。
-

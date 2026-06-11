@@ -9,7 +9,38 @@ permissions:
   contents: write
 
 jobs:
+  release-preflight:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.10.x"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: uv sync --extra dev --frozen
+
+      - name: Run AIRP benchmark tests
+        run: uv run python -m pytest tests/test_airp_benchmark.py -q
+
+      - name: Run full AIRP benchmark
+        run: uv run python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/release
+
+      - name: Upload release AIRP benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: airp-benchmark-release
+          path: benchmarks/reports/release/
+
   build-backend:
+    needs: release-preflight
     strategy:
       matrix:
         include:
@@ -366,6 +397,7 @@ jobs:
           fi
 
   build-android-packages:
+    needs: release-preflight
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4

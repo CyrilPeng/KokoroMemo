@@ -808,42 +808,69 @@ onMounted(() => {
     </div>
 
     <NTabs type="line" animated>
-      <NTabPane name="guide" tab="快速向导">
+      <NTabPane name="guide" :tab="$t('settings.guide.tab')">
         <NSpace vertical :size="16">
           <NCard style="background: #18181b; border: 1px solid #27272a;">
-            <template #header>首次使用推荐配置</template>
+            <template #header>{{ $t('settings.guide.title') }}</template>
             <NSpace vertical>
-              <div class="settings-hint">选择最接近的使用场景后，系统会自动调整记忆、注入、状态板和新会话默认策略。不会修改你的模型 Base URL、API Key 和端口。</div>
-              <NForm label-placement="top" :show-feedback="false">
-                <NFormItem label="使用场景">
-                  <NSelect v-model:value="onboardingScenario" :options="onboardingOptions" />
-                </NFormItem>
-              </NForm>
+              <NAlert type="info" :show-icon="false">{{ $t('settings.guide.intro') }}</NAlert>
+              <NGrid :cols="3" :x-gap="14" :y-gap="14" responsive="screen" item-responsive>
+                <NGridItem span="3 m:1">
+                  <div class="guide-step">
+                    <div class="guide-step-index">1</div>
+                    <div class="guide-step-title">{{ $t('settings.guide.stepScenario') }}</div>
+                    <NSelect v-model:value="onboardingScenario" :options="onboardingOptions" />
+                    <div class="settings-hint">{{ selectedOnboardingPreset.desc }}</div>
+                  </div>
+                </NGridItem>
+                <NGridItem span="3 m:1">
+                  <div class="guide-step">
+                    <div class="guide-step-index">2</div>
+                    <div class="guide-step-title">{{ $t('settings.guide.stepConnect') }}</div>
+                    <NInput :value="openaiBaseUrl" readonly />
+                    <NSpace>
+                      <NButton size="small" @click="copyText(openaiBaseUrl)">{{ $t('common.copy') }}</NButton>
+                      <NTag size="small" round>{{ $t('settings.guide.clientHint') }}</NTag>
+                    </NSpace>
+                  </div>
+                </NGridItem>
+                <NGridItem span="3 m:1">
+                  <div class="guide-step">
+                    <div class="guide-step-index">3</div>
+                    <div class="guide-step-title">{{ $t('settings.guide.stepVerify') }}</div>
+                    <div class="settings-hint">{{ $t('settings.guide.verifyHint') }}</div>
+                    <NSpace>
+                      <NButton size="small" :loading="connectTestLoading['all']" @click="runConnectivityTest('all')">{{ $t('settings.testAllConnections') }}</NButton>
+                      <NButton size="small" @click="setSettingsMode('advanced')">{{ $t('settings.guide.openAdvanced') }}</NButton>
+                    </NSpace>
+                  </div>
+                </NGridItem>
+              </NGrid>
               <NCard size="small" :title="selectedOnboardingPreset.name">
-                <p style="color: #d4d4d8; line-height: 1.8; margin-top: 0;">{{ selectedOnboardingPreset.desc }}</p>
+                <p style="color: #d4d4d8; line-height: 1.8; margin-top: 0;">{{ $t('settings.guide.presetSummary') }}</p>
                 <NSpace>
-                  <NTag>方案：{{ profileLabel(selectedOnboardingPreset.defaults.profile_id) }}</NTag>
-                  <NTag>记忆写入：{{ memoryWriteLabel(selectedOnboardingPreset.defaults.memory_write_policy) }}</NTag>
-                  <NTag>注入策略：{{ injectionLabel(selectedOnboardingPreset.defaults.injection_policy) }}</NTag>
+                  <NTag>{{ $t('settings.guide.profile') }}: {{ profileLabel(selectedOnboardingPreset.defaults.profile_id) }}</NTag>
+                  <NTag>{{ $t('settings.guide.memoryWrite') }}: {{ memoryWriteLabel(selectedOnboardingPreset.defaults.memory_write_policy) }}</NTag>
+                  <NTag>{{ $t('settings.guide.injection') }}: {{ injectionLabel(selectedOnboardingPreset.defaults.injection_policy) }}</NTag>
                 </NSpace>
               </NCard>
               <NSpace>
-                <NButton type="primary" :loading="onboardingSaving" @click="applyOnboardingPreset">套用推荐配置</NButton>
-                <NButton @click="loadConfig">恢复当前已保存配置</NButton>
+                <NButton type="primary" :loading="onboardingSaving" @click="applyOnboardingPreset">{{ $t('settings.guide.apply') }}</NButton>
+                <NButton @click="loadConfig">{{ $t('settings.guide.restore') }}</NButton>
               </NSpace>
             </NSpace>
           </NCard>
-          <NCard style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
-            <template #header>日志诊断</template>
+          <NCard v-if="settingsMode === 'advanced'" style="background: #18181b; border: 1px solid #27272a; margin-top: 16px;">
+            <template #header>{{ $t('settings.guide.logTitle') }}</template>
             <NSpace vertical>
-              <div class="settings-hint">移动端或 Termux 无法访问后端时，可先在这里查看 server.log 末尾内容，确认端口、启动错误和依赖异常。</div>
+              <div class="settings-hint">{{ $t('settings.guide.logDesc') }}</div>
               <NSpace align="center">
-                <NButton size="small" :loading="logLoading" @click="fetchServerLogs">读取最近日志</NButton>
-                <NButton v-if="logInfo.content" size="small" @click="copyText(logInfo.content)">复制日志</NButton>
-                <NTag v-if="logInfo.status" :type="logInfo.status === 'ok' ? 'success' : 'warning'">{{ logInfo.status === 'ok' ? '已读取' : '未找到日志' }}</NTag>
+                <NButton size="small" :loading="logLoading" @click="fetchServerLogs">{{ $t('settings.guide.readLogs') }}</NButton>
+                <NButton v-if="logInfo.content" size="small" @click="copyText(logInfo.content)">{{ $t('settings.guide.copyLogs') }}</NButton>
+                <NTag v-if="logInfo.status" :type="logInfo.status === 'ok' ? 'success' : 'warning'">{{ logInfo.status === 'ok' ? $t('settings.guide.logsRead') : $t('settings.guide.logsMissing') }}</NTag>
               </NSpace>
               <NAlert v-if="logInfo.path || logInfo.message" :type="logInfo.status === 'ok' ? 'default' : 'warning'" :show-icon="false">
-                <div v-if="logInfo.path">日志路径：{{ logInfo.path }}</div>
+                <div v-if="logInfo.path">{{ $t('settings.guide.logPath') }}: {{ logInfo.path }}</div>
                 <div v-if="logInfo.message">{{ logInfo.message }}</div>
               </NAlert>
               <NInput v-if="logInfo.content" :value="logInfo.content" type="textarea" readonly :autosize="{ minRows: 10, maxRows: 24 }" />
@@ -1522,6 +1549,37 @@ onMounted(() => {
   color: #a1a1aa;
   font-size: 12px;
   line-height: 1.6;
+}
+
+.guide-step {
+  min-height: 188px;
+  padding: 14px;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  background: #111113;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guide-step-index {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #27272a;
+  color: #e4e4e7;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.guide-step-title {
+  color: #f4f4f5;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .help-icon {

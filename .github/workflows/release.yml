@@ -1,6 +1,18 @@
-name: Build & Release
+name: 构建与发布
+run-name: 构建与发布 ${{ inputs.version || github.ref_name }}
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '构建版本，例如 0.13.1 或 v0.13.1'
+        required: true
+        type: string
+      publish_release:
+        description: '是否发布到 GitHub Release（默认仅构建产物）'
+        required: true
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*'
@@ -9,30 +21,67 @@ permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    name: 准备构建参数
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.vars.outputs.version }}
+      tag: ${{ steps.vars.outputs.tag }}
+      should_publish: ${{ steps.vars.outputs.should_publish }}
+    steps:
+      - name: 计算版本和发布模式
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            raw_version="${{ inputs.version }}"
+            should_publish="${{ inputs.publish_release }}"
+          else
+            raw_version="${GITHUB_REF_NAME}"
+            should_publish="true"
+          fi
+
+          version="${raw_version#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::版本号必须类似 1.2.3 或 v1.2.3，当前为：$raw_version"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "should_publish=$should_publish" >> "$GITHUB_OUTPUT"
+          echo "构建版本：$version"
+          echo "发布到 Release：$should_publish"
+
   release-preflight:
+    name: 发布前 AIRP 检查
+    needs: prepare-release
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v4
 
-      - name: Install uv
+      - name: 安装 uv
         uses: astral-sh/setup-uv@v5
         with:
           version: "0.10.x"
 
-      - uses: actions/setup-python@v5
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install backend dependencies
+      - name: 安装后端依赖
         run: uv sync --extra dev --frozen
 
-      - name: Run AIRP benchmark tests
+      - name: 运行 AIRP benchmark 测试
         run: uv run python -m pytest tests/test_airp_benchmark.py -q
 
-      - name: Run full AIRP benchmark
+      - name: 运行完整 AIRP benchmark
         run: uv run python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/release
 
-      - name: Upload release AIRP benchmark report
+      - name: 上传 AIRP benchmark 发布报告
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -40,7 +89,10 @@ jobs:
           path: benchmarks/reports/release/
 
   build-backend:
-    needs: release-preflight
+    name: 构建后端（${{ matrix.os }}）
+    needs:
+      - prepare-release
+      - release-preflight
     strategy:
       matrix:
         include:
@@ -53,32 +105,23 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: 安装后端打包依赖
         run: |
           pip install -r requirements.txt
           pip install nuitka ordered-set zstandard
 
-      - name: Stamp backend version
-        shell: bash
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          python - <<PY
-          from pathlib import Path
-          version = "${version}"
-          Path("app/_version.py").write_text(
-              '"""Build-time version fallback for packaged binaries."""\n\n'
-              f'__version__ = "{version}"\n',
-              encoding="utf-8",
-          )
-          PY
+      - name: 写入构建版本
+        run: python .github/scripts/stamp_version.py --version ${{ needs.prepare-release.outputs.version }}
 
-      - name: Build with Nuitka
+      - name: 使用 Nuitka 构建后端
         run: |
           python -m nuitka --standalone --onefile \
             --assume-yes-for-downloads \
@@ -97,13 +140,17 @@ jobs:
             app/main.py
         shell: bash
 
-      - uses: actions/upload-artifact@v4
+      - name: 上传后端二进制
+        uses: actions/upload-artifact@v4
         with:
           name: backend-${{ matrix.os }}
           path: ${{ matrix.target }}
 
   build-tauri:
-    needs: build-backend
+    name: 构建桌面应用（${{ matrix.system }} ${{ matrix.arch }}）
+    needs:
+      - prepare-release
+      - build-backend
     strategy:
       fail-fast: false
       matrix:
@@ -132,18 +179,28 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 写入构建版本
+        run: python .github/scripts/stamp_version.py --version ${{ needs.prepare-release.outputs.version }}
+
+      - name: 设置 Node 环境
+        uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Install Rust
+      - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust-target }}
 
-      - name: Install Linux dependencies
+      - name: 安装 Linux 桌面依赖
         if: runner.os == 'Linux'
         timeout-minutes: 15
         run: |
@@ -173,13 +230,13 @@ jobs:
             patchelf \
             libappindicator3-dev
 
-      - name: Download backend binary
+      - name: 下载后端二进制
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.backend-artifact }}
           path: gui/src-tauri/binaries/
 
-      - name: Prepare embedded backend (Windows)
+      - name: 准备 Windows 内嵌后端
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -188,34 +245,34 @@ jobs:
           Copy-Item $backendSource gui/src-tauri/embedded-backend/kokoromemo-server.exe -Force
           Remove-Item $backendSource -Force
 
-      - name: Make backend executable (Unix)
+      - name: 设置 Unix 后端可执行权限
         if: runner.os != 'Windows'
         run: chmod +x gui/src-tauri/binaries/${{ matrix.binary-name }}
 
-      - name: Install frontend deps
+      - name: 安装前端依赖
         working-directory: gui
         run: npm install
 
-      - name: Build Windows single-exe app and MSI
+      - name: 构建 Windows 单文件应用和 MSI
         if: runner.os == 'Windows'
         working-directory: gui
         run: npm run tauri build -- --target ${{ matrix.rust-target }} --bundles msi --ci --config src-tauri/tauri.windows.conf.json
 
-      - name: Build Linux AppImage
+      - name: 构建 Linux AppImage
         if: runner.os == 'Linux'
         working-directory: gui
         run: npm run tauri build -- --target ${{ matrix.rust-target }} --bundles appimage --ci
 
-      - name: Build macOS app
+      - name: 构建 macOS 应用
         if: runner.os == 'macOS'
         working-directory: gui
         run: npm run tauri build -- --target ${{ matrix.rust-target }} --bundles app --ci
 
-      - name: Package Windows Portable.zip and MSI
+      - name: 打包 Windows Portable.zip 和 MSI
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $version = "${{ needs.prepare-release.outputs.version }}"
           $assetDir = Join-Path $PWD 'release-assets'
           $folderName = "KokoroMemo-$version-Windows-Portable"
           $folderPath = Join-Path $assetDir $folderName
@@ -245,12 +302,12 @@ jobs:
           }
           Copy-Item $msi.FullName (Join-Path $assetDir "KokoroMemo-$version-Windows-${{ matrix.arch }}.msi") -Force
 
-      - name: Rename Unix bundle asset
+      - name: 重命名 Unix 桌面产物
         if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ needs.prepare-release.outputs.version }}"
           asset_dir="release-assets"
           mkdir -p "$asset_dir"
 
@@ -277,39 +334,56 @@ jobs:
             (cd "$(dirname "$source_app")" && zip -r -y "$OLDPWD/$target_asset" "$(basename "$source_app")")
           fi
 
-      - name: Upload release asset artifact
+      - name: 上传桌面发布产物
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.system }}-${{ matrix.arch }}
           path: release-assets/*
 
   publish-release:
+    name: 发布 GitHub Release
     needs:
+      - prepare-release
       - build-tauri
       - build-android-packages
+    if: needs.prepare-release.outputs.should_publish == 'true'
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Download release assets
+      - name: 下载发布产物
         uses: actions/download-artifact@v4
         with:
           pattern: release-*
           path: release-assets
           merge-multiple: true
 
-      - name: Prepare release notes
-        shell: bash
-        run: |
-          tag_commit="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
-          git log -1 --pretty=%B "$tag_commit" > release-notes.md
-
-      - name: Generate update manifest
+      - name: 准备发布说明
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ needs.prepare-release.outputs.tag }}"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            tag_commit="$(git rev-list -n 1 "$tag")"
+            git log -1 --pretty=%B "$tag_commit" > release-notes.md
+          else
+            {
+              echo "KokoroMemo ${{ needs.prepare-release.outputs.version }}"
+              echo
+              echo "手动工作流构建，来源提交：${GITHUB_SHA}"
+            } > release-notes.md
+          fi
+
+      - name: 生成更新清单
+        shell: bash
+        env:
+          KOKOROMEMO_RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+          KOKOROMEMO_RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: |
+          set -euo pipefail
           repo="${GITHUB_REPOSITORY}"
           python - <<'PY'
           import hashlib
@@ -317,8 +391,8 @@ jobs:
           import os
           from pathlib import Path
 
-          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
-          tag = os.environ["GITHUB_REF_NAME"]
+          version = os.environ["KOKOROMEMO_RELEASE_VERSION"]
+          tag = os.environ["KOKOROMEMO_RELEASE_TAG"]
           repo = os.environ["GITHUB_REPOSITORY"]
           asset_dir = Path("release-assets")
           github_base = f"https://github.com/{repo}/releases/download/{tag}"
@@ -379,48 +453,58 @@ jobs:
           asset_dir.joinpath("latest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           PY
 
-      - name: Publish GitHub release
+      - name: 发布 GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ needs.prepare-release.outputs.version }}"
+          tag="${{ needs.prepare-release.outputs.tag }}"
           title="KokoroMemo $version"
           ls -la release-assets
 
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
-            gh release edit "$GITHUB_REF_NAME" --title "$title" --notes-file release-notes.md --draft=false --latest
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber
+            gh release edit "$tag" --title "$title" --notes-file release-notes.md --draft=false --latest
           else
-            gh release create "$GITHUB_REF_NAME" release-assets/* --title "$title" --notes-file release-notes.md --latest
+            gh release create "$tag" release-assets/* --title "$title" --notes-file release-notes.md --target "$GITHUB_SHA" --latest
           fi
 
   build-android-packages:
-    needs: release-preflight
+    name: 构建 Android 单包
+    needs:
+      - prepare-release
+      - release-preflight
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: 设置 Node 环境
+        uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - uses: actions/setup-python@v5
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Build Web UI dist
+      - name: 写入构建版本
+        run: python .github/scripts/stamp_version.py --version ${{ needs.prepare-release.outputs.version }}
+
+      - name: 构建 Web UI
         working-directory: gui
         run: |
           npm install
           npm run build
 
-      - name: Prepare Android packages
+      - name: 准备 Android 单包
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ needs.prepare-release.outputs.version }}"
           asset_dir="release-assets"
           mkdir -p "$asset_dir"
 
@@ -462,7 +546,7 @@ jobs:
           make_package "Termux" "termux" "termux-aarch64"
           make_package "ProotUbuntu" "proot-ubuntu" "proot-ubuntu-aarch64"
 
-      - name: Upload Android release artifacts
+      - name: 上传 Android 发布产物
         uses: actions/upload-artifact@v4
         with:
           name: release-Android-aarch64

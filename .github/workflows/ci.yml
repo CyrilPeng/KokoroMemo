@@ -28,10 +28,10 @@ jobs:
         run: pip install ruff
 
       - name: 运行 Ruff 静态检查
-        run: ruff check app/ tests/ benchmarks/
+        run: ruff check app/ tests/ benchmarks/ .github/scripts/
 
       - name: 运行 Ruff 格式检查
-        run: ruff format --check app/ tests/ benchmarks/
+        run: ruff format --check app/ tests/ benchmarks/ .github/scripts/
 
   backend:
     name: 后端测试（pytest）

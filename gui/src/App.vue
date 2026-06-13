@@ -87,12 +87,20 @@ const menuOptions = computed<MenuOption[]>(() => [
   { label: t('nav.characters'), key: '/characters', icon: renderIcon(PersonOutline) },
   { label: t('nav.state'), key: '/state', icon: renderIcon(ReaderOutline) },
   { label: t('nav.inbox'), key: '/inbox', icon: renderIcon(MailOutline) },
-  { label: t('nav.memories'), key: '/memories', icon: renderIcon(BulbOutline) },
-  { label: t('nav.conversations'), key: '/conversations', icon: renderIcon(ChatbubblesOutline) },
+  {
+    label: t('nav.management'),
+    key: 'management',
+    icon: renderIcon(BulbOutline),
+    children: [
+      { label: t('nav.memories'), key: '/memories', icon: renderIcon(BulbOutline) },
+      { label: t('nav.conversations'), key: '/conversations', icon: renderIcon(ChatbubblesOutline) },
+    ],
+  },
   { label: t('nav.settings'), key: '/settings', icon: renderIcon(SettingsOutline) },
 ])
 
 function handleMenuUpdate(key: string) {
+  if (!key.startsWith('/')) return
   if (key !== route.path) router.push(key)
 }
 

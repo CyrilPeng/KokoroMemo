@@ -49,6 +49,7 @@ export default {
     memoryGraph: 'Memory Graph (Experimental)',
     inbox: 'Memory Review',
     conversations: 'Conversations',
+    management: 'Management',
     state: 'State Board',
     characters: 'Role Center',
     settings: 'Settings',

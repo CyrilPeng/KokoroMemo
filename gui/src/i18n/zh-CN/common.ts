@@ -49,6 +49,7 @@ export default {
     memoryGraph: '记忆图谱（实验）',
     inbox: '记忆审核',
     conversations: '会话管理',
+    management: '辅助管理',
     state: '状态板',
     characters: '角色中心',
     settings: '设置',

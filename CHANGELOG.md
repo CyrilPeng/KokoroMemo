@@ -14,6 +14,7 @@
 - **AIRP 质量门禁强化** - CI 将 `benchmarks/` 纳入 Ruff 检查，上传 smoke benchmark 报告；Release workflow 在打包前运行完整 AIRP benchmark 并上传发布基准报告。
 - **发布构建更灵活** - Release workflow 支持手动输入任意版本号构建产物，并可选择是否发布到 GitHub Release；构建过程会统一写入后端、前端和 Tauri 版本。
 - **版本一致性检查** - CI 会校验后端、前端、Tauri 和 Cargo 元数据版本一致，避免发布产物内外版本漂移。
+- **发布 dry-run 文档** - 新增手动构建、dry-run 验收、手动发布和 tag 发布流程说明。
 
 ### 修复
 

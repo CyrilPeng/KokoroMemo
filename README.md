@@ -384,6 +384,7 @@ KokoroMemo 使用 `user_id`、`character_id`、`conversation_id` 和作用域隔
 
 - [DESIGN.md](DESIGN.md)：架构、数据结构、状态板 v2、请求流程、检索门控和发布设计。
 - [CHANGELOG.md](CHANGELOG.md)：版本更新记录。
+- [docs/airp-first-run-acceptance.md](docs/airp-first-run-acceptance.md)：首次 AIRP 接入、记忆审核、召回解释和状态板成功路径验收清单。
 - [docs/release-workflow.md](docs/release-workflow.md)：手动构建、dry-run、tag 发布和版本一致性检查流程。
 - [examples/airp-demo](examples/airp-demo)：三段 AIRP 演示流程，展示角色不忘、多角色不串和状态板维护剧情。
 - [benchmarks](benchmarks)：AIRP 记忆召回、隔离和状态连续性的确定性 benchmark。

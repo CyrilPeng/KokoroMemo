@@ -5,6 +5,30 @@ KokoroMemo 的发布工作流支持两种入口：
 - 推送 `v*` tag：自动构建所有平台产物，并发布到 GitHub Release。
 - 手动触发 `构建与发布` workflow：输入任意版本号构建产物，默认只上传 artifacts，不发布 Release。
 
+## 发布前本地检查
+
+正式发版或手动 dry-run 前，建议先在本地跑一轮和 CI 口径一致的检查：
+
+```bash
+uvx ruff check app/ tests/ benchmarks/ .github/scripts/
+uvx ruff format --check app/ tests/ benchmarks/ .github/scripts/
+python .github/scripts/stamp_version.py --check
+python -m pytest tests/test_ux_api.py -q
+python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/first-run
+```
+
+其中 `tests/test_ux_api.py` 会覆盖 `/admin/airp-first-run-status` 的空状态和完整闭环响应，确保仪表盘验收面板、CLI 或后续自动化都使用同一套 AIRP 首次成功契约。
+
+如果已经启动本地服务，也可以直接读取接口确认下一步：
+
+```bash
+curl http://127.0.0.1:14514/admin/airp-first-run-status
+```
+
+如果启用了 Admin Token，请按当前管理 API 的鉴权方式携带 token。
+
+当接口返回 `ready: true` 后，再运行完整 AIRP benchmark 或触发发布工作流。
+
 ## 手动 dry-run
 
 适合在正式发版前验证 CI 链路、产物命名和版本写入。

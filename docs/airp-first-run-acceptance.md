@@ -121,6 +121,57 @@ X-Conversation-Id: first_run_conversation
 - 至少确认 1 次状态板记录当前场景或任务。
 - 多角色或多会话测试中没有明显串记忆。
 
+## 官方验收接口
+
+仪表盘中的“AIRP 首次成功验收”面板使用后端接口作为唯一判定来源：
+
+```http
+GET /admin/airp-first-run-status
+```
+
+这个接口用于把首次成功路径转成稳定契约，供 GUI、测试、CLI 或发布检查复用。它属于 admin API；如果已配置 `admin_token`，请求需要携带对应鉴权信息。返回字段：
+
+- `ready`：核心 6 步是否全部完成。
+- `progress`：核心步骤完成数、总数和百分比。
+- `steps`：每一步的状态、入口和计数。
+- `next_step`：第一项未完成的核心步骤；全部完成时为 `null`。
+- `summary`：便于排查的原始计数，例如角色数、活跃会话数、候选记忆数、已批准记忆数和状态行数。
+
+核心步骤含义：
+
+| key | done 判定 | 入口 |
+| --- | --- | --- |
+| `config` | `config-status.health_score >= 100` | `/settings` |
+| `role` | 已识别角色，或最近活跃会话带有 `character_id` | `/characters` |
+| `conversation` | 至少存在 1 个活跃会话 | `/conversations` 或 `/settings` |
+| `candidate` | 已有待审核候选，或已有批准记忆 | `/inbox` |
+| `approved` | 至少已有 1 条已批准长期记忆 | `/inbox` 或 `/memories` |
+| `state` | 最近活跃会话至少有 1 行 active 状态表格行 | `/state` |
+
+`benchmark` 是发布检查步骤，不计入核心完成数。只有核心 6 步全部完成时，`benchmark.done` 才会为 `true`，并返回建议命令：
+
+```bash
+python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/first-run
+```
+
+响应片段示例：
+
+```json
+{
+  "status": "ok",
+  "ready": false,
+  "progress": { "done": 3, "total": 6, "percentage": 50 },
+  "next_step": {
+    "key": "candidate",
+    "done": false,
+    "optional": false,
+    "target": "/inbox",
+    "action_key": "openInbox",
+    "count": 0
+  }
+}
+```
+
 ## 对应自动检查
 
 首次体验验收后，建议运行：

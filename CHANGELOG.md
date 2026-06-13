@@ -13,6 +13,7 @@
 - **产品定位收窄到 AIRP 角色连续性** - README、仪表盘、主导航、设置向导、记忆审核、状态板连续性摘要和检索解释面板聚焦“不忘、不串、不乱记”。
 - **AIRP 质量门禁强化** - CI 将 `benchmarks/` 纳入 Ruff 检查，上传 smoke benchmark 报告；Release workflow 在打包前运行完整 AIRP benchmark 并上传发布基准报告。
 - **发布构建更灵活** - Release workflow 支持手动输入任意版本号构建产物，并可选择是否发布到 GitHub Release；构建过程会统一写入后端、前端和 Tauri 版本。
+- **版本一致性检查** - CI 会校验后端、前端、Tauri 和 Cargo 元数据版本一致，避免发布产物内外版本漂移。
 
 ### 修复
 

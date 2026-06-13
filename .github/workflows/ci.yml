@@ -24,6 +24,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: 检查版本一致性
+        run: python .github/scripts/stamp_version.py --check
+
       - name: 安装 Ruff
         run: pip install ruff
 

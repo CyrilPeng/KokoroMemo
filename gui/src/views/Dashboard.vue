@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { NCard, NGrid, NGridItem, NTag, NSpin, NSpace, NButton, NStatistic } from 'naive-ui'
+import { NButton, NCard, NGrid, NGridItem, NIcon, NProgress, NSpace, NSpin, NStatistic, NTag } from 'naive-ui'
+import { RefreshOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 import { apiFetch, getServerUrl, setServerUrl } from '../api'
 import HelpModal from '../components/HelpModal.vue'
@@ -25,8 +26,20 @@ const inboxPending = computed(() => stats.value?.inbox_pending || 0)
 const inboxDiscarded = computed(() => stats.value?.inbox_discarded || 0)
 const recentConversations = ref<any[]>([])
 const latestConfig = ref<any | null>(null)
+const configStatus = ref<any | null>(null)
+const characters = ref<any[]>([])
 const continuityLoading = ref(false)
+const firstRunLoading = ref(false)
 type TagType = 'default' | 'error' | 'success' | 'warning' | 'info' | 'primary'
+type FirstRunItem = {
+  key: string
+  label: string
+  hint: string
+  done: boolean
+  target?: string
+  action?: string
+  optional?: boolean
+}
 
 const latestConversation = computed(() => recentConversations.value[0] || null)
 const latestConversationName = computed(() => {
@@ -65,6 +78,112 @@ const stateBoardSummary = computed(() => {
   const policy = mappedLabel('statePolicies', latestConfig.value.state_update_policy)
   return t('dashboard.continuity.stateSummary', { policy, count: rowCount })
 })
+
+const requiredConfigReady = computed(() => {
+  if (configStatus.value) return Number(configStatus.value.health_score || 0) >= 100
+  return Boolean(health.value?.llm?.model)
+})
+const roleReady = computed(() => characters.value.length > 0 || recentConversations.value.some((item) => item.character_id))
+const conversationReady = computed(() => recentConversations.value.length > 0)
+const candidateReady = computed(() => inboxPending.value > 0 || totalApproved.value > 0)
+const approvedReady = computed(() => totalApproved.value > 0)
+const stateRowCount = computed(() => Number(latestConfig.value?.state_row_count ?? latestConfig.value?.state_item_count ?? 0))
+const stateReady = computed(() => stateRowCount.value > 0)
+const firstRunCoreReady = computed(() => (
+  requiredConfigReady.value
+  && roleReady.value
+  && conversationReady.value
+  && candidateReady.value
+  && approvedReady.value
+  && stateReady.value
+))
+
+const firstRunItems = computed<FirstRunItem[]>(() => [
+  {
+    key: 'config',
+    label: t('dashboard.firstRun.steps.config'),
+    hint: requiredConfigReady.value
+      ? t('dashboard.firstRun.hints.configReady')
+      : t('dashboard.firstRun.hints.configPending'),
+    done: requiredConfigReady.value,
+    target: '/settings',
+    action: t('dashboard.firstRun.actions.openSettings'),
+  },
+  {
+    key: 'role',
+    label: t('dashboard.firstRun.steps.role'),
+    hint: roleReady.value
+      ? t('dashboard.firstRun.hints.roleReady', { count: characters.value.length || 1 })
+      : t('dashboard.firstRun.hints.rolePending'),
+    done: roleReady.value,
+    target: '/characters',
+    action: t('dashboard.firstRun.actions.openRoles'),
+  },
+  {
+    key: 'conversation',
+    label: t('dashboard.firstRun.steps.conversation'),
+    hint: conversationReady.value
+      ? t('dashboard.firstRun.hints.conversationReady', { count: recentConversations.value.length })
+      : t('dashboard.firstRun.hints.conversationPending'),
+    done: conversationReady.value,
+    target: conversationReady.value ? '/conversations' : '/settings',
+    action: conversationReady.value
+      ? t('dashboard.firstRun.actions.openConversations')
+      : t('dashboard.firstRun.actions.openSettings'),
+  },
+  {
+    key: 'candidate',
+    label: t('dashboard.firstRun.steps.candidate'),
+    hint: candidateReady.value
+      ? t('dashboard.firstRun.hints.candidateReady', { count: inboxPending.value })
+      : t('dashboard.firstRun.hints.candidatePending'),
+    done: candidateReady.value,
+    target: '/inbox',
+    action: t('dashboard.firstRun.actions.openInbox'),
+  },
+  {
+    key: 'approved',
+    label: t('dashboard.firstRun.steps.approved'),
+    hint: approvedReady.value
+      ? t('dashboard.firstRun.hints.approvedReady', { count: totalApproved.value })
+      : t('dashboard.firstRun.hints.approvedPending'),
+    done: approvedReady.value,
+    target: inboxPending.value > 0 ? '/inbox' : '/memories',
+    action: inboxPending.value > 0
+      ? t('dashboard.firstRun.actions.openInbox')
+      : t('dashboard.firstRun.actions.openMemories'),
+  },
+  {
+    key: 'state',
+    label: t('dashboard.firstRun.steps.state'),
+    hint: stateReady.value
+      ? t('dashboard.firstRun.hints.stateReady', { count: stateRowCount.value })
+      : t('dashboard.firstRun.hints.statePending'),
+    done: stateReady.value,
+    target: '/state',
+    action: t('dashboard.firstRun.actions.openState'),
+  },
+  {
+    key: 'benchmark',
+    label: t('dashboard.firstRun.steps.benchmark'),
+    hint: firstRunCoreReady.value
+      ? t('dashboard.firstRun.hints.benchmarkReady')
+      : t('dashboard.firstRun.hints.benchmarkPending'),
+    done: firstRunCoreReady.value,
+    optional: true,
+  },
+])
+const firstRunRequiredItems = computed(() => firstRunItems.value.filter((item) => !item.optional))
+const firstRunReadyCount = computed(() => firstRunRequiredItems.value.filter((item) => item.done).length)
+const firstRunProgress = computed(() => {
+  const total = firstRunRequiredItems.value.length || 1
+  return Math.round((firstRunReadyCount.value / total) * 100)
+})
+const firstRunTone = computed<{ tagType: TagType; label: string }>(() => (
+  firstRunCoreReady.value
+    ? { tagType: 'success', label: t('dashboard.firstRun.ready') }
+    : { tagType: 'warning', label: t('dashboard.firstRun.inProgress') }
+))
 
 const dashboardHelpSections = computed(() => [
   { title: t('dashboard.help.intro'), body: '' },
@@ -128,6 +247,27 @@ async function fetchActionItems() {
   } catch {}
 }
 
+async function fetchConfigStatus() {
+  try {
+    const resp = await apiFetch('/admin/config-status', { timeoutMs: 5000 })
+    if (resp.ok) configStatus.value = await resp.json()
+  } catch {
+    configStatus.value = null
+  }
+}
+
+async function fetchCharacters() {
+  try {
+    const resp = await apiFetch('/admin/characters', { timeoutMs: 5000 })
+    if (resp.ok) {
+      const data = await resp.json()
+      characters.value = data.items || []
+    }
+  } catch {
+    characters.value = []
+  }
+}
+
 async function fetchContinuityOverview() {
   continuityLoading.value = true
   latestConfig.value = null
@@ -153,12 +293,31 @@ function openStateBoard(conversationId?: string | null) {
   router.push('/state')
 }
 
+async function refreshFirstRunStatus() {
+  firstRunLoading.value = true
+  await Promise.allSettled([
+    fetchHealth(),
+    fetchStats(),
+    fetchActionItems(),
+    fetchConfigStatus(),
+    fetchCharacters(),
+    fetchContinuityOverview(),
+  ])
+  firstRunLoading.value = false
+}
+
+function openFirstRunTarget(item: FirstRunItem) {
+  if (!item.target) return
+  if (item.target === '/state') {
+    openStateBoard(latestConversation.value?.conversation_id)
+    return
+  }
+  router.push(item.target)
+}
+
 onMounted(() => {
   window.setTimeout(() => {
-    fetchHealth()
-    fetchStats()
-    fetchActionItems()
-    fetchContinuityOverview()
+    refreshFirstRunStatus()
   }, 0)
 })
 
@@ -167,6 +326,7 @@ function onWsEvent(e: any) {
   if (data?.event === 'inbox_new' || data?.event === 'card_approved') {
     fetchStats()
     fetchActionItems()
+    fetchCharacters()
     fetchContinuityOverview()
   }
 }
@@ -181,6 +341,58 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
     <NSpin :show="loading">
       <div v-if="health">
         <ConfigHealthCard style="margin-bottom: 16px;" />
+
+        <NCard class="first-run-card">
+          <template #header>
+            <div class="section-title-row">
+              <span>{{ t('dashboard.firstRun.title') }}</span>
+              <NTag :type="firstRunTone.tagType" size="small" round>
+                {{ firstRunTone.label }}
+              </NTag>
+            </div>
+          </template>
+          <template #header-extra>
+            <NButton size="small" quaternary :loading="firstRunLoading" @click="refreshFirstRunStatus">
+              <template #icon><NIcon :component="RefreshOutline" /></template>
+              {{ $t('common.refresh') }}
+            </NButton>
+          </template>
+          <div class="first-run-summary">
+            <NProgress
+              type="line"
+              :percentage="firstRunProgress"
+              :height="8"
+              :border-radius="8"
+              :fill-border-radius="8"
+              :indicator-placement="'inside'"
+              :color="firstRunCoreReady ? '#4ade80' : '#facc15'"
+              rail-color="#27272a"
+            />
+            <span>{{ t('dashboard.firstRun.progress', { done: firstRunReadyCount, total: firstRunRequiredItems.length }) }}</span>
+          </div>
+          <div class="first-run-grid">
+            <button
+              v-for="item in firstRunItems"
+              :key="item.key"
+              class="first-run-step"
+              :class="{ done: item.done, optional: item.optional }"
+              :disabled="!item.target"
+              @click="openFirstRunTarget(item)"
+            >
+              <span class="step-status" aria-hidden="true" />
+              <span class="step-copy">
+                <span class="step-title-row">
+                  <span class="step-title">{{ item.label }}</span>
+                  <NTag :type="item.done ? 'success' : item.optional ? 'info' : 'warning'" size="tiny" round>
+                    {{ item.done ? t('dashboard.firstRun.done') : item.optional ? t('dashboard.firstRun.optional') : t('dashboard.firstRun.pending') }}
+                  </NTag>
+                </span>
+                <span class="step-hint">{{ item.hint }}</span>
+                <span v-if="item.action" class="step-action">{{ item.action }}</span>
+              </span>
+            </button>
+          </div>
+        </NCard>
 
         <!-- 角色连续性总览 -->
         <NCard class="continuity-card">
@@ -423,6 +635,116 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
   justify-content: center;
 }
 
+.first-run-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  margin-bottom: 16px;
+}
+
+.first-run-summary {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  color: #a1a1aa;
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+
+.first-run-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.first-run-step {
+  min-height: 116px;
+  width: 100%;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  background: #111113;
+  color: inherit;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.first-run-step:disabled {
+  cursor: default;
+}
+
+.first-run-step:not(:disabled):hover {
+  border-color: #3f3f46;
+  background: #17171a;
+}
+
+.first-run-step.done {
+  border-color: rgba(74, 222, 128, 0.38);
+}
+
+.first-run-step.optional {
+  background: #151518;
+}
+
+.step-status {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-top: 5px;
+  background: #facc15;
+  box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.12);
+}
+
+.first-run-step.done .step-status {
+  background: #4ade80;
+  box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.12);
+}
+
+.first-run-step.optional:not(.done) .step-status {
+  background: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12);
+}
+
+.step-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.step-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.step-title {
+  color: #f4f4f5;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.step-hint {
+  color: #a1a1aa;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.step-action {
+  color: #c4b5fd;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .continuity-card {
   background: #18181b;
   border: 1px solid #27272a;
@@ -477,5 +799,19 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .first-run-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .first-run-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .first-run-step {
+    min-height: 104px;
+  }
 }
 </style>

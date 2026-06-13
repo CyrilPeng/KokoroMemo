@@ -78,6 +78,7 @@ export default {
         statePending: 'Confirm current scene, relationship, or objective on the State Board.',
         benchmarkReady: 'The core path is ready for a local smoke benchmark run.',
         benchmarkPending: 'Run the local smoke benchmark after the core path is complete.',
+        unknown: 'Waiting for the backend acceptance status.',
       },
       actions: {
         openSettings: 'Settings',

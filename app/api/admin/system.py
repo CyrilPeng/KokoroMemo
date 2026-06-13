@@ -197,14 +197,7 @@ async def get_stats(request: Request):
     return result
 
 
-@router.get("/admin/config-status")
-async def get_config_status(request: Request):
-    """Return configuration completeness and readiness for dashboard."""
-    _require_admin(request)
-    from app.core.state import get_config
-
-    cfg = get_config()
-
+def _build_config_status(cfg) -> dict:
     def _check(base_url: str, api_key: str, model: str, *, enabled: bool = True) -> dict:
         if not enabled:
             return {"configured": False, "required": False, "reason": "disabled", "missing": []}
@@ -263,6 +256,184 @@ async def get_config_status(request: Request):
             "state_filler": {"name": "State Filler", "required": False, **sf_s},
         },
     }
+
+
+async def _count_memory_first_run_signals(db_path: str) -> dict[str, int]:
+    import aiosqlite
+
+    result = {"approved": 0, "pending": 0, "candidate_chain": 0}
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM memory_cards WHERE status = 'approved'")
+            row = await cursor.fetchone()
+            result["approved"] = int(row[0] if row else 0)
+
+            cursor = await db.execute("SELECT COUNT(*) FROM memory_inbox WHERE status = 'pending'")
+            row = await cursor.fetchone()
+            result["pending"] = int(row[0] if row else 0)
+    except Exception:  # noqa: S110
+        pass
+    result["candidate_chain"] = result["pending"] + result["approved"]
+    return result
+
+
+async def _count_active_state_rows(db_path: str, conversation_id: str | None) -> int:
+    if not conversation_id:
+        return 0
+    import aiosqlite
+
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM state_table_rows WHERE conversation_id = ? AND status = 'active'",
+                (conversation_id,),
+            )
+            row = await cursor.fetchone()
+            return int(row[0] if row else 0)
+    except Exception:  # noqa: S110
+        return 0
+
+
+def _airp_step(
+    key: str,
+    done: bool,
+    *,
+    target: str | None,
+    action_key: str | None,
+    count: int = 0,
+    optional: bool = False,
+    command: str | None = None,
+) -> dict:
+    data = {
+        "key": key,
+        "done": done,
+        "optional": optional,
+        "target": target,
+        "action_key": action_key,
+        "count": count,
+    }
+    if command:
+        data["command"] = command
+    return data
+
+
+@router.get("/admin/airp-first-run-status")
+async def get_airp_first_run_status(request: Request):
+    """Return the official first-run AIRP acceptance status for dashboard and clients."""
+    _require_admin(request)
+    from app.core.state import get_config
+    from app.storage.sqlite_app import list_characters, list_conversations
+
+    cfg = get_config()
+    config_status = _build_config_status(cfg)
+    config_ready = int(config_status.get("health_score") or 0) >= 100
+
+    characters: list[dict] = []
+    conversations: list[dict] = []
+    active_conversation_total = 0
+    try:
+        characters = await list_characters(cfg.storage.sqlite.app_db)
+        conversations, active_conversation_total = await list_conversations(
+            cfg.storage.sqlite.app_db,
+            limit=5,
+            offset=0,
+            status="active",
+        )
+    except Exception:  # noqa: S110
+        pass
+
+    role_ids = {item.get("character_id") for item in characters if item.get("character_id")}
+    role_ids.update(item.get("character_id") for item in conversations if item.get("character_id"))
+    role_count = len(role_ids)
+
+    latest_conversation = conversations[0] if conversations else None
+    latest_conversation_id = latest_conversation.get("conversation_id") if latest_conversation else None
+    memory_counts = await _count_memory_first_run_signals(cfg.storage.sqlite.memory_db)
+    state_row_count = await _count_active_state_rows(cfg.storage.sqlite.memory_db, latest_conversation_id)
+
+    conversation_ready = active_conversation_total > 0
+    role_ready = role_count > 0
+    candidate_ready = memory_counts["candidate_chain"] > 0
+    approved_ready = memory_counts["approved"] > 0
+    state_ready = state_row_count > 0
+
+    steps = [
+        _airp_step(
+            "config",
+            config_ready,
+            target="/settings",
+            action_key="openSettings",
+            count=int(config_status.get("health_score") or 0),
+        ),
+        _airp_step("role", role_ready, target="/characters", action_key="openRoles", count=role_count),
+        _airp_step(
+            "conversation",
+            conversation_ready,
+            target="/conversations" if conversation_ready else "/settings",
+            action_key="openConversations" if conversation_ready else "openSettings",
+            count=active_conversation_total,
+        ),
+        _airp_step(
+            "candidate",
+            candidate_ready,
+            target="/inbox",
+            action_key="openInbox",
+            count=memory_counts["candidate_chain"],
+        ),
+        _airp_step(
+            "approved",
+            approved_ready,
+            target="/inbox" if memory_counts["pending"] > 0 else "/memories",
+            action_key="openInbox" if memory_counts["pending"] > 0 else "openMemories",
+            count=memory_counts["approved"],
+        ),
+        _airp_step("state", state_ready, target="/state", action_key="openState", count=state_row_count),
+    ]
+    required_steps = [step for step in steps if not step["optional"]]
+    ready_count = sum(1 for step in required_steps if step["done"])
+    ready = ready_count == len(required_steps)
+    steps.append(
+        _airp_step(
+            "benchmark",
+            ready,
+            target=None,
+            action_key=None,
+            optional=True,
+            command="python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/first-run",
+        )
+    )
+    next_step = next((step for step in required_steps if not step["done"]), None)
+    total = len(required_steps) or 1
+
+    return {
+        "status": "ok",
+        "ready": ready,
+        "progress": {
+            "done": ready_count,
+            "total": len(required_steps),
+            "percentage": round((ready_count / total) * 100),
+        },
+        "steps": steps,
+        "next_step": next_step,
+        "summary": {
+            "config_health_score": config_status.get("health_score", 0),
+            "role_count": role_count,
+            "active_conversation_count": active_conversation_total,
+            "latest_conversation_id": latest_conversation_id,
+            "pending_memory_count": memory_counts["pending"],
+            "approved_memory_count": memory_counts["approved"],
+            "state_row_count": state_row_count,
+        },
+    }
+
+
+@router.get("/admin/config-status")
+async def get_config_status(request: Request):
+    """Return configuration completeness and readiness for dashboard."""
+    _require_admin(request)
+    from app.core.state import get_config
+
+    return _build_config_status(get_config())
 
 
 @router.get("/admin/action-items")

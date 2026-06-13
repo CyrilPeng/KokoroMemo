@@ -26,8 +26,7 @@ const inboxPending = computed(() => stats.value?.inbox_pending || 0)
 const inboxDiscarded = computed(() => stats.value?.inbox_discarded || 0)
 const recentConversations = ref<any[]>([])
 const latestConfig = ref<any | null>(null)
-const configStatus = ref<any | null>(null)
-const characters = ref<any[]>([])
+const firstRunStatus = ref<any | null>(null)
 const continuityLoading = ref(false)
 const firstRunLoading = ref(false)
 type TagType = 'default' | 'error' | 'success' | 'warning' | 'info' | 'primary'
@@ -39,6 +38,14 @@ type FirstRunItem = {
   target?: string
   action?: string
   optional?: boolean
+}
+type FirstRunStep = {
+  key: string
+  done: boolean
+  optional?: boolean
+  target?: string | null
+  action_key?: string | null
+  count?: number
 }
 
 const latestConversation = computed(() => recentConversations.value[0] || null)
@@ -79,106 +86,45 @@ const stateBoardSummary = computed(() => {
   return t('dashboard.continuity.stateSummary', { policy, count: rowCount })
 })
 
-const requiredConfigReady = computed(() => {
-  if (configStatus.value) return Number(configStatus.value.health_score || 0) >= 100
-  return Boolean(health.value?.llm?.model)
-})
-const roleReady = computed(() => characters.value.length > 0 || recentConversations.value.some((item) => item.character_id))
-const conversationReady = computed(() => recentConversations.value.length > 0)
-const candidateReady = computed(() => inboxPending.value > 0 || totalApproved.value > 0)
-const approvedReady = computed(() => totalApproved.value > 0)
-const stateRowCount = computed(() => Number(latestConfig.value?.state_row_count ?? latestConfig.value?.state_item_count ?? 0))
-const stateReady = computed(() => stateRowCount.value > 0)
-const firstRunCoreReady = computed(() => (
-  requiredConfigReady.value
-  && roleReady.value
-  && conversationReady.value
-  && candidateReady.value
-  && approvedReady.value
-  && stateReady.value
+const fallbackFirstRunSteps = computed<FirstRunStep[]>(() => [
+  { key: 'config', done: false, target: '/settings', action_key: 'openSettings', count: 0 },
+  { key: 'role', done: false, target: '/characters', action_key: 'openRoles', count: 0 },
+  { key: 'conversation', done: false, target: '/settings', action_key: 'openSettings', count: 0 },
+  { key: 'candidate', done: false, target: '/inbox', action_key: 'openInbox', count: 0 },
+  { key: 'approved', done: false, target: '/memories', action_key: 'openMemories', count: 0 },
+  { key: 'state', done: false, target: '/state', action_key: 'openState', count: 0 },
+  { key: 'benchmark', done: false, optional: true, count: 0 },
+])
+const rawFirstRunSteps = computed<FirstRunStep[]>(() => (
+  firstRunStatus.value?.steps?.length ? firstRunStatus.value.steps : fallbackFirstRunSteps.value
 ))
 
-const firstRunItems = computed<FirstRunItem[]>(() => [
-  {
-    key: 'config',
-    label: t('dashboard.firstRun.steps.config'),
-    hint: requiredConfigReady.value
-      ? t('dashboard.firstRun.hints.configReady')
-      : t('dashboard.firstRun.hints.configPending'),
-    done: requiredConfigReady.value,
-    target: '/settings',
-    action: t('dashboard.firstRun.actions.openSettings'),
-  },
-  {
-    key: 'role',
-    label: t('dashboard.firstRun.steps.role'),
-    hint: roleReady.value
-      ? t('dashboard.firstRun.hints.roleReady', { count: characters.value.length || 1 })
-      : t('dashboard.firstRun.hints.rolePending'),
-    done: roleReady.value,
-    target: '/characters',
-    action: t('dashboard.firstRun.actions.openRoles'),
-  },
-  {
-    key: 'conversation',
-    label: t('dashboard.firstRun.steps.conversation'),
-    hint: conversationReady.value
-      ? t('dashboard.firstRun.hints.conversationReady', { count: recentConversations.value.length })
-      : t('dashboard.firstRun.hints.conversationPending'),
-    done: conversationReady.value,
-    target: conversationReady.value ? '/conversations' : '/settings',
-    action: conversationReady.value
-      ? t('dashboard.firstRun.actions.openConversations')
-      : t('dashboard.firstRun.actions.openSettings'),
-  },
-  {
-    key: 'candidate',
-    label: t('dashboard.firstRun.steps.candidate'),
-    hint: candidateReady.value
-      ? t('dashboard.firstRun.hints.candidateReady', { count: inboxPending.value })
-      : t('dashboard.firstRun.hints.candidatePending'),
-    done: candidateReady.value,
-    target: '/inbox',
-    action: t('dashboard.firstRun.actions.openInbox'),
-  },
-  {
-    key: 'approved',
-    label: t('dashboard.firstRun.steps.approved'),
-    hint: approvedReady.value
-      ? t('dashboard.firstRun.hints.approvedReady', { count: totalApproved.value })
-      : t('dashboard.firstRun.hints.approvedPending'),
-    done: approvedReady.value,
-    target: inboxPending.value > 0 ? '/inbox' : '/memories',
-    action: inboxPending.value > 0
-      ? t('dashboard.firstRun.actions.openInbox')
-      : t('dashboard.firstRun.actions.openMemories'),
-  },
-  {
-    key: 'state',
-    label: t('dashboard.firstRun.steps.state'),
-    hint: stateReady.value
-      ? t('dashboard.firstRun.hints.stateReady', { count: stateRowCount.value })
-      : t('dashboard.firstRun.hints.statePending'),
-    done: stateReady.value,
-    target: '/state',
-    action: t('dashboard.firstRun.actions.openState'),
-  },
-  {
-    key: 'benchmark',
-    label: t('dashboard.firstRun.steps.benchmark'),
-    hint: firstRunCoreReady.value
-      ? t('dashboard.firstRun.hints.benchmarkReady')
-      : t('dashboard.firstRun.hints.benchmarkPending'),
-    done: firstRunCoreReady.value,
-    optional: true,
-  },
-])
-const firstRunRequiredItems = computed(() => firstRunItems.value.filter((item) => !item.optional))
-const firstRunReadyCount = computed(() => firstRunRequiredItems.value.filter((item) => item.done).length)
-const firstRunProgress = computed(() => {
-  const total = firstRunRequiredItems.value.length || 1
-  return Math.round((firstRunReadyCount.value / total) * 100)
-})
+function firstRunHint(step: FirstRunStep) {
+  const suffix = step.done ? 'Ready' : 'Pending'
+  const key = `dashboard.firstRun.hints.${step.key}${suffix}`
+  const translated = t(key, { count: step.count ?? 0 })
+  return translated === key ? t('dashboard.firstRun.hints.unknown') : translated
+}
+
+const firstRunItems = computed<FirstRunItem[]>(() => rawFirstRunSteps.value.map((step) => {
+  const labelKey = `dashboard.firstRun.steps.${step.key}`
+  const actionKey = step.action_key ? `dashboard.firstRun.actions.${step.action_key}` : ''
+  const label = t(labelKey)
+  const action = actionKey ? t(actionKey) : ''
+  return {
+    key: step.key,
+    label: label === labelKey ? step.key : label,
+    hint: firstRunHint(step),
+    done: step.done,
+    optional: Boolean(step.optional),
+    target: step.target || undefined,
+    action: action && action !== actionKey ? action : undefined,
+  }
+}))
+const firstRunRequiredTotal = computed(() => firstRunStatus.value?.progress?.total || firstRunItems.value.filter((item) => !item.optional).length)
+const firstRunReadyCount = computed(() => firstRunStatus.value?.progress?.done || firstRunItems.value.filter((item) => !item.optional && item.done).length)
+const firstRunProgress = computed(() => firstRunStatus.value?.progress?.percentage || 0)
+const firstRunCoreReady = computed(() => Boolean(firstRunStatus.value?.ready))
 const firstRunTone = computed<{ tagType: TagType; label: string }>(() => (
   firstRunCoreReady.value
     ? { tagType: 'success', label: t('dashboard.firstRun.ready') }
@@ -247,24 +193,12 @@ async function fetchActionItems() {
   } catch {}
 }
 
-async function fetchConfigStatus() {
+async function fetchFirstRunStatus() {
   try {
-    const resp = await apiFetch('/admin/config-status', { timeoutMs: 5000 })
-    if (resp.ok) configStatus.value = await resp.json()
+    const resp = await apiFetch('/admin/airp-first-run-status', { timeoutMs: 5000 })
+    if (resp.ok) firstRunStatus.value = await resp.json()
   } catch {
-    configStatus.value = null
-  }
-}
-
-async function fetchCharacters() {
-  try {
-    const resp = await apiFetch('/admin/characters', { timeoutMs: 5000 })
-    if (resp.ok) {
-      const data = await resp.json()
-      characters.value = data.items || []
-    }
-  } catch {
-    characters.value = []
+    firstRunStatus.value = null
   }
 }
 
@@ -299,8 +233,7 @@ async function refreshFirstRunStatus() {
     fetchHealth(),
     fetchStats(),
     fetchActionItems(),
-    fetchConfigStatus(),
-    fetchCharacters(),
+    fetchFirstRunStatus(),
     fetchContinuityOverview(),
   ])
   firstRunLoading.value = false
@@ -326,7 +259,7 @@ function onWsEvent(e: any) {
   if (data?.event === 'inbox_new' || data?.event === 'card_approved') {
     fetchStats()
     fetchActionItems()
-    fetchCharacters()
+    fetchFirstRunStatus()
     fetchContinuityOverview()
   }
 }
@@ -368,7 +301,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
               :color="firstRunCoreReady ? '#4ade80' : '#facc15'"
               rail-color="#27272a"
             />
-            <span>{{ t('dashboard.firstRun.progress', { done: firstRunReadyCount, total: firstRunRequiredItems.length }) }}</span>
+            <span>{{ t('dashboard.firstRun.progress', { done: firstRunReadyCount, total: firstRunRequiredTotal }) }}</span>
           </div>
           <div class="first-run-grid">
             <button

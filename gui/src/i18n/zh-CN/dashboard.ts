@@ -78,6 +78,7 @@ export default {
         statePending: '在状态板确认当前场景、关系或任务。',
         benchmarkReady: '核心路径已具备运行 smoke benchmark 的条件。',
         benchmarkPending: '核心路径完成后再运行本地 smoke benchmark。',
+        unknown: '等待后端返回验收状态。',
       },
       actions: {
         openSettings: '去设置',

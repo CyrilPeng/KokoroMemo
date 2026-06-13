@@ -50,10 +50,7 @@ def summarize(results: list[CaseResult]) -> dict:
     total = len(results)
     passed = sum(1 for result in results if result.passed)
     expected_total = sum(len(result.expected_card_ids) for result in results)
-    recalled_total = sum(
-        len(set(result.expected_card_ids) & set(result.injected_card_ids))
-        for result in results
-    )
+    recalled_total = sum(len(set(result.expected_card_ids) & set(result.injected_card_ids)) for result in results)
     forbidden_total = sum(len(result.forbidden_card_ids) for result in results)
     leaked_total = sum(len(result.leaked_card_ids) for result in results)
     return {
@@ -62,8 +59,5 @@ def summarize(results: list[CaseResult]) -> dict:
         "failed_cases": total - passed,
         "recall_accuracy": recalled_total / expected_total if expected_total else 1.0,
         "false_positive_rate": leaked_total / forbidden_total if forbidden_total else 0.0,
-        "avg_injected_tokens": (
-            sum(result.avg_injected_tokens for result in results) / total if total else 0.0
-        ),
+        "avg_injected_tokens": (sum(result.avg_injected_tokens for result in results) / total if total else 0.0),
     }
-

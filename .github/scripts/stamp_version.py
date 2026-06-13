@@ -8,7 +8,6 @@ import re
 import tomllib
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
@@ -39,7 +38,7 @@ def read_package_lock_versions(path: Path) -> list[tuple[str, str]]:
     versions = [("gui/package-lock.json", data["version"])]
     root_package = data.get("packages", {}).get("")
     if isinstance(root_package, dict):
-        versions.append(("gui/package-lock.json packages[\"\"]", root_package["version"]))
+        versions.append(('gui/package-lock.json packages[""]', root_package["version"]))
     return versions
 
 
@@ -84,8 +83,7 @@ def stamp_pyproject(version: str) -> None:
 def stamp_backend_fallback(version: str) -> None:
     write_text(
         ROOT / "app" / "_version.py",
-        '"""Build-time version fallback for packaged binaries."""\n\n'
-        f'__version__ = "{version}"\n',
+        f'"""Build-time version fallback for packaged binaries."""\n\n__version__ = "{version}"\n',
     )
 
 

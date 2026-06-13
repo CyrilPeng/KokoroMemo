@@ -27,7 +27,6 @@ from app.storage.sqlite_cards import (
 )
 from benchmarks.metrics import evaluate_case, summarize
 
-
 SUMMARY_METRICS = (
     "total_cases",
     "passed_cases",
@@ -219,16 +218,18 @@ async def _run_case(case_path: Path, work_root: Path):
             confidence=card.get("confidence", 0.9),
             status="approved",
         )
-        vector_rows.append({
-            "memory_id": card["card_id"],
-            "library_id": card.get("library_id", "lib_default"),
-            "user_id": card.get("user_id", context["user_id"]),
-            "character_id": card.get("character_id"),
-            "conversation_id": card.get("conversation_id"),
-            "scope": card["scope"],
-            "status": "active",
-            "_distance": card.get("distance", 0.1),
-        })
+        vector_rows.append(
+            {
+                "memory_id": card["card_id"],
+                "library_id": card.get("library_id", "lib_default"),
+                "user_id": card.get("user_id", context["user_id"]),
+                "character_id": card.get("character_id"),
+                "conversation_id": card.get("conversation_id"),
+                "scope": card["scope"],
+                "status": "active",
+                "_distance": card.get("distance", 0.1),
+            }
+        )
 
     query = RetrievalQuery(
         query_text=case["query"],

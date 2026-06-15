@@ -13,11 +13,13 @@ KokoroMemo 的发布工作流支持两种入口：
 uvx ruff check app/ tests/ benchmarks/ .github/scripts/
 uvx ruff format --check app/ tests/ benchmarks/ .github/scripts/
 python .github/scripts/stamp_version.py --check
-python -m pytest tests/test_ux_api.py -q
-python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/first-run
+uv run --extra dev python -m pytest tests/test_ux_api.py -q -k "airp_first_run_status"
+uv run --extra dev python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/first-run
 ```
 
 其中 `tests/test_ux_api.py` 会覆盖 `/admin/airp-first-run-status` 的空状态和完整闭环响应，确保仪表盘验收面板、CLI 或后续自动化都使用同一套 AIRP 首次成功契约。
+
+CI 的 `后端测试（pytest）` job 会把这组测试作为独立步骤 `验证 AIRP 首次成功契约` 运行，然后再跑全量后端测试和 smoke benchmark。Release workflow 的 `发布前 AIRP 检查` 也会先运行同一个契约测试，再进入 benchmark 测试和完整 benchmark；这些检查都通过 ASGI 测试客户端完成，不依赖真实后端服务。
 
 如果已经启动本地服务，也可以直接读取接口确认下一步：
 
@@ -50,7 +52,7 @@ gh workflow run release.yml -f version=0.13.1 -f publish_release=false
 dry-run 通过标准：
 
 - `准备构建参数` 输出版本号和 `发布到 Release：false`。
-- `发布前 AIRP 检查` 通过，并上传 `airp-benchmark-release` artifact。
+- `发布前 AIRP 检查` 中的 `验证 AIRP 首次成功契约`、AIRP benchmark 测试和完整 AIRP benchmark 均通过，并上传 `airp-benchmark-release` artifact。
 - 后端、桌面端和 Android 单包构建 job 通过。
 - Artifacts 中出现对应版本号的产物，例如 `KokoroMemo-0.13.1-Windows-Portable.zip`。
 - `发布 GitHub Release` job 被跳过。
@@ -76,6 +78,7 @@ git push origin v0.13.1
 
 tag 发布会自动：
 
+- 验证 `/admin/airp-first-run-status` 的首次成功契约。
 - 运行完整 AIRP benchmark。
 - 构建后端二进制、桌面包和 Android 单包。
 - 生成 `latest.json` 与 `SHA256SUMS.txt`。

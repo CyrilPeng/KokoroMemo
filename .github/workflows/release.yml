@@ -81,8 +81,8 @@ jobs:
       - name: 运行 AIRP benchmark 测试
         run: uv run python -m pytest tests/test_airp_benchmark.py -q
 
-      - name: 运行完整 AIRP benchmark
-        run: uv run python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/release
+      - name: 运行完整 AIRP benchmark 门禁
+        run: uv run python benchmarks/run_airp_benchmark.py --enforce-thresholds --report-dir benchmarks/reports/release
 
       - name: 上传 AIRP benchmark 发布报告
         if: always()

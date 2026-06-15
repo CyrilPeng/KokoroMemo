@@ -313,7 +313,7 @@ Embedding 默认使用模力方舟 `Qwen3-Embedding-8B`，需要自行配置 API
 
 ### AIRP Benchmark
 
-仓库内置 `benchmarks/run_airp_benchmark.py`，可用 fake embedding / fake judge 重复运行 AIRP 场景基准，用于检查称呼、偏好、边界、多角色隔离、记忆库隔离和状态/场景连续性等能力是否退化。CI 会运行 smoke case；发布前可运行完整 benchmark 并保存 Markdown / JSON 报告。
+仓库内置 `benchmarks/run_airp_benchmark.py`，可用 fake embedding / fake judge 重复运行 AIRP 场景基准，用于检查称呼、偏好、边界、多角色隔离、记忆库隔离和状态/场景连续性等能力是否退化。CI 会运行带阈值的 smoke 门禁；发布前会运行完整 benchmark 门禁，并保存包含 `quality_gate` 的 Markdown / JSON 报告。
 
 ---
 

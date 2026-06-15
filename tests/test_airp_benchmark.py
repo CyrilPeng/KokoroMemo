@@ -3,19 +3,26 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.run_airp_benchmark import _compare_reports, run_benchmark
+from benchmarks.run_airp_benchmark import _compare_reports, _evaluate_quality_gate, run_benchmark
 
 
 @pytest.mark.asyncio
 async def test_airp_benchmark_smoke(tmp_path: Path) -> None:
-    report = await run_benchmark(smoke=True, report_dir=tmp_path)
+    quality_gate = {
+        "max_failed_cases": 0,
+        "min_recall_accuracy": 1.0,
+        "max_false_positive_rate": 0.0,
+    }
+    report = await run_benchmark(smoke=True, report_dir=tmp_path, quality_gate=quality_gate)
 
     assert report["summary"]["total_cases"] == 3
     assert report["summary"]["failed_cases"] == 0
     assert report["summary"]["recall_accuracy"] == 1.0
     assert report["summary"]["false_positive_rate"] == 0.0
+    assert report["quality_gate"]["passed"] is True
     assert (tmp_path / "airp_benchmark.json").exists()
     assert (tmp_path / "airp_benchmark.md").exists()
+    assert "Quality Gate" in (tmp_path / "airp_benchmark.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio
@@ -102,4 +109,24 @@ def test_airp_benchmark_marks_quality_regression(tmp_path: Path) -> None:
         "failed_cases increased",
         "recall_accuracy decreased",
         "false_positive_rate increased",
+    ]
+
+
+def test_airp_benchmark_quality_gate_reports_threshold_violations() -> None:
+    gate = _evaluate_quality_gate(
+        {
+            "failed_cases": 1,
+            "recall_accuracy": 0.75,
+            "false_positive_rate": 0.2,
+        },
+        max_failed_cases=0,
+        min_recall_accuracy=1.0,
+        max_false_positive_rate=0.0,
+    )
+
+    assert gate["passed"] is False
+    assert [item["metric"] for item in gate["violations"]] == [
+        "failed_cases",
+        "recall_accuracy",
+        "false_positive_rate",
     ]

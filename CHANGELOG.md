@@ -21,6 +21,7 @@
 - **AIRP 首次成功验收接口** - 新增 `/admin/airp-first-run-status`，由后端统一返回验收步骤、进度、下一步入口和 benchmark 建议状态。
 - **AIRP 首次验收接口文档** - 首次验收、发布流程和 README 补充接口契约、发布前检查和仪表盘官方验收入口说明。
 - **AIRP 首次验收 CI 门禁** - CI 与 Release 预检新增 `验证 AIRP 首次成功契约` 独立步骤，确保 `/admin/airp-first-run-status` 不依赖真实后端服务也能被发布门禁明确观测。
+- **AIRP Benchmark 阈值门禁** - `run_airp_benchmark.py` 新增 `--enforce-thresholds`，CI smoke 与 Release full benchmark 会明确要求零失败、满召回和零误召回，并把 `quality_gate` 写入报告。
 
 ### 修复
 

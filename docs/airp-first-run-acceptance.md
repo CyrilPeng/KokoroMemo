@@ -151,7 +151,7 @@ GET /admin/airp-first-run-status
 `benchmark` 是发布检查步骤，不计入核心完成数。只有核心 6 步全部完成时，`benchmark.done` 才会为 `true`，并返回建议命令：
 
 ```bash
-python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/first-run
+python benchmarks/run_airp_benchmark.py --smoke --enforce-thresholds --report-dir benchmarks/reports/first-run
 ```
 
 响应片段示例：
@@ -177,16 +177,16 @@ python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/
 首次体验验收后，建议运行：
 
 ```bash
-python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/first-run
+python benchmarks/run_airp_benchmark.py --smoke --enforce-thresholds --report-dir benchmarks/reports/first-run
 ```
 
 发布前运行完整基准：
 
 ```bash
-python benchmarks/run_airp_benchmark.py --report-dir benchmarks/reports/release
+python benchmarks/run_airp_benchmark.py --enforce-thresholds --report-dir benchmarks/reports/release
 ```
 
-如果 `character_isolation`、`library_isolation` 或 `conversation_isolation` 失败，不建议发布。
+自动门禁会要求 `failed_cases <= 0`、`recall_accuracy >= 1.0`、`false_positive_rate <= 0.0`。如果 `character_isolation`、`library_isolation` 或 `conversation_isolation` 失败，不建议发布。
 
 ## 产品精简判断
 

@@ -63,8 +63,8 @@ jobs:
       - name: 运行后端测试
         run: uv run pytest tests/ -q
 
-      - name: 运行 AIRP 基准冒烟测试
-        run: uv run python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports
+      - name: 运行 AIRP 基准冒烟门禁
+        run: uv run python benchmarks/run_airp_benchmark.py --smoke --enforce-thresholds --report-dir benchmarks/reports
 
       - name: 上传 AIRP 基准报告
         if: always()

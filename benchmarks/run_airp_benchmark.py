@@ -35,6 +35,11 @@ SUMMARY_METRICS = (
     "false_positive_rate",
     "avg_injected_tokens",
 )
+DEFAULT_QUALITY_GATE = {
+    "max_failed_cases": 0,
+    "min_recall_accuracy": 1.0,
+    "max_false_positive_rate": 0.0,
+}
 
 
 class FakeEmbeddingProvider:
@@ -152,6 +157,50 @@ def _compare_reports(report: dict, compare_to: Path) -> dict:
     }
 
 
+def _evaluate_quality_gate(
+    summary: dict,
+    *,
+    max_failed_cases: int = 0,
+    min_recall_accuracy: float = 1.0,
+    max_false_positive_rate: float = 0.0,
+) -> dict:
+    failed_cases = int(summary.get("failed_cases", 0))
+    recall_accuracy = float(summary.get("recall_accuracy", 0.0))
+    false_positive_rate = float(summary.get("false_positive_rate", 1.0))
+
+    checks = [
+        ("failed_cases", failed_cases, "<=", max_failed_cases, failed_cases <= max_failed_cases),
+        ("recall_accuracy", recall_accuracy, ">=", min_recall_accuracy, recall_accuracy >= min_recall_accuracy),
+        (
+            "false_positive_rate",
+            false_positive_rate,
+            "<=",
+            max_false_positive_rate,
+            false_positive_rate <= max_false_positive_rate,
+        ),
+    ]
+    violations = [
+        {
+            "metric": metric,
+            "actual": actual,
+            "operator": operator,
+            "limit": limit,
+            "message": f"{metric} {actual} does not satisfy {operator} {limit}",
+        }
+        for metric, actual, operator, limit, passed in checks
+        if not passed
+    ]
+    return {
+        "passed": not violations,
+        "thresholds": {
+            "max_failed_cases": max_failed_cases,
+            "min_recall_accuracy": min_recall_accuracy,
+            "max_false_positive_rate": max_false_positive_rate,
+        },
+        "violations": violations,
+    }
+
+
 def _comparison_markdown(comparison: dict) -> list[str]:
     lines = [
         "",
@@ -176,6 +225,21 @@ def _comparison_markdown(comparison: dict) -> list[str]:
             f"{_format_metric_value(metric['current'])} | {_format_metric_value(delta)} |"
         )
     return lines
+
+
+def _quality_gate_markdown(quality_gate: dict) -> list[str]:
+    thresholds = quality_gate["thresholds"]
+    violations = quality_gate["violations"]
+    return [
+        "",
+        "## Quality Gate",
+        "",
+        f"- Passed: {'yes' if quality_gate['passed'] else 'no'}",
+        f"- Max failed cases: {thresholds['max_failed_cases']}",
+        f"- Min recall accuracy: {thresholds['min_recall_accuracy']:.3f}",
+        f"- Max false positive rate: {thresholds['max_false_positive_rate']:.3f}",
+        f"- Violations: {', '.join(item['message'] for item in violations) or '-'}",
+    ]
 
 
 async def _run_case(case_path: Path, work_root: Path):
@@ -265,6 +329,7 @@ async def run_benchmark(
     smoke: bool = False,
     report_dir: Path | None = None,
     compare_to: Path | None = None,
+    quality_gate: dict[str, int | float] | None = None,
 ) -> dict:
     work_root = Path(mkdtemp(prefix="kokoromemo_benchmark_"))
     try:
@@ -274,6 +339,13 @@ async def run_benchmark(
             "summary": summary,
             "results": [asdict(result) for result in results],
         }
+        if quality_gate:
+            report["quality_gate"] = _evaluate_quality_gate(
+                summary,
+                max_failed_cases=int(quality_gate["max_failed_cases"]),
+                min_recall_accuracy=float(quality_gate["min_recall_accuracy"]),
+                max_false_positive_rate=float(quality_gate["max_false_positive_rate"]),
+            )
         if compare_to:
             report["comparison"] = _compare_reports(report, compare_to)
         if report_dir:
@@ -300,6 +372,8 @@ async def run_benchmark(
                     f"{', '.join(result['missing_card_ids']) or '-'} | "
                     f"{', '.join(result['leaked_card_ids']) or '-'} |"
                 )
+            if "quality_gate" in report:
+                lines.extend(_quality_gate_markdown(report["quality_gate"]))
             if "comparison" in report:
                 lines.extend(_comparison_markdown(report["comparison"]))
             (report_dir / "airp_benchmark.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -322,15 +396,49 @@ def main() -> int:
         action="store_true",
         help="Exit non-zero when --compare-to detects an AIRP quality regression",
     )
+    parser.add_argument(
+        "--enforce-thresholds",
+        action="store_true",
+        help="Exit non-zero when AIRP summary metrics miss release quality thresholds",
+    )
+    parser.add_argument(
+        "--max-failed-cases",
+        type=int,
+        default=DEFAULT_QUALITY_GATE["max_failed_cases"],
+        help="Maximum failed cases allowed when --enforce-thresholds is set",
+    )
+    parser.add_argument(
+        "--min-recall-accuracy",
+        type=float,
+        default=DEFAULT_QUALITY_GATE["min_recall_accuracy"],
+        help="Minimum recall accuracy allowed when --enforce-thresholds is set",
+    )
+    parser.add_argument(
+        "--max-false-positive-rate",
+        type=float,
+        default=DEFAULT_QUALITY_GATE["max_false_positive_rate"],
+        help="Maximum false positive rate allowed when --enforce-thresholds is set",
+    )
     args = parser.parse_args()
+    quality_gate = None
+    if args.enforce_thresholds:
+        quality_gate = {
+            "max_failed_cases": args.max_failed_cases,
+            "min_recall_accuracy": args.min_recall_accuracy,
+            "max_false_positive_rate": args.max_false_positive_rate,
+        }
     report = asyncio.run(
         run_benchmark(
             smoke=args.smoke,
             report_dir=Path(args.report_dir),
             compare_to=Path(args.compare_to) if args.compare_to else None,
+            quality_gate=quality_gate,
         )
     )
     print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+    if args.enforce_thresholds and not report["quality_gate"]["passed"]:
+        print(json.dumps(report["quality_gate"], ensure_ascii=False, indent=2), file=sys.stderr)
+        return 1
     if args.fail_on_regression and report.get("comparison", {}).get("quality_regression"):
         return 1
     return 0 if report["summary"]["failed_cases"] == 0 else 1

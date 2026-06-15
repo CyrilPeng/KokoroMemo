@@ -399,7 +399,10 @@ async def get_airp_first_run_status(request: Request):
             target=None,
             action_key=None,
             optional=True,
-            command="python benchmarks/run_airp_benchmark.py --smoke --report-dir benchmarks/reports/first-run",
+            command=(
+                "python benchmarks/run_airp_benchmark.py --smoke --enforce-thresholds "
+                "--report-dir benchmarks/reports/first-run"
+            ),
         )
     )
     next_step = next((step for step in required_steps if not step["done"]), None)

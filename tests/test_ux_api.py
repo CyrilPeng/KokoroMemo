@@ -94,6 +94,10 @@ async def test_airp_first_run_status_empty_config():
         assert steps["config"]["target"] == "/settings"
         assert steps["benchmark"]["optional"] is True
         assert steps["benchmark"]["done"] is False
+        assert steps["benchmark"]["command"] == (
+            "python benchmarks/run_airp_benchmark.py --smoke --enforce-thresholds "
+            "--report-dir benchmarks/reports/first-run"
+        )
     finally:
         cleanup_test_dir(test_dir)
 
@@ -204,6 +208,10 @@ async def test_airp_first_run_status_ready_path():
         for key in ["config", "role", "conversation", "candidate", "approved", "state", "benchmark"]:
             assert steps[key]["done"] is True
         assert steps["benchmark"]["optional"] is True
+        assert steps["benchmark"]["command"] == (
+            "python benchmarks/run_airp_benchmark.py --smoke --enforce-thresholds "
+            "--report-dir benchmarks/reports/first-run"
+        )
         assert data["summary"]["role_count"] == 1
         assert data["summary"]["active_conversation_count"] == 1
         assert data["summary"]["pending_memory_count"] == 1

@@ -1,6 +1,6 @@
 {
   "productName": "KokoroMemo",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "identifier": "com.kokoromemo.desktop",
   "build": {
     "beforeDevCommand": "npm run build && npm run dev",
@@ -40,11 +40,17 @@
     ],
     "windows": {
       "nsis": {
-        "languages": ["English", "SimpChinese"],
+        "languages": [
+          "English",
+          "SimpChinese"
+        ],
         "displayLanguageSelector": false
       },
       "wix": {
-        "language": ["en-US", "zh-CN"]
+        "language": [
+          "en-US",
+          "zh-CN"
+        ]
       }
     }
   }

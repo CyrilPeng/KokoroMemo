@@ -1,3 +1,3 @@
-"""打包产物的构建期版本兜底。"""
+"""Build-time version fallback for packaged binaries."""
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"

@@ -166,7 +166,19 @@ const memoryAuditRejected = computed(() => memoryAudit.value?.summary?.rejected_
 const memoryAuditStateRows = computed(() => memoryAudit.value?.summary?.state_row_count || 0)
 const memoryAuditRememberedItems = computed(() => (memoryAudit.value?.remembered_memories || []).slice(0, 2))
 const memoryAuditRejectedItems = computed(() => (memoryAudit.value?.rejected_memories || []).slice(0, 2))
+const memoryAuditStateItems = computed(() => (memoryAudit.value?.current_state?.rows || []).slice(0, 2))
 const memoryAuditNextAction = computed(() => memoryAudit.value?.next_actions?.[0] || null)
+
+function stateRowPreview(row: any) {
+  const values = Object.values(row?.values || {})
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+  return values.join(' / ') || row?.row_id || t('dashboard.memoryAudit.noState')
+}
+
+function stateRowMeta(row: any) {
+  return [row?.table_name || row?.table_key, row?.updated_at].filter(Boolean).join(' · ')
+}
 
 const dashboardHelpSections = computed(() => [
   { title: t('dashboard.help.intro'), body: '' },
@@ -596,7 +608,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
               </button>
             </NGridItem>
           </NGrid>
-          <div v-if="memoryAuditRememberedItems.length || memoryAuditRejectedItems.length" class="recall-lists">
+          <div v-if="memoryAuditRememberedItems.length || memoryAuditRejectedItems.length || memoryAuditStateItems.length" class="recall-lists">
             <div class="recall-list">
               <div class="recall-list-title">{{ t('dashboard.memoryAudit.rememberedList') }}</div>
               <div v-if="memoryAuditRememberedItems.length" class="recall-items">
@@ -616,6 +628,16 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
                 </div>
               </div>
               <div v-else class="recall-empty-line">{{ t('dashboard.memoryAudit.noRejected') }}</div>
+            </div>
+            <div class="recall-list">
+              <div class="recall-list-title">{{ t('dashboard.memoryAudit.stateList') }}</div>
+              <div v-if="memoryAuditStateItems.length" class="recall-items">
+                <div v-for="item in memoryAuditStateItems" :key="item.row_id" class="recall-item">
+                  <div class="recall-item-main">{{ stateRowPreview(item) }}</div>
+                  <div class="recall-item-meta">{{ stateRowMeta(item) }}</div>
+                </div>
+              </div>
+              <div v-else class="recall-empty-line">{{ t('dashboard.memoryAudit.noState') }}</div>
             </div>
           </div>
           <div v-else class="recall-empty">
@@ -1008,7 +1030,7 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 
 .recall-lists {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
   margin-top: 14px;
 }

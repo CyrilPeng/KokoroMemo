@@ -32,6 +32,8 @@ GET /admin/airp-memory-audit?conversation_id=<conversation_id>
 - `summary`：仪表盘和自动化使用的计数摘要。
 - `next_actions`：当前最需要用户处理的入口。
 
+仪表盘会直接展示最多两条 `current_state.rows` 快照，用户无需先进入状态板，也能看见当前剧情停在哪张状态表、关键字段是什么。
+
 ## 发布门禁
 
 CI 和 Release workflow 都会运行：

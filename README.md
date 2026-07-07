@@ -242,6 +242,7 @@ X-Conversation-Id: conversation_id
 6. 打开“状态板”确认当前场景、关系、规则和任务是否被维护。
 7. 打开“记忆审核”处理候选记忆，避免误记忆污染角色。
 8. 在“总览”的“AIRP 首次成功验收”面板确认最小闭环：模型配置、角色、会话、候选记忆、批准记忆和状态板是否都已跑通。
+9. 查看“总览”的“AIRP 召回解释”面板，确认本轮选中记忆、隔离排除和潜在串记风险都能被解释。
 
 Embedding 默认使用模力方舟 `Qwen3-Embedding-8B`，需要自行配置 API Key。Rerank 默认关闭，不影响基本使用。
 
@@ -251,7 +252,7 @@ Embedding 默认使用模力方舟 `Qwen3-Embedding-8B`，需要自行配置 API
 
 ### 仪表盘
 
-查看 AIRP 首次成功验收、角色连续性总览、最近会话、当前角色、状态板行数、长期记忆写入策略、注入/召回策略、待审核数量和服务状态。首次验收面板由 `/admin/airp-first-run-status` 提供官方判定，用来确认“不忘、不串、不乱记”的最小可用闭环是否成立。
+查看 AIRP 首次成功验收、AIRP 召回解释、角色连续性总览、最近会话、当前角色、状态板行数、长期记忆写入策略、注入/召回策略、待审核数量和服务状态。首次验收面板由 `/admin/airp-first-run-status` 提供官方判定，用来确认“不忘、不串、不乱记”的最小可用闭环是否成立；召回解释面板由 `/admin/airp-recall-explanation` 提供官方契约，用来说明本轮选中了哪些记忆、为什么选中，以及哪些记忆因角色、会话或记忆库隔离被排除。
 
 ### 设置
 
@@ -386,6 +387,7 @@ KokoroMemo 使用 `user_id`、`character_id`、`conversation_id` 和作用域隔
 - [DESIGN.md](DESIGN.md)：架构、数据结构、状态板 v2、请求流程、检索门控和发布设计。
 - [CHANGELOG.md](CHANGELOG.md)：版本更新记录。
 - [docs/airp-first-run-acceptance.md](docs/airp-first-run-acceptance.md)：首次 AIRP 接入、记忆审核、召回解释和状态板成功路径验收清单。
+- [docs/airp-recall-explanation.md](docs/airp-recall-explanation.md)：`/admin/airp-recall-explanation` 官方接口、隔离解释字段和 CI 门禁口径。
 - [docs/release-workflow.md](docs/release-workflow.md)：手动构建、dry-run、tag 发布和版本一致性检查流程。
 - [examples/airp-demo](examples/airp-demo)：三段 AIRP 演示流程，展示角色不忘、多角色不串和状态板维护剧情。
 - [benchmarks](benchmarks)：AIRP 记忆召回、隔离和状态连续性的确定性 benchmark。

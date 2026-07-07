@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.admin._helpers import _require_admin, _resolve_mount_selection
+from app.api.admin.airp import router as airp_router
 from app.api.admin.characters import router as characters_router
 from app.api.admin.conversation_profiles import router as conversation_profiles_router
 from app.api.admin.conversations import router as conversations_router
@@ -19,6 +20,7 @@ router = APIRouter()
 
 for sub in [
     system_router,
+    airp_router,
     conversation_profiles_router,
     conversations_router,
     characters_router,

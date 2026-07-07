@@ -27,8 +27,10 @@ const inboxDiscarded = computed(() => stats.value?.inbox_discarded || 0)
 const recentConversations = ref<any[]>([])
 const latestConfig = ref<any | null>(null)
 const firstRunStatus = ref<any | null>(null)
+const recallExplanation = ref<any | null>(null)
 const continuityLoading = ref(false)
 const firstRunLoading = ref(false)
+const recallLoading = ref(false)
 type TagType = 'default' | 'error' | 'success' | 'warning' | 'info' | 'primary'
 type FirstRunItem = {
   key: string
@@ -131,6 +133,25 @@ const firstRunTone = computed<{ tagType: TagType; label: string }>(() => (
     : { tagType: 'warning', label: t('dashboard.firstRun.inProgress') }
 ))
 
+const recallTone = computed<{ tagType: TagType; label: string }>(() => {
+  if (!recallExplanation.value?.conversation) return { tagType: 'info', label: t('dashboard.recallExplanation.waiting') }
+  if (!recallExplanation.value?.trace) return { tagType: 'warning', label: t('dashboard.recallExplanation.noTrace') }
+  if (!recallExplanation.value?.isolation?.passed) return { tagType: 'error', label: t('dashboard.recallExplanation.risk') }
+  return { tagType: 'success', label: t('dashboard.recallExplanation.ready') }
+})
+const recallCurrentRole = computed(() => recallExplanation.value?.current_role?.display_name || t('dashboard.continuity.noCharacter'))
+const recallTraceReason = computed(() => recallExplanation.value?.trace?.trigger_reason || t('dashboard.recallExplanation.noTrigger'))
+const recallSelectedCount = computed(() => recallExplanation.value?.summary?.selected_count || 0)
+const recallExcludedCount = computed(() => recallExplanation.value?.summary?.excluded_memory_count || 0)
+const recallSelectedItems = computed(() => (recallExplanation.value?.selected_memories || []).slice(0, 3))
+const recallExcludedItems = computed(() => (recallExplanation.value?.excluded_memories || []).slice(0, 3))
+const recallNextAction = computed(() => recallExplanation.value?.next_actions?.[0] || null)
+const recallIsolationSummary = computed(() => t('dashboard.recallExplanation.isolationSummary', {
+  role: recallExplanation.value?.summary?.character_isolation_excluded_count || 0,
+  conversation: recallExplanation.value?.summary?.conversation_isolation_excluded_count || 0,
+  library: recallExplanation.value?.summary?.library_excluded_count || 0,
+}))
+
 const dashboardHelpSections = computed(() => [
   { title: t('dashboard.help.intro'), body: '' },
   { title: t('dashboard.totalMemories'), body: t('dashboard.help.totalMemories') },
@@ -202,6 +223,15 @@ async function fetchFirstRunStatus() {
   }
 }
 
+async function fetchRecallExplanation() {
+  try {
+    const resp = await apiFetch('/admin/airp-recall-explanation', { timeoutMs: 8000 })
+    if (resp.ok) recallExplanation.value = await resp.json()
+  } catch {
+    recallExplanation.value = null
+  }
+}
+
 async function fetchContinuityOverview() {
   continuityLoading.value = true
   latestConfig.value = null
@@ -234,9 +264,16 @@ async function refreshFirstRunStatus() {
     fetchStats(),
     fetchActionItems(),
     fetchFirstRunStatus(),
+    fetchRecallExplanation(),
     fetchContinuityOverview(),
   ])
   firstRunLoading.value = false
+}
+
+async function refreshRecallExplanation() {
+  recallLoading.value = true
+  await fetchRecallExplanation()
+  recallLoading.value = false
 }
 
 function openFirstRunTarget(item: FirstRunItem) {
@@ -246,6 +283,15 @@ function openFirstRunTarget(item: FirstRunItem) {
     return
   }
   router.push(item.target)
+}
+
+function openRecallTarget() {
+  const target = recallNextAction.value?.target || '/state'
+  if (target === '/state') {
+    openStateBoard(recallExplanation.value?.conversation?.conversation_id || latestConversation.value?.conversation_id)
+    return
+  }
+  router.push(target)
 }
 
 onMounted(() => {
@@ -260,6 +306,7 @@ function onWsEvent(e: any) {
     fetchStats()
     fetchActionItems()
     fetchFirstRunStatus()
+    fetchRecallExplanation()
     fetchContinuityOverview()
   }
 }
@@ -384,6 +431,81 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
               </NButton>
               <NButton size="small" @click="router.push('/characters')">{{ t('dashboard.quickActions.manageRoles') }}</NButton>
             </NSpace>
+          </div>
+        </NCard>
+
+        <NCard class="recall-card">
+          <template #header>
+            <div class="section-title-row">
+              <span>{{ t('dashboard.recallExplanation.title') }}</span>
+              <NTag :type="recallTone.tagType" size="small" round>
+                {{ recallTone.label }}
+              </NTag>
+            </div>
+          </template>
+          <template #header-extra>
+            <NButton size="small" quaternary :loading="recallLoading" @click="refreshRecallExplanation">
+              <template #icon><NIcon :component="RefreshOutline" /></template>
+              {{ $t('common.refresh') }}
+            </NButton>
+          </template>
+          <NGrid :cols="4" :x-gap="14" :y-gap="14" responsive="screen" item-responsive>
+            <NGridItem span="4 m:2 l:1">
+              <div class="continuity-metric">
+                <div class="metric-label">{{ t('dashboard.recallExplanation.currentRole') }}</div>
+                <div class="metric-value">{{ recallCurrentRole }}</div>
+                <div class="metric-hint">{{ recallExplanation?.conversation?.conversation_id || t('dashboard.continuity.noConversation') }}</div>
+              </div>
+            </NGridItem>
+            <NGridItem span="4 m:2 l:1">
+              <div class="continuity-metric">
+                <div class="metric-label">{{ t('dashboard.recallExplanation.trigger') }}</div>
+                <div class="metric-value">{{ recallTraceReason }}</div>
+                <div class="metric-hint">{{ recallExplanation?.trace?.retrieval_profile_id || t('common.notConfigured') }}</div>
+              </div>
+            </NGridItem>
+            <NGridItem span="4 m:2 l:1">
+              <div class="continuity-metric">
+                <div class="metric-label">{{ t('dashboard.recallExplanation.selected') }}</div>
+                <div class="metric-value">{{ recallSelectedCount }}</div>
+                <div class="metric-hint">{{ t('dashboard.recallExplanation.selectedHint') }}</div>
+              </div>
+            </NGridItem>
+            <NGridItem span="4 m:2 l:1">
+              <div class="continuity-metric">
+                <div class="metric-label">{{ t('dashboard.recallExplanation.excluded') }}</div>
+                <div class="metric-value">{{ recallExcludedCount }}</div>
+                <div class="metric-hint">{{ recallIsolationSummary }}</div>
+              </div>
+            </NGridItem>
+          </NGrid>
+          <div v-if="recallSelectedItems.length || recallExcludedItems.length" class="recall-lists">
+            <div class="recall-list">
+              <div class="recall-list-title">{{ t('dashboard.recallExplanation.selectedMemories') }}</div>
+              <div v-if="recallSelectedItems.length" class="recall-items">
+                <div v-for="item in recallSelectedItems" :key="item.card_id" class="recall-item">
+                  <div class="recall-item-main">{{ item.content_preview || item.card_id }}</div>
+                  <div class="recall-item-meta">{{ item.route_label }} · {{ item.reason }}</div>
+                </div>
+              </div>
+              <div v-else class="recall-empty-line">{{ t('dashboard.recallExplanation.noSelected') }}</div>
+            </div>
+            <div class="recall-list">
+              <div class="recall-list-title">{{ t('dashboard.recallExplanation.excludedMemories') }}</div>
+              <div v-if="recallExcludedItems.length" class="recall-items">
+                <div v-for="item in recallExcludedItems" :key="item.card_id" class="recall-item">
+                  <div class="recall-item-main">{{ item.content_preview || item.card_id }}</div>
+                  <div class="recall-item-meta">{{ item.reasons?.join('；') }}</div>
+                </div>
+              </div>
+              <div v-else class="recall-empty-line">{{ t('dashboard.recallExplanation.noExcluded') }}</div>
+            </div>
+          </div>
+          <div v-else class="recall-empty">
+            <span>{{ recallNextAction?.label || t('dashboard.recallExplanation.empty') }}</span>
+            <NButton size="small" @click="openRecallTarget">
+              {{ t('dashboard.recallExplanation.openTarget') }}
+            </NButton>
           </div>
         </NCard>
 
@@ -684,6 +806,12 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
   margin-bottom: 16px;
 }
 
+.recall-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  margin-bottom: 16px;
+}
+
 .section-title-row {
   display: flex;
   align-items: center;
@@ -734,6 +862,65 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
   margin-top: 14px;
 }
 
+.recall-lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.recall-list {
+  min-width: 0;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  background: #111113;
+  padding: 12px;
+}
+
+.recall-list-title {
+  color: #a1a1aa;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.recall-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recall-item {
+  min-width: 0;
+}
+
+.recall-item-main {
+  color: #f4f4f5;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.recall-item-meta,
+.recall-empty-line {
+  color: #71717a;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.recall-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  color: #a1a1aa;
+  font-size: 13px;
+}
+
 @media (max-width: 640px) {
   .first-run-summary {
     grid-template-columns: 1fr;
@@ -745,6 +932,10 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
 
   .first-run-step {
     min-height: 104px;
+  }
+
+  .recall-lists {
+    grid-template-columns: 1fr;
   }
 }
 </style>

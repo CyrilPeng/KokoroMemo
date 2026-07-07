@@ -78,6 +78,9 @@ jobs:
       - name: 验证 AIRP 首次成功契约
         run: uv run pytest tests/test_ux_api.py -q -k "airp_first_run_status"
 
+      - name: 验证 AIRP 召回解释契约
+        run: uv run pytest tests/test_ux_api.py -q -k "airp_recall_explanation"
+
       - name: 运行 AIRP benchmark 测试
         run: uv run python -m pytest tests/test_airp_benchmark.py -q
 

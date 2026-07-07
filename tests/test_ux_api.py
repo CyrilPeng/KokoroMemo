@@ -13,7 +13,7 @@ from app.core.state import set_config
 from app.main import app
 from app.memory.state_schema import StateTableColumn, StateTableRow, StateTableSchema, StateTableTemplate
 from app.storage.sqlite_app import init_app_db, upsert_character, upsert_conversation
-from app.storage.sqlite_cards import init_cards_db, insert_card, insert_inbox_item
+from app.storage.sqlite_cards import DEFAULT_MEMORY_LIBRARY_ID, init_cards_db, insert_card, insert_inbox_item
 from app.storage.sqlite_state import SQLiteStateStore
 
 
@@ -217,6 +217,217 @@ async def test_airp_first_run_status_ready_path():
         assert data["summary"]["pending_memory_count"] == 1
         assert data["summary"]["approved_memory_count"] == 1
         assert data["summary"]["state_row_count"] == 1
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_airp_recall_explanation_empty_state():
+    test_dir = make_test_dir()
+    try:
+        make_config(test_dir)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/admin/airp-recall-explanation")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["ready"] is False
+        assert data["conversation"] is None
+        assert data["trace"] is None
+        assert data["selected_memories"] == []
+        assert data["next_actions"][0]["key"] == "connect_airp_client"
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_airp_recall_explanation_reports_selection_and_isolation():
+    test_dir = make_test_dir()
+    try:
+        cfg = make_config(test_dir)
+        await init_app_db(cfg.storage.sqlite.app_db)
+        await init_cards_db(cfg.storage.sqlite.memory_db)
+        await upsert_character(cfg.storage.sqlite.app_db, "char_a", "user_1", display_name="铃")
+        await upsert_character(cfg.storage.sqlite.app_db, "char_b", "user_1", display_name="澪")
+        await upsert_conversation(
+            cfg.storage.sqlite.app_db,
+            "conv_a",
+            "user_1",
+            "char_a",
+            "test-client",
+            str(test_dir / "conversations" / "conv_a"),
+        )
+
+        await insert_card(
+            cfg.storage.sqlite.memory_db,
+            card_id="card_char_a",
+            user_id="user_1",
+            character_id="char_a",
+            conversation_id="conv_a",
+            scope="character",
+            card_type="preference",
+            content="用户希望铃称呼自己为小凛",
+            status="approved",
+            importance=0.9,
+            confidence=0.95,
+        )
+        await insert_card(
+            cfg.storage.sqlite.memory_db,
+            card_id="card_char_b",
+            user_id="user_1",
+            character_id="char_b",
+            conversation_id="conv_b",
+            scope="character",
+            card_type="preference",
+            content="用户希望澪称呼自己为船长",
+            status="approved",
+            importance=0.9,
+            confidence=0.95,
+        )
+        await insert_card(
+            cfg.storage.sqlite.memory_db,
+            card_id="card_other_conversation",
+            user_id="user_1",
+            character_id="char_a",
+            conversation_id="conv_other",
+            scope="conversation",
+            card_type="event",
+            content="另一个会话的临时地点在海边",
+            status="approved",
+        )
+        await insert_card(
+            cfg.storage.sqlite.memory_db,
+            card_id="card_other_library",
+            user_id="user_1",
+            character_id="char_a",
+            conversation_id="conv_a",
+            scope="character",
+            card_type="boundary",
+            content="另一个未挂载记忆库中的边界",
+            status="approved",
+            library_id="lib_other",
+        )
+
+        store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+        await store.record_retrieval_trace(
+            request_id="req_1",
+            conversation_id="conv_a",
+            user_id="user_1",
+            character_id="char_a",
+            query_text="铃还记得怎么称呼我吗？",
+            should_retrieve=True,
+            trigger_reason="keyword",
+            retrieval_profile_id="balanced",
+            retrieval_profile={"profile_id": "balanced", "final_top_k": 8},
+            mounted_library_ids=[DEFAULT_MEMORY_LIBRARY_ID],
+            allowed_scopes=["global", "character", "conversation"],
+            candidates=[
+                {
+                    "card_id": "card_char_a",
+                    "library_id": DEFAULT_MEMORY_LIBRARY_ID,
+                    "source_conversation_id": "conv_a",
+                    "source_character_id": "char_a",
+                    "route": "vector",
+                    "vector_score": 0.91,
+                    "importance_score": 0.9,
+                    "recency_score": 0.8,
+                    "scope_score": 0.85,
+                    "confidence_score": 0.95,
+                    "final_score": 0.9,
+                    "selected": True,
+                    "injection_reason": "selected_for_injection",
+                    "content_preview": "用户希望铃称呼自己为小凛",
+                }
+            ],
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/admin/airp-recall-explanation?conversation_id=conv_a")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ready"] is True
+        assert data["current_role"]["character_id"] == "char_a"
+        assert data["trace"]["retrieval_profile_id"] == "balanced"
+        assert data["selected_memories"][0]["card_id"] == "card_char_a"
+        assert data["selected_memories"][0]["reason_key"] == "selected_for_injection"
+        assert data["selected_memories"][0]["isolation_flags"] == []
+        excluded = {item["card_id"]: item for item in data["excluded_memories"]}
+        assert "character_isolation" in excluded["card_char_b"]["reason_keys"]
+        assert "conversation_isolation" in excluded["card_other_conversation"]["reason_keys"]
+        assert "library_not_mounted" in excluded["card_other_library"]["reason_keys"]
+        assert data["isolation"]["passed"] is True
+        assert data["summary"]["selected_count"] == 1
+        assert data["summary"]["character_isolation_excluded_count"] == 1
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_airp_recall_explanation_flags_selected_cross_role_memory():
+    test_dir = make_test_dir()
+    try:
+        cfg = make_config(test_dir)
+        await init_app_db(cfg.storage.sqlite.app_db)
+        await init_cards_db(cfg.storage.sqlite.memory_db)
+        await upsert_character(cfg.storage.sqlite.app_db, "char_a", "user_1", display_name="铃")
+        await upsert_conversation(
+            cfg.storage.sqlite.app_db,
+            "conv_a",
+            "user_1",
+            "char_a",
+            "test-client",
+            str(test_dir / "conversations" / "conv_a"),
+        )
+        await insert_card(
+            cfg.storage.sqlite.memory_db,
+            card_id="card_leaked",
+            user_id="user_1",
+            character_id="char_b",
+            conversation_id="conv_b",
+            scope="character",
+            card_type="preference",
+            content="其他角色专属称呼",
+            status="approved",
+        )
+        store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+        await store.record_retrieval_trace(
+            request_id="req_leak",
+            conversation_id="conv_a",
+            user_id="user_1",
+            character_id="char_a",
+            query_text="还记得我的称呼吗？",
+            should_retrieve=True,
+            trigger_reason="keyword",
+            retrieval_profile_id="balanced",
+            retrieval_profile={"profile_id": "balanced"},
+            mounted_library_ids=[DEFAULT_MEMORY_LIBRARY_ID],
+            allowed_scopes=["global", "character", "conversation"],
+            candidates=[
+                {
+                    "card_id": "card_leaked",
+                    "library_id": DEFAULT_MEMORY_LIBRARY_ID,
+                    "source_conversation_id": "conv_b",
+                    "source_character_id": "char_b",
+                    "route": "vector",
+                    "final_score": 0.86,
+                    "selected": True,
+                    "content_preview": "其他角色专属称呼",
+                }
+            ],
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/admin/airp-recall-explanation?conversation_id=conv_a")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ready"] is False
+        assert data["isolation"]["passed"] is False
+        assert data["isolation"]["selected_risk_count"] == 1
+        assert "character_scope_mismatch" in data["selected_memories"][0]["isolation_flags"]
+        assert data["next_actions"][0]["key"] == "review_isolation_risk"
     finally:
         cleanup_test_dir(test_dir)
 

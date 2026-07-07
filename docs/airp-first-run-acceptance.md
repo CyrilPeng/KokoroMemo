@@ -60,7 +60,7 @@ X-Conversation-Id: first_run_conversation
 - 候选记忆能进入审核流程。
 - 用户能看懂候选为什么应该被批准或拒绝。
 - 下一轮对话能召回称呼或偏好。
-- “注入来源”能看到相关记忆卡片。
+- “AIRP 召回解释”或“注入来源”能看到相关记忆卡片和选中原因。
 
 失败排查：
 
@@ -75,13 +75,13 @@ X-Conversation-Id: first_run_conversation
 1. 使用 `first_run_character_a` 开始会话，并告诉角色 A 一个只属于它的信息。
 2. 切换到 `first_run_character_b`，保持同一用户但更换 `X-Character-Id`。
 3. 向角色 B 询问类似话题。
-4. 打开“注入来源”。
+4. 打开“总览 -> AIRP 召回解释”或状态板右侧“注入来源”。
 
 通过标准：
 
 - 角色 A 的角色级记忆不会进入角色 B 的最终注入。
 - 如果使用不同记忆库，未挂载库中的记忆不会出现在当前注入里。
-- 用户能从“注入来源”判断为什么没有串记忆。
+- 用户能从“召回解释”判断为什么没有串记忆。
 
 失败排查：
 
@@ -117,7 +117,7 @@ X-Conversation-Id: first_run_conversation
 - 10 分钟内完成客户端接入并收到回复。
 - 至少产生 1 条可解释的候选记忆。
 - 至少批准 1 条稳定记忆，并在后续对话中召回。
-- 至少确认 1 次“注入来源”能解释召回内容。
+- 至少确认 1 次“AIRP 召回解释”或“注入来源”能解释召回内容。
 - 至少确认 1 次状态板记录当前场景或任务。
 - 多角色或多会话测试中没有明显串记忆。
 
@@ -172,6 +172,25 @@ python benchmarks/run_airp_benchmark.py --smoke --enforce-thresholds --report-di
 }
 ```
 
+## 官方召回解释接口
+
+仪表盘中的“AIRP 召回解释”面板使用后端接口汇总最近会话的 retrieval trace、最终注入记忆和隔离排除原因：
+
+```http
+GET /admin/airp-recall-explanation
+GET /admin/airp-recall-explanation?conversation_id=<conversation_id>
+GET /admin/airp-recall-explanation?trace_id=<trace_id>
+```
+
+这个接口用于回答“本轮为什么记得、为什么没有串、为什么某些记忆没有进入注入”。它不会启动真实召回，也不依赖外部模型；它读取已记录的 retrieval trace 和本地 SQLite 记忆卡片，生成可审计解释。返回字段包括：
+
+- `selected_memories`：最终进入注入的记忆、召回路径、分数和选中原因。
+- `excluded_memories`：被角色隔离、会话隔离、记忆库挂载、作用域或审核状态排除的记忆。
+- `isolation`：最终选中的记忆是否通过角色/会话/记忆库隔离检查。
+- `summary`：仪表盘和发布门禁使用的计数摘要。
+
+更完整的契约说明见 [airp-recall-explanation.md](airp-recall-explanation.md)。
+
 ## 对应自动检查
 
 首次体验验收后，建议运行：
@@ -196,7 +215,7 @@ python benchmarks/run_airp_benchmark.py --enforce-thresholds --report-dir benchm
 - 总览里的角色连续性状态
 - 记忆审核
 - 状态板连续性摘要
-- 注入来源解释
+- AIRP 召回解释和注入来源解释
 - 会话管理中的角色归属修正
 
 不直接服务首次成功路径的高级功能，应默认收纳到高级设置、帮助弹窗或二级入口。

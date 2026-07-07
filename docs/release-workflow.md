@@ -14,12 +14,13 @@ uvx ruff check app/ tests/ benchmarks/ .github/scripts/
 uvx ruff format --check app/ tests/ benchmarks/ .github/scripts/
 python .github/scripts/stamp_version.py --check
 uv run --extra dev python -m pytest tests/test_ux_api.py -q -k "airp_first_run_status"
+uv run --extra dev python -m pytest tests/test_ux_api.py -q -k "airp_recall_explanation"
 uv run --extra dev python benchmarks/run_airp_benchmark.py --smoke --enforce-thresholds --report-dir benchmarks/reports/first-run
 ```
 
-其中 `tests/test_ux_api.py` 会覆盖 `/admin/airp-first-run-status` 的空状态和完整闭环响应，确保仪表盘验收面板、CLI 或后续自动化都使用同一套 AIRP 首次成功契约。
+其中 `tests/test_ux_api.py` 会覆盖 `/admin/airp-first-run-status` 的空状态和完整闭环响应，也会覆盖 `/admin/airp-recall-explanation` 的空状态、正常召回解释和跨角色误召回风险，确保仪表盘验收面板、CLI 或后续自动化都使用同一套 AIRP 契约。
 
-CI 的 `后端测试（pytest）` job 会把这组测试作为独立步骤 `验证 AIRP 首次成功契约` 运行，然后再跑全量后端测试和带阈值的 smoke benchmark 门禁。Release workflow 的 `发布前 AIRP 检查` 也会先运行同一个契约测试，再进入 benchmark 测试和带阈值的完整 benchmark 门禁；这些检查都通过 ASGI 测试客户端或确定性 fake provider 完成，不依赖真实后端服务。
+CI 的 `后端测试（pytest）` job 会把这组测试作为独立步骤 `验证 AIRP 首次成功契约` 和 `验证 AIRP 召回解释契约` 运行，然后再跑全量后端测试和带阈值的 smoke benchmark 门禁。Release workflow 的 `发布前 AIRP 检查` 也会先运行同一组契约测试，再进入 benchmark 测试和带阈值的完整 benchmark 门禁；这些检查都通过 ASGI 测试客户端或确定性 fake provider 完成，不依赖真实后端服务。
 
 AIRP benchmark 门禁默认要求 `failed_cases <= 0`、`recall_accuracy >= 1.0`、`false_positive_rate <= 0.0`。报告中的 `quality_gate.passed` 必须为 `true`。
 
@@ -27,6 +28,7 @@ AIRP benchmark 门禁默认要求 `failed_cases <= 0`、`recall_accuracy >= 1.0`
 
 ```bash
 curl http://127.0.0.1:14514/admin/airp-first-run-status
+curl http://127.0.0.1:14514/admin/airp-recall-explanation
 ```
 
 如果启用了 Admin Token，请按当前管理 API 的鉴权方式携带 token。
@@ -54,7 +56,7 @@ gh workflow run release.yml -f version=0.13.1 -f publish_release=false
 dry-run 通过标准：
 
 - `准备构建参数` 输出版本号和 `发布到 Release：false`。
-- `发布前 AIRP 检查` 中的 `验证 AIRP 首次成功契约`、AIRP benchmark 测试和完整 AIRP benchmark 门禁均通过，并上传 `airp-benchmark-release` artifact。
+- `发布前 AIRP 检查` 中的 `验证 AIRP 首次成功契约`、`验证 AIRP 召回解释契约`、AIRP benchmark 测试和完整 AIRP benchmark 门禁均通过，并上传 `airp-benchmark-release` artifact。
 - 后端、桌面端和 Android 单包构建 job 通过。
 - Artifacts 中出现对应版本号的产物，例如 `KokoroMemo-0.13.1-Windows-Portable.zip`。
 - `发布 GitHub Release` job 被跳过。
@@ -81,6 +83,7 @@ git push origin v0.13.1
 tag 发布会自动：
 
 - 验证 `/admin/airp-first-run-status` 的首次成功契约。
+- 验证 `/admin/airp-recall-explanation` 的召回解释契约。
 - 运行完整 AIRP benchmark 门禁。
 - 构建后端二进制、桌面包和 Android 单包。
 - 生成 `latest.json` 与 `SHA256SUMS.txt`。

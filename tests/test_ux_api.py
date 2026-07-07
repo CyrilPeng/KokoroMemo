@@ -242,7 +242,7 @@ async def test_airp_recall_explanation_empty_state():
 
 
 @pytest.mark.asyncio
-async def test_airp_recall_explanation_reports_selection_and_isolation():
+async def test_airp_recall_explanation_airp_isolation_reports_selection_and_exclusions():
     test_dir = make_test_dir()
     try:
         cfg = make_config(test_dir)
@@ -365,7 +365,7 @@ async def test_airp_recall_explanation_reports_selection_and_isolation():
 
 
 @pytest.mark.asyncio
-async def test_airp_recall_explanation_flags_selected_cross_role_memory():
+async def test_airp_recall_explanation_airp_isolation_flags_selected_cross_role_memory():
     test_dir = make_test_dir()
     try:
         cfg = make_config(test_dir)
@@ -455,7 +455,7 @@ async def test_airp_memory_audit_empty_state():
 
 
 @pytest.mark.asyncio
-async def test_airp_memory_audit_reports_remembered_rejected_and_state():
+async def test_airp_memory_audit_airp_isolation_reports_remembered_rejected_and_state():
     test_dir = make_test_dir()
     try:
         cfg = make_config(test_dir)

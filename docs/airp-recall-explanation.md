@@ -39,6 +39,7 @@ CI 和 Release workflow 都会运行：
 
 ```bash
 uv run pytest tests/test_ux_api.py -q -k "airp_recall_explanation"
+uv run pytest tests/test_ux_api.py -q -k "airp_isolation"
 ```
 
-该测试通过 ASGI 客户端和本地临时 SQLite 数据库完成，不依赖真实后端服务、真实 Embedding 或外部模型。
+`airp_isolation` 是发布前的显式“不串”门禁，覆盖跨角色、跨会话和未挂载记忆库不会进入最终注入；这些测试通过 ASGI 客户端和本地临时 SQLite 数据库完成，不依赖真实后端服务、真实 Embedding 或外部模型。

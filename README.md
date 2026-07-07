@@ -388,6 +388,7 @@ KokoroMemo 使用 `user_id`、`character_id`、`conversation_id` 和作用域隔
 - [DESIGN.md](DESIGN.md)：架构、数据结构、状态板 v2、请求流程、检索门控和发布设计。
 - [CHANGELOG.md](CHANGELOG.md)：版本更新记录。
 - [docs/airp-first-run-acceptance.md](docs/airp-first-run-acceptance.md)：首次 AIRP 接入、记忆审核、召回解释和状态板成功路径验收清单。
+- [docs/airp-isolation-gate.md](docs/airp-isolation-gate.md)：AIRP 记忆隔离门禁，说明跨角色、跨会话和未挂载记忆库不会进入最终注入的自动验证口径。
 - [docs/airp-memory-audit.md](docs/airp-memory-audit.md)：`/admin/airp-memory-audit` 官方接口、记忆审核账本和状态板位置说明。
 - [docs/airp-recall-explanation.md](docs/airp-recall-explanation.md)：`/admin/airp-recall-explanation` 官方接口、隔离解释字段和 CI 门禁口径。
 - [docs/release-workflow.md](docs/release-workflow.md)：手动构建、dry-run、tag 发布和版本一致性检查流程。

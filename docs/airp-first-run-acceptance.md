@@ -121,6 +121,7 @@ X-Conversation-Id: first_run_conversation
 - 至少确认 1 次“AIRP 记忆账本”能说明角色记住了什么、哪些候选被拒绝、当前剧情状态在哪里。
 - 至少确认 1 次状态板记录当前场景或任务。
 - 多角色或多会话测试中没有明显串记忆。
+- CI 中的 `验证 AIRP 记忆隔离门禁` 通过，证明跨角色、跨会话和未挂载记忆库不会进入最终注入。
 
 ## 官方验收接口
 
@@ -215,6 +216,7 @@ GET /admin/airp-memory-audit?conversation_id=<conversation_id>
 首次体验验收后，建议运行：
 
 ```bash
+uv run --extra dev python -m pytest tests/test_ux_api.py -q -k "airp_isolation"
 python benchmarks/run_airp_benchmark.py --smoke --enforce-thresholds --report-dir benchmarks/reports/first-run
 ```
 
@@ -236,6 +238,7 @@ python benchmarks/run_airp_benchmark.py --enforce-thresholds --report-dir benchm
 - AIRP 记忆账本
 - 状态板连续性摘要
 - AIRP 召回解释和注入来源解释
+- AIRP 记忆隔离门禁
 - 会话管理中的角色归属修正
 
 不直接服务首次成功路径的高级功能，应默认收纳到高级设置、帮助弹窗或二级入口。

@@ -28,9 +28,11 @@ const recentConversations = ref<any[]>([])
 const latestConfig = ref<any | null>(null)
 const firstRunStatus = ref<any | null>(null)
 const recallExplanation = ref<any | null>(null)
+const memoryAudit = ref<any | null>(null)
 const continuityLoading = ref(false)
 const firstRunLoading = ref(false)
 const recallLoading = ref(false)
+const memoryAuditLoading = ref(false)
 type TagType = 'default' | 'error' | 'success' | 'warning' | 'info' | 'primary'
 type FirstRunItem = {
   key: string
@@ -152,6 +154,20 @@ const recallIsolationSummary = computed(() => t('dashboard.recallExplanation.iso
   library: recallExplanation.value?.summary?.library_excluded_count || 0,
 }))
 
+const memoryAuditTone = computed<{ tagType: TagType; label: string }>(() => {
+  if (!memoryAudit.value?.conversation) return { tagType: 'info', label: t('dashboard.memoryAudit.waiting') }
+  if (memoryAudit.value?.summary?.pending_candidate_count > 0) return { tagType: 'warning', label: t('dashboard.memoryAudit.needsReview') }
+  if (memoryAudit.value?.ready) return { tagType: 'success', label: t('dashboard.memoryAudit.ready') }
+  return { tagType: 'info', label: t('dashboard.memoryAudit.empty') }
+})
+const memoryAuditRemembered = computed(() => memoryAudit.value?.summary?.remembered_count || 0)
+const memoryAuditPending = computed(() => memoryAudit.value?.summary?.pending_candidate_count || 0)
+const memoryAuditRejected = computed(() => memoryAudit.value?.summary?.rejected_memory_count || 0)
+const memoryAuditStateRows = computed(() => memoryAudit.value?.summary?.state_row_count || 0)
+const memoryAuditRememberedItems = computed(() => (memoryAudit.value?.remembered_memories || []).slice(0, 2))
+const memoryAuditRejectedItems = computed(() => (memoryAudit.value?.rejected_memories || []).slice(0, 2))
+const memoryAuditNextAction = computed(() => memoryAudit.value?.next_actions?.[0] || null)
+
 const dashboardHelpSections = computed(() => [
   { title: t('dashboard.help.intro'), body: '' },
   { title: t('dashboard.totalMemories'), body: t('dashboard.help.totalMemories') },
@@ -232,6 +248,15 @@ async function fetchRecallExplanation() {
   }
 }
 
+async function fetchMemoryAudit() {
+  try {
+    const resp = await apiFetch('/admin/airp-memory-audit', { timeoutMs: 8000 })
+    if (resp.ok) memoryAudit.value = await resp.json()
+  } catch {
+    memoryAudit.value = null
+  }
+}
+
 async function fetchContinuityOverview() {
   continuityLoading.value = true
   latestConfig.value = null
@@ -265,6 +290,7 @@ async function refreshFirstRunStatus() {
     fetchActionItems(),
     fetchFirstRunStatus(),
     fetchRecallExplanation(),
+    fetchMemoryAudit(),
     fetchContinuityOverview(),
   ])
   firstRunLoading.value = false
@@ -274,6 +300,12 @@ async function refreshRecallExplanation() {
   recallLoading.value = true
   await fetchRecallExplanation()
   recallLoading.value = false
+}
+
+async function refreshMemoryAudit() {
+  memoryAuditLoading.value = true
+  await fetchMemoryAudit()
+  memoryAuditLoading.value = false
 }
 
 function openFirstRunTarget(item: FirstRunItem) {
@@ -294,6 +326,15 @@ function openRecallTarget() {
   router.push(target)
 }
 
+function openMemoryAuditTarget(target?: string | null) {
+  const nextTarget = target || memoryAuditNextAction.value?.target || '/inbox'
+  if (nextTarget === '/state') {
+    openStateBoard(memoryAudit.value?.conversation?.conversation_id || latestConversation.value?.conversation_id)
+    return
+  }
+  router.push(nextTarget)
+}
+
 onMounted(() => {
   window.setTimeout(() => {
     refreshFirstRunStatus()
@@ -307,6 +348,7 @@ function onWsEvent(e: any) {
     fetchActionItems()
     fetchFirstRunStatus()
     fetchRecallExplanation()
+    fetchMemoryAudit()
     fetchContinuityOverview()
   }
 }
@@ -505,6 +547,81 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
             <span>{{ recallNextAction?.label || t('dashboard.recallExplanation.empty') }}</span>
             <NButton size="small" @click="openRecallTarget">
               {{ t('dashboard.recallExplanation.openTarget') }}
+            </NButton>
+          </div>
+        </NCard>
+
+        <NCard class="memory-audit-card">
+          <template #header>
+            <div class="section-title-row">
+              <span>{{ t('dashboard.memoryAudit.title') }}</span>
+              <NTag :type="memoryAuditTone.tagType" size="small" round>
+                {{ memoryAuditTone.label }}
+              </NTag>
+            </div>
+          </template>
+          <template #header-extra>
+            <NButton size="small" quaternary :loading="memoryAuditLoading" @click="refreshMemoryAudit">
+              <template #icon><NIcon :component="RefreshOutline" /></template>
+              {{ $t('common.refresh') }}
+            </NButton>
+          </template>
+          <NGrid :cols="4" :x-gap="14" :y-gap="14" responsive="screen" item-responsive>
+            <NGridItem span="4 m:2 l:1">
+              <button class="audit-metric" @click="openMemoryAuditTarget('/memories')">
+                <span class="metric-label">{{ t('dashboard.memoryAudit.remembered') }}</span>
+                <span class="metric-value">{{ memoryAuditRemembered }}</span>
+                <span class="metric-hint">{{ t('dashboard.memoryAudit.rememberedHint') }}</span>
+              </button>
+            </NGridItem>
+            <NGridItem span="4 m:2 l:1">
+              <button class="audit-metric" @click="openMemoryAuditTarget('/inbox')">
+                <span class="metric-label">{{ t('dashboard.memoryAudit.pending') }}</span>
+                <span class="metric-value">{{ memoryAuditPending }}</span>
+                <span class="metric-hint">{{ t('dashboard.memoryAudit.pendingHint') }}</span>
+              </button>
+            </NGridItem>
+            <NGridItem span="4 m:2 l:1">
+              <button class="audit-metric" @click="openMemoryAuditTarget('/inbox')">
+                <span class="metric-label">{{ t('dashboard.memoryAudit.rejected') }}</span>
+                <span class="metric-value">{{ memoryAuditRejected }}</span>
+                <span class="metric-hint">{{ t('dashboard.memoryAudit.rejectedHint') }}</span>
+              </button>
+            </NGridItem>
+            <NGridItem span="4 m:2 l:1">
+              <button class="audit-metric" @click="openMemoryAuditTarget('/state')">
+                <span class="metric-label">{{ t('dashboard.memoryAudit.stateRows') }}</span>
+                <span class="metric-value">{{ memoryAuditStateRows }}</span>
+                <span class="metric-hint">{{ t('dashboard.memoryAudit.stateHint') }}</span>
+              </button>
+            </NGridItem>
+          </NGrid>
+          <div v-if="memoryAuditRememberedItems.length || memoryAuditRejectedItems.length" class="recall-lists">
+            <div class="recall-list">
+              <div class="recall-list-title">{{ t('dashboard.memoryAudit.rememberedList') }}</div>
+              <div v-if="memoryAuditRememberedItems.length" class="recall-items">
+                <div v-for="item in memoryAuditRememberedItems" :key="item.card_id" class="recall-item">
+                  <div class="recall-item-main">{{ item.content_preview || item.card_id }}</div>
+                  <div class="recall-item-meta">{{ item.remember_reason }}</div>
+                </div>
+              </div>
+              <div v-else class="recall-empty-line">{{ t('dashboard.memoryAudit.noRemembered') }}</div>
+            </div>
+            <div class="recall-list">
+              <div class="recall-list-title">{{ t('dashboard.memoryAudit.rejectedList') }}</div>
+              <div v-if="memoryAuditRejectedItems.length" class="recall-items">
+                <div v-for="item in memoryAuditRejectedItems" :key="item.inbox_id" class="recall-item">
+                  <div class="recall-item-main">{{ item.content_preview || item.inbox_id }}</div>
+                  <div class="recall-item-meta">{{ item.reason }}</div>
+                </div>
+              </div>
+              <div v-else class="recall-empty-line">{{ t('dashboard.memoryAudit.noRejected') }}</div>
+            </div>
+          </div>
+          <div v-else class="recall-empty">
+            <span>{{ memoryAuditNextAction?.label || t('dashboard.memoryAudit.emptyHint') }}</span>
+            <NButton size="small" @click="openMemoryAuditTarget()">
+              {{ t('dashboard.memoryAudit.openTarget') }}
             </NButton>
           </div>
         </NCard>
@@ -810,6 +927,33 @@ onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
   background: #18181b;
   border: 1px solid #27272a;
   margin-bottom: 16px;
+}
+
+.memory-audit-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  margin-bottom: 16px;
+}
+
+.audit-metric {
+  min-height: 116px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  background: #111113;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.audit-metric:hover {
+  border-color: #3f3f46;
+  background: #17171a;
 }
 
 .section-title-row {

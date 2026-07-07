@@ -433,6 +433,175 @@ async def test_airp_recall_explanation_flags_selected_cross_role_memory():
 
 
 @pytest.mark.asyncio
+async def test_airp_memory_audit_empty_state():
+    test_dir = make_test_dir()
+    try:
+        make_config(test_dir)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/admin/airp-memory-audit")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["ready"] is False
+        assert data["conversation"] is None
+        assert data["remembered_memories"] == []
+        assert data["pending_candidates"] == []
+        assert data["rejected_memories"] == []
+        assert data["current_state"]["row_count"] == 0
+        assert data["next_actions"][0]["key"] == "connect_airp_client"
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_airp_memory_audit_reports_remembered_rejected_and_state():
+    test_dir = make_test_dir()
+    try:
+        cfg = make_config(test_dir)
+        await init_app_db(cfg.storage.sqlite.app_db)
+        await init_cards_db(cfg.storage.sqlite.memory_db)
+        await upsert_character(cfg.storage.sqlite.app_db, "char_audit", "user_1", display_name="铃")
+        await upsert_conversation(
+            cfg.storage.sqlite.app_db,
+            "conv_audit",
+            "user_1",
+            "char_audit",
+            "test-client",
+            str(test_dir / "conversations" / "conv_audit"),
+        )
+        await insert_card(
+            cfg.storage.sqlite.memory_db,
+            card_id="card_audit_remembered",
+            user_id="user_1",
+            character_id="char_audit",
+            conversation_id="conv_audit",
+            scope="character",
+            card_type="preference",
+            content="用户希望铃称呼自己为小凛",
+            status="approved",
+            importance=0.9,
+            confidence=0.95,
+            evidence_text="用户说：以后请叫我小凛。",
+        )
+        await insert_card(
+            cfg.storage.sqlite.memory_db,
+            card_id="card_other_role",
+            user_id="user_1",
+            character_id="char_other",
+            conversation_id="conv_other",
+            scope="character",
+            card_type="preference",
+            content="其他角色的称呼",
+            status="approved",
+        )
+        await insert_inbox_item(
+            cfg.storage.sqlite.memory_db,
+            inbox_id="inbox_audit_pending",
+            candidate_type="card",
+            payload_json=json.dumps(
+                {
+                    "content": "用户喜欢慢节奏叙事",
+                    "card_type": "preference",
+                    "scope": "character",
+                    "importance": 0.7,
+                    "confidence": 0.8,
+                    "character_id": "char_audit",
+                    "conversation_id": "conv_audit",
+                },
+                ensure_ascii=False,
+            ),
+            user_id="user_1",
+            character_id="char_audit",
+            conversation_id="conv_audit",
+            reason="稳定偏好候选",
+        )
+        await insert_inbox_item(
+            cfg.storage.sqlite.memory_db,
+            inbox_id="inbox_audit_rejected",
+            candidate_type="card",
+            payload_json=json.dumps(
+                {
+                    "content": "临时玩笑：今天叫我国王",
+                    "card_type": "preference",
+                    "scope": "character",
+                    "character_id": "char_audit",
+                    "conversation_id": "conv_audit",
+                },
+                ensure_ascii=False,
+            ),
+            user_id="user_1",
+            character_id="char_audit",
+            conversation_id="conv_audit",
+            status="discarded",
+            discard_reason="user_rejected",
+        )
+
+        store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
+        template = await store.save_table_template(
+            StateTableTemplate(
+                template_id="tpl_airp_memory_audit",
+                name="AIRP 账本模板",
+                tables=[
+                    StateTableSchema(
+                        table_id=None,
+                        template_id="tpl_airp_memory_audit",
+                        table_key="scene",
+                        name="当前场景",
+                        columns=[
+                            StateTableColumn(
+                                column_id=None,
+                                table_id="",
+                                column_key="location",
+                                name="地点",
+                            )
+                        ],
+                    )
+                ],
+            )
+        )
+        table = template.tables[0]
+        await store.set_conversation_config(
+            {
+                "conversation_id": "conv_audit",
+                "profile_id": "airp_roleplay",
+                "table_template_id": template.template_id,
+            }
+        )
+        await store.upsert_table_row(
+            StateTableRow(
+                row_id="state_audit_scene",
+                conversation_id="conv_audit",
+                template_id=template.template_id or "",
+                table_id=table.table_id or "",
+                table_key=table.table_key,
+                status="active",
+            ),
+            {"location": "旧图书馆"},
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/admin/airp-memory-audit?conversation_id=conv_audit")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ready"] is True
+        assert data["current_role"]["character_id"] == "char_audit"
+        assert data["summary"]["remembered_count"] == 1
+        assert data["summary"]["pending_candidate_count"] == 1
+        assert data["summary"]["rejected_memory_count"] == 1
+        assert data["summary"]["state_row_count"] == 1
+        assert data["remembered_memories"][0]["card_id"] == "card_audit_remembered"
+        assert "长期记忆" in data["remembered_memories"][0]["remember_reason"]
+        assert data["pending_candidates"][0]["inbox_id"] == "inbox_audit_pending"
+        assert data["rejected_memories"][0]["discard_reason"] == "user_rejected"
+        assert data["current_state"]["rows"][0]["values"]["location"] == "旧图书馆"
+        assert all(item["card_id"] != "card_other_role" for item in data["remembered_memories"])
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
 async def test_connectivity_test_skips_unconfigured_provider():
     test_dir = make_test_dir()
     try:

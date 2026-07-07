@@ -35,6 +35,32 @@ _ISOLATION_FLAG_LABELS = {
     "conversation_scope_mismatch": "命中了其他会话的会话级记忆",
 }
 
+_CARD_TYPE_LABELS = {
+    "preference": "偏好",
+    "boundary": "边界",
+    "relationship": "关系",
+    "event": "事件",
+    "promise": "承诺",
+    "correction": "纠正",
+    "world_state": "世界状态",
+    "summary": "摘要",
+}
+
+_SCOPE_LABELS = {
+    "global": "全局",
+    "character": "角色",
+    "conversation": "会话",
+}
+
+_DISCARD_REASON_LABELS = {
+    "exact_duplicate": "精确重复",
+    "semantic_duplicate": "语义近似重复",
+    "auto_rejected": "自动审核拒绝",
+    "user_rejected": "用户审核拒绝",
+    "too_low_confidence": "置信度过低",
+    "too_low_importance": "重要性过低",
+}
+
 
 def _json_loads(value: Any, default: Any) -> Any:
     if value is None:
@@ -62,6 +88,22 @@ def _score(value: Any) -> float | None:
         return round(float(value), 3)
     except (TypeError, ValueError):
         return None
+
+
+def _payload_json(row: dict) -> dict:
+    return _json_loads(row.get("payload_json"), {})
+
+
+def _type_label(card_type: str | None) -> str:
+    return _CARD_TYPE_LABELS.get(card_type or "", card_type or "未分类")
+
+
+def _scope_label(scope: str | None) -> str:
+    return _SCOPE_LABELS.get(scope or "", scope or "未设置")
+
+
+def _discard_reason_label(reason: str | None) -> str:
+    return _DISCARD_REASON_LABELS.get(reason or "", reason or "未记录")
 
 
 async def _load_conversation(app_db_path: str, conversation_id: str | None) -> dict | None:
@@ -106,7 +148,220 @@ async def _load_conversation(app_db_path: str, conversation_id: str | None) -> d
                LIMIT 1"""
         )
         row = await cursor.fetchone()
-        return dict(row) if row else None
+    return dict(row) if row else None
+
+
+def _matches_airp_context(
+    row: dict,
+    *,
+    current_character_id: str | None,
+    current_conversation_id: str | None,
+    include_global: bool = True,
+) -> bool:
+    scope = row.get("scope")
+    if include_global and scope == "global":
+        return True
+    if scope == "character":
+        return bool(current_character_id) and row.get("character_id") == current_character_id
+    if scope == "conversation":
+        return bool(current_conversation_id) and row.get("conversation_id") == current_conversation_id
+    return bool(current_character_id and row.get("character_id") == current_character_id) or bool(
+        current_conversation_id and row.get("conversation_id") == current_conversation_id
+    )
+
+
+def _inbox_matches_airp_context(
+    item: dict,
+    *,
+    current_character_id: str | None,
+    current_conversation_id: str | None,
+) -> bool:
+    payload = _payload_json(item)
+    character_id = payload.get("character_id") or item.get("character_id")
+    conversation_id = payload.get("conversation_id") or item.get("conversation_id")
+    scope = payload.get("scope")
+    if scope == "global":
+        return True
+    return bool(current_character_id and character_id == current_character_id) or bool(
+        current_conversation_id and conversation_id == current_conversation_id
+    )
+
+
+async def _load_review_actions(memory_db_path: str, card_ids: list[str]) -> dict[str, list[dict]]:
+    if not card_ids:
+        return {}
+    from app.storage.sqlite_cards import init_cards_db
+
+    await init_cards_db(memory_db_path)
+    async with aiosqlite.connect(memory_db_path) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("CREATE TEMP TABLE requested_review_card_ids (card_id TEXT PRIMARY KEY)")
+        await db.executemany(
+            "INSERT OR IGNORE INTO requested_review_card_ids(card_id) VALUES (?)",
+            [(card_id,) for card_id in card_ids],
+        )
+        cursor = await db.execute(
+            """SELECT action_id, inbox_id, review_actions.card_id, action, reviewer, note, created_at
+                FROM review_actions
+                INNER JOIN requested_review_card_ids
+                    ON requested_review_card_ids.card_id = review_actions.card_id
+                ORDER BY created_at DESC""",
+        )
+        actions: dict[str, list[dict]] = {}
+        for row in await cursor.fetchall():
+            data = dict(row)
+            actions.setdefault(data["card_id"], []).append(data)
+        return actions
+
+
+async def _load_memory_audit_rows(memory_db_path: str, user_id: str | None) -> tuple[list[dict], list[dict]]:
+    if not user_id:
+        return [], []
+    from app.storage.sqlite_cards import init_cards_db
+
+    await init_cards_db(memory_db_path)
+    async with aiosqlite.connect(memory_db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cards_cursor = await db.execute(
+            """SELECT card_id, library_id, user_id, character_id, conversation_id, scope, card_type,
+                      title, content, summary, importance, confidence, status, is_pinned,
+                      evidence_text, created_at, updated_at
+               FROM memory_cards
+               WHERE user_id = ? AND status IN ('approved', 'deprecated')
+               ORDER BY CASE WHEN status = 'approved' THEN 0 ELSE 1 END, updated_at DESC, created_at DESC
+               LIMIT 500""",
+            (user_id,),
+        )
+        inbox_cursor = await db.execute(
+            """SELECT inbox_id, library_id, candidate_type, payload_json, user_id, character_id,
+                      conversation_id, suggested_action, risk_level, reason, status, reviewed_at,
+                      review_note, created_at, discard_reason, related_card_id
+               FROM memory_inbox
+               WHERE user_id = ? AND status IN ('pending', 'discarded', 'rejected', 'approved')
+               ORDER BY created_at DESC
+               LIMIT 500""",
+            (user_id,),
+        )
+        return [dict(row) for row in await cards_cursor.fetchall()], [
+            dict(row) for row in await inbox_cursor.fetchall()
+        ]
+
+
+def _remember_reason(card: dict, review_actions: list[dict]) -> str:
+    scope = card.get("scope")
+    type_label = _type_label(card.get("card_type"))
+    if review_actions:
+        return f"已通过本地审核进入长期记忆；类型为{type_label}，作用域为{_scope_label(scope)}。"
+    if card.get("evidence_text"):
+        return f"根据对话证据写入长期记忆；类型为{type_label}，作用域为{_scope_label(scope)}。"
+    return f"已批准长期记忆；类型为{type_label}，作用域为{_scope_label(scope)}。"
+
+
+def _memory_card_view(card: dict, review_actions: list[dict]) -> dict:
+    return {
+        "card_id": card.get("card_id"),
+        "library_id": card.get("library_id"),
+        "scope": card.get("scope"),
+        "scope_label": _scope_label(card.get("scope")),
+        "card_type": card.get("card_type"),
+        "card_type_label": _type_label(card.get("card_type")),
+        "status": card.get("status"),
+        "character_id": card.get("character_id"),
+        "conversation_id": card.get("conversation_id"),
+        "content_preview": _preview(card.get("content")),
+        "summary": card.get("summary"),
+        "importance": _score(card.get("importance")),
+        "confidence": _score(card.get("confidence")),
+        "evidence_preview": _preview(card.get("evidence_text")),
+        "remember_reason": _remember_reason(card, review_actions),
+        "review_actions": review_actions[:3],
+        "created_at": card.get("created_at"),
+        "updated_at": card.get("updated_at"),
+    }
+
+
+def _pending_candidate_reason(item: dict, payload: dict) -> str:
+    type_label = _type_label(payload.get("card_type") or item.get("candidate_type"))
+    risk = item.get("risk_level") or "low"
+    if risk == "high":
+        return f"候选属于{type_label}，风险较高，需要人工确认后才会写入。"
+    if risk == "medium":
+        return f"候选属于{type_label}，需要审核确认稳定性。"
+    return f"候选属于{type_label}，等待审核进入长期记忆。"
+
+
+def _rejected_candidate_reason(item: dict, payload: dict) -> str:
+    if item.get("review_note"):
+        return f"用户审核拒绝：{item['review_note']}"
+    if item.get("discard_reason"):
+        return _discard_reason_label(item.get("discard_reason"))
+    if item.get("reason"):
+        return str(item["reason"])
+    if payload.get("reason"):
+        return str(payload["reason"])
+    return "未进入长期记忆。"
+
+
+def _candidate_view_from_inbox(item: dict) -> dict:
+    payload = _payload_json(item)
+    content = payload.get("content") or payload.get("summary") or item.get("reason")
+    status = item.get("status")
+    reason = (
+        _pending_candidate_reason(item, payload) if status == "pending" else _rejected_candidate_reason(item, payload)
+    )
+    return {
+        "inbox_id": item.get("inbox_id"),
+        "library_id": item.get("library_id") or payload.get("library_id"),
+        "status": status,
+        "candidate_type": item.get("candidate_type"),
+        "card_type": payload.get("card_type") or item.get("candidate_type"),
+        "card_type_label": _type_label(payload.get("card_type") or item.get("candidate_type")),
+        "scope": payload.get("scope"),
+        "scope_label": _scope_label(payload.get("scope")),
+        "risk_level": item.get("risk_level"),
+        "suggested_action": item.get("suggested_action"),
+        "character_id": payload.get("character_id") or item.get("character_id"),
+        "conversation_id": payload.get("conversation_id") or item.get("conversation_id"),
+        "content_preview": _preview(content),
+        "importance": _score(payload.get("importance")),
+        "confidence": _score(payload.get("confidence")),
+        "reason": reason,
+        "source_reason": item.get("reason"),
+        "review_note": item.get("review_note"),
+        "discard_reason": item.get("discard_reason"),
+        "discard_reason_label": _discard_reason_label(item.get("discard_reason")),
+        "related_card_id": item.get("related_card_id"),
+        "created_at": item.get("created_at"),
+        "reviewed_at": item.get("reviewed_at"),
+    }
+
+
+async def _load_state_rows(memory_db_path: str, conversation_id: str | None, limit: int) -> list[dict]:
+    if not conversation_id:
+        return []
+    from app.storage.sqlite_state import SQLiteStateStore
+
+    store = SQLiteStateStore(memory_db_path)
+    template = await store.get_conversation_table_template(conversation_id)
+    rows = await store.list_table_rows(conversation_id, template.template_id if template else None)
+    table_names = {table.table_key: table.name for table in template.tables} if template else {}
+    result = []
+    for row in rows:
+        if row.status != "active":
+            continue
+        result.append(
+            {
+                "row_id": row.row_id,
+                "table_key": row.table_key,
+                "table_name": table_names.get(row.table_key, row.table_key),
+                "status": row.status,
+                "confidence": _score(row.confidence),
+                "source": row.source,
+                "values": {key: cell.value for key, cell in row.cells.items()},
+                "updated_at": row.updated_at,
+            }
+        )
+    return result[:limit]
 
 
 def _conversation_from_trace(trace: dict | None) -> dict | None:
@@ -488,4 +743,109 @@ async def get_airp_recall_explanation(
             "allowed_scopes": allowed_scopes,
         },
         "next_actions": _next_actions(conversation, trace, selected_with_risk),
+    }
+
+
+@router.get("/admin/airp-memory-audit")
+async def get_airp_memory_audit(
+    request: Request,
+    conversation_id: str | None = Query(default=None),
+    limit: int = Query(default=6, ge=1, le=50),
+):
+    """Return an AIRP-facing ledger of remembered, pending, rejected memory and current state."""
+    _require_admin(request)
+    from app.core.state import get_config
+
+    cfg = get_config()
+    conversation = await _load_conversation(cfg.storage.sqlite.app_db, conversation_id)
+    current_conversation_id = conversation.get("conversation_id") if conversation else None
+    current_character_id = conversation.get("character_id") if conversation else None
+    user_id = conversation.get("user_id") if conversation else None
+
+    cards, inbox_items = await _load_memory_audit_rows(cfg.storage.sqlite.memory_db, user_id)
+    context_cards = [
+        card
+        for card in cards
+        if _matches_airp_context(
+            card,
+            current_character_id=current_character_id,
+            current_conversation_id=current_conversation_id,
+        )
+    ]
+    review_actions = await _load_review_actions(
+        cfg.storage.sqlite.memory_db, [card["card_id"] for card in context_cards]
+    )
+    remembered = [
+        _memory_card_view(card, review_actions.get(card["card_id"], []))
+        for card in context_cards
+        if card.get("status") == "approved"
+    ]
+    deprecated = [
+        _memory_card_view(card, review_actions.get(card["card_id"], []))
+        for card in context_cards
+        if card.get("status") == "deprecated"
+    ]
+    context_inbox = [
+        item
+        for item in inbox_items
+        if _inbox_matches_airp_context(
+            item,
+            current_character_id=current_character_id,
+            current_conversation_id=current_conversation_id,
+        )
+    ]
+    pending = [_candidate_view_from_inbox(item) for item in context_inbox if item.get("status") == "pending"]
+    rejected = [
+        _candidate_view_from_inbox(item) for item in context_inbox if item.get("status") in {"discarded", "rejected"}
+    ]
+    approved_candidates = [
+        _candidate_view_from_inbox(item) for item in context_inbox if item.get("status") == "approved"
+    ]
+    state_rows = await _load_state_rows(cfg.storage.sqlite.memory_db, current_conversation_id, limit)
+
+    has_memory_or_state = bool(remembered or pending or rejected or state_rows)
+    next_actions = []
+    if not conversation:
+        next_actions.append(
+            {"key": "connect_airp_client", "label": "接入 AIRP 客户端并产生一轮对话", "target": "/settings"}
+        )
+    if conversation and not remembered and not pending:
+        next_actions.append(
+            {"key": "create_stable_memory", "label": "让角色听到一条稳定称呼、偏好或边界", "target": "/inbox"}
+        )
+    if pending:
+        next_actions.append({"key": "review_pending_memory", "label": "审核待处理候选记忆", "target": "/inbox"})
+    if conversation and not state_rows:
+        next_actions.append({"key": "confirm_state_board", "label": "在状态板确认当前剧情状态", "target": "/state"})
+    if not next_actions and has_memory_or_state:
+        next_actions.append({"key": "audit_ready", "label": "记忆审核账本可用于确认不忘与不乱记", "target": "/inbox"})
+
+    return {
+        "status": "ok",
+        "ready": bool(conversation and has_memory_or_state),
+        "conversation": conversation,
+        "current_role": {
+            "character_id": current_character_id,
+            "display_name": (conversation or {}).get("character_display_name") or current_character_id,
+        },
+        "remembered_memories": remembered[:limit],
+        "pending_candidates": pending[:limit],
+        "rejected_memories": rejected[:limit],
+        "deprecated_memories": deprecated[:limit],
+        "approved_candidates": approved_candidates[:limit],
+        "current_state": {
+            "conversation_id": current_conversation_id,
+            "row_count": len(state_rows),
+            "rows": state_rows,
+            "target": "/state",
+        },
+        "summary": {
+            "remembered_count": len(remembered),
+            "pending_candidate_count": len(pending),
+            "rejected_memory_count": len(rejected),
+            "deprecated_memory_count": len(deprecated),
+            "approved_candidate_count": len(approved_candidates),
+            "state_row_count": len(state_rows),
+        },
+        "next_actions": next_actions,
     }

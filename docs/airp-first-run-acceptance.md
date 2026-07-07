@@ -118,6 +118,7 @@ X-Conversation-Id: first_run_conversation
 - 至少产生 1 条可解释的候选记忆。
 - 至少批准 1 条稳定记忆，并在后续对话中召回。
 - 至少确认 1 次“AIRP 召回解释”或“注入来源”能解释召回内容。
+- 至少确认 1 次“AIRP 记忆账本”能说明角色记住了什么、哪些候选被拒绝、当前剧情状态在哪里。
 - 至少确认 1 次状态板记录当前场景或任务。
 - 多角色或多会话测试中没有明显串记忆。
 
@@ -191,6 +192,24 @@ GET /admin/airp-recall-explanation?trace_id=<trace_id>
 
 更完整的契约说明见 [airp-recall-explanation.md](airp-recall-explanation.md)。
 
+## 官方记忆账本接口
+
+仪表盘中的“AIRP 记忆账本”面板使用后端接口汇总当前角色的长期记忆、待审核候选、已拒绝候选和状态板 active 行：
+
+```http
+GET /admin/airp-memory-audit
+GET /admin/airp-memory-audit?conversation_id=<conversation_id>
+```
+
+这个接口用于回答“角色现在记住了什么、为什么记住、哪些内容被拒绝记忆、当前剧情状态在哪里”。它读取本地 SQLite 中的记忆卡片、审核收件箱和状态板，不依赖外部模型。返回字段包括：
+
+- `remembered_memories`：当前角色可用的已批准长期记忆和写入原因。
+- `pending_candidates`：待审核候选和等待审核原因。
+- `rejected_memories`：被拒绝或丢弃的候选和拒绝原因。
+- `current_state`：当前会话状态板 active 行和状态板入口。
+
+更完整的契约说明见 [airp-memory-audit.md](airp-memory-audit.md)。
+
 ## 对应自动检查
 
 首次体验验收后，建议运行：
@@ -214,6 +233,7 @@ python benchmarks/run_airp_benchmark.py --enforce-thresholds --report-dir benchm
 - 设置接入向导
 - 总览里的角色连续性状态
 - 记忆审核
+- AIRP 记忆账本
 - 状态板连续性摘要
 - AIRP 召回解释和注入来源解释
 - 会话管理中的角色归属修正

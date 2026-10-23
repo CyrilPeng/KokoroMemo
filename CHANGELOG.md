@@ -21,6 +21,7 @@
 - 模型回复被 `max_tokens` 截断（`finish_reason=length/max_tokens`）时，不再触发状态板填表和记忆抽取，避免把不完整回答中的幻觉内容写入长期记忆或当前状态；流式与非流式代理都会记录该结束原因（#7）。
 - 配置清理：`fallback_rule_based`、`extract_after_each_turn`、`hot_context.inject_always`、`auto_expire_resolved_items`、`detect_system_prompt_change` 这些未参与运行逻辑的开关已从 GUI、`/admin/config` 和示例配置中移除，并在配置清单中标记为废弃，减少“设置了但没效果”的误导。
 - 向量存储统一为 `VectorStore` Protocol 和 `get_vector_store` 规范入口，`get_lancedb_store` 保留为兼容别名；管理路由统一由 router 级鉴权依赖保护。
+- 管理 API 的 42 个原始字典请求体统一接入 `AdminPayload` Pydantic 边界（保留 `extra=allow` 兼容现有字段），handler 继续使用字典语义，后续可逐步把稳定字段提升为显式模型。
 - 将聊天后的响应持久化、状态板填表和记忆抽取从 `chat.py` 拆分到 `pipeline/postprocess.py`，主链路请求编排与后台处理职责分离。
 
 ### 修复
@@ -41,7 +42,7 @@
 
 - 打包版 LanceDB 在部分原生依赖组合下仍可能出现静默空召回，本次通过无过滤兜底和显式 SQLite 后端提供规避路径，仍需在 Nuitka 发行包上复测（#7）。
 - 批量导入历史对话时保留原始 `created_at` 尚未实现，时间线与 recent 通道的原始日期保留留待后续增强（#7）。
-- `Settings.vue` 的进一步组件拆分和全部管理请求的 Pydantic 契约迁移仍待分批推进；本次先完成配置清单、降级登记、向量接口协议和路由级鉴权。
+- 管理 API 已建立统一 `AdminPayload` Pydantic 边界，字段级请求模型和更细的校验仍可分模块逐步补齐；`Settings.vue` 仍可继续按设置分区拆分。
 
 ## v0.14.0 (2026-06-15)
 

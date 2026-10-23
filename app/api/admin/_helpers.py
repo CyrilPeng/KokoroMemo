@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
+from collections.abc import Callable
+from functools import wraps
+from typing import Any
+
 from fastapi import HTTPException, Request
+from pydantic import BaseModel
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
@@ -39,6 +45,34 @@ def _require_admin(request: Request) -> None:
     auth = request.headers.get("authorization", "")
     if auth != f"Bearer {token}":
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def body_as_dict(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Convert a Pydantic admin body into a dict for existing handlers."""
+
+    parameter_names = list(inspect.signature(func).parameters)
+    data_index = parameter_names.index("data") if "data" in parameter_names else None
+
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        if data_index is not None:
+            if data_index < len(args):
+                value = args[data_index]
+                if isinstance(value, BaseModel):
+                    args = (*args[:data_index], value.model_dump(), *args[data_index + 1 :])
+                elif value is None:
+                    args = (*args[:data_index], {}, *args[data_index + 1 :])
+            elif "data" in kwargs:
+                value = kwargs["data"]
+                if isinstance(value, BaseModel):
+                    kwargs["data"] = value.model_dump()
+                elif value is None:
+                    kwargs["data"] = {}
+            else:
+                kwargs["data"] = {}
+        return await func(*args, **kwargs)
+
+    return wrapper
 
 
 async def _resolve_mount_selection(db_path: str, data: dict) -> tuple[list[str], str | None]:

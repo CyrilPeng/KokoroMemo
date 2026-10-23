@@ -8,7 +8,8 @@ import httpx
 import yaml
 from fastapi import APIRouter, Body, Query, Request
 
-from app.api.admin._helpers import _require_admin
+from app.api.admin._helpers import _require_admin, body_as_dict
+from app.api.admin.schemas import AdminPayload
 
 router = APIRouter()
 
@@ -637,7 +638,8 @@ async def _test_one_provider(cfg, target: str) -> dict:
 
 
 @router.post("/admin/connectivity-test")
-async def test_connectivity(data: dict = Body(...), request: Request = None):
+@body_as_dict
+async def test_connectivity(data: AdminPayload = Body(...), request: Request = None):
     """测试指定模型 provider 的真实连通性。"""
     _require_admin(request)
     from app.core.state import get_config
@@ -703,7 +705,8 @@ async def _fetch_models_from_remote(base_url: str, api_key: str, provider: str |
 
 
 @router.post("/admin/fetch-models")
-async def fetch_models(data: dict = Body(...)):
+@body_as_dict
+async def fetch_models(data: AdminPayload = Body(...)):
     """Fetch remote models without putting API keys in URLs."""
     return await _fetch_models_from_remote(data.get("base_url", ""), data.get("api_key", ""), data.get("provider"))
 
@@ -851,7 +854,8 @@ async def get_config_schema_api(request: Request):
 
 
 @router.post("/admin/config")
-async def save_config(data: dict = Body(...)):
+@body_as_dict
+async def save_config(data: AdminPayload = Body(...)):
     """Save configuration to config.yaml and reload."""
     from app.core.config import load_config, resolve_config_path
     from app.core.services import reset_services

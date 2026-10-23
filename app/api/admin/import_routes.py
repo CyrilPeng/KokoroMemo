@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
-from app.api.admin._helpers import _require_admin
+from app.api.admin._helpers import _require_admin, body_as_dict
+from app.api.admin.schemas import AdminPayload
 
 router = APIRouter()
 
 
 @router.post("/admin/import/sillytavern")
-async def import_sillytavern(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def import_sillytavern(request: Request, data: AdminPayload = Body(...)):
     """Import a SillyTavern JSONL chat log."""
     _require_admin(request)
     from app.core.ids import generate_id
@@ -76,7 +78,10 @@ async def import_sillytavern(request: Request, data: dict = Body(...)):
 
 
 @router.post("/admin/import/{conversation_id}/extract-memories")
-async def extract_memories_from_import(conversation_id: str, request: Request, data: dict = Body(default={})):
+@body_as_dict
+async def extract_memories_from_import(
+    conversation_id: str, request: Request, data: AdminPayload | None = Body(default=None)
+):
     """Batch-extract memories from an imported conversation."""
     _require_admin(request)
     from app.core.services import get_embedding_provider, get_lancedb_store

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
-from app.api.admin._helpers import _require_admin
+from app.api.admin._helpers import _require_admin, body_as_dict
+from app.api.admin.schemas import AdminPayload
 
 router = APIRouter()
 
@@ -36,7 +37,8 @@ async def list_retrieval_profiles_api(request: Request):
 
 
 @router.post("/admin/conversation-profiles")
-async def create_conversation_profile_api(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def create_conversation_profile_api(request: Request, data: AdminPayload = Body(...)):
     """Create a custom conversation policy profile."""
     _require_admin(request)
     from app.core.state import get_config
@@ -47,7 +49,8 @@ async def create_conversation_profile_api(request: Request, data: dict = Body(..
 
 
 @router.put("/admin/conversation-profiles/{profile_id}")
-async def update_conversation_profile_api(profile_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def update_conversation_profile_api(profile_id: str, request: Request, data: AdminPayload = Body(...)):
     """Update a custom conversation policy profile."""
     _require_admin(request)
     from app.memory.conversation_policy import BUILTIN_CONVERSATION_PROFILES
@@ -90,7 +93,8 @@ async def get_conversation_defaults_api(request: Request):
 
 
 @router.put("/admin/conversation-defaults")
-async def update_conversation_defaults_api(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def update_conversation_defaults_api(request: Request, data: AdminPayload = Body(...)):
     """Update default policy for newly seen conversations."""
     _require_admin(request)
     from app.core.state import get_config

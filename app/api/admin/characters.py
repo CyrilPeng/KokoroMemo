@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
-from app.api.admin._helpers import _require_admin, _resolve_mount_selection
+from app.api.admin._helpers import _require_admin, _resolve_mount_selection, body_as_dict
+from app.api.admin.schemas import AdminPayload
 
 router = APIRouter()
 
@@ -36,7 +37,8 @@ async def get_character_api(character_id: str, request: Request):
 
 
 @router.put("/admin/characters/{character_id}")
-async def update_character_api(character_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def update_character_api(character_id: str, request: Request, data: AdminPayload = Body(...)):
     """Update character profile fields."""
     _require_admin(request)
     from app.core.state import get_config
@@ -78,7 +80,8 @@ async def delete_character_api(
 
 
 @router.post("/admin/characters/{character_id}/merge")
-async def merge_character_api(character_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def merge_character_api(character_id: str, request: Request, data: AdminPayload = Body(...)):
     """将一个重复角色合并到当前目标角色。"""
     _require_admin(request)
     from pathlib import Path
@@ -168,7 +171,8 @@ async def get_character_defaults_api(character_id: str, request: Request):
 
 
 @router.post("/admin/characters/{character_id}/defaults")
-async def set_character_defaults_api(character_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def set_character_defaults_api(character_id: str, request: Request, data: AdminPayload = Body(...)):
     """Set default template and library config for a character."""
     _require_admin(request)
     from app.core.state import get_config
@@ -195,12 +199,16 @@ async def set_character_defaults_api(character_id: str, request: Request, data: 
 
 
 @router.put("/admin/characters/{character_id}/defaults")
-async def put_character_defaults_api(character_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def put_character_defaults_api(character_id: str, request: Request, data: AdminPayload = Body(...)):
     return await set_character_defaults_api(character_id, request, data)
 
 
 @router.post("/admin/characters/{character_id}/apply-defaults")
-async def apply_character_defaults_api(character_id: str, request: Request, data: dict = Body(default_factory=dict)):
+@body_as_dict
+async def apply_character_defaults_api(
+    character_id: str, request: Request, data: AdminPayload | None = Body(default=None)
+):
     """Apply character default mounts and conversation config to existing conversations."""
     _require_admin(request)
     from app.core.state import get_config
@@ -277,7 +285,8 @@ async def export_character_config_api(character_id: str, request: Request):
 
 
 @router.post("/admin/characters/import")
-async def import_character_config_api(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def import_character_config_api(request: Request, data: AdminPayload = Body(...)):
     """Import one character profile and default strategy."""
     _require_admin(request)
     from app.core.state import get_config

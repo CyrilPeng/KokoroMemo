@@ -6,7 +6,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
-from app.api.admin._helpers import _require_admin, _resolve_mount_selection
+from app.api.admin._helpers import _require_admin, _resolve_mount_selection, body_as_dict
+from app.api.admin.schemas import AdminPayload
 from app.api.admin.state import _state_table_row_to_dict, _state_table_template_to_dict
 
 router = APIRouter()
@@ -60,7 +61,8 @@ async def _build_conversation_config_response(db_path: str, store, conversation_
 
 
 @router.put("/admin/conversations/{conversation_id}/config")
-async def update_conversation_config_api(conversation_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def update_conversation_config_api(conversation_id: str, request: Request, data: AdminPayload = Body(...)):
     """Update policy config for a conversation."""
     _require_admin(request)
     from app.core.state import get_config
@@ -90,7 +92,8 @@ async def update_conversation_config_api(conversation_id: str, request: Request,
 
 
 @router.post("/admin/conversations/{conversation_id}/config")
-async def post_conversation_config_api(conversation_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def post_conversation_config_api(conversation_id: str, request: Request, data: AdminPayload = Body(...)):
     return await update_conversation_config_api(conversation_id, request, data)
 
 
@@ -173,7 +176,8 @@ async def list_conversations_api(
 
 
 @router.patch("/admin/conversations/{conversation_id}")
-async def update_conversation_fields_api(conversation_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def update_conversation_fields_api(conversation_id: str, request: Request, data: AdminPayload = Body(...)):
     """Update user-facing conversation profile fields."""
     _require_admin(request)
     from app.core.state import get_config
@@ -292,7 +296,8 @@ async def get_conversation_memory_mounts_api(conversation_id: str):
 
 
 @router.post("/admin/conversations/{conversation_id}/memory-mounts")
-async def set_conversation_memory_mounts_api(conversation_id: str, data: dict = Body(...)):
+@body_as_dict
+async def set_conversation_memory_mounts_api(conversation_id: str, data: AdminPayload = Body(...)):
     """Set mounted long-term memory libraries for a conversation."""
     from app.core.state import get_config
     from app.storage.sqlite_cards import set_conversation_mounts
@@ -348,7 +353,8 @@ async def export_conversation_state_bundle(conversation_id: str, request: Reques
 
 
 @router.post("/admin/conversations/import")
-async def import_conversation_state_bundle(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def import_conversation_state_bundle(request: Request, data: AdminPayload = Body(...)):
     """Import a v2 conversation state-board bundle (table-based)."""
     _require_admin(request)
     from app.core.ids import sanitize_id

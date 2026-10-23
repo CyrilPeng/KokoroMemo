@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
-from app.api.admin._helpers import _require_admin
+from app.api.admin._helpers import _require_admin, body_as_dict
+from app.api.admin.schemas import AdminPayload
 
 router = APIRouter()
 
@@ -181,7 +182,8 @@ async def get_state_table_template(template_id: str, request: Request):
 
 
 @router.post("/admin/state/table-templates")
-async def create_state_table_template(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def create_state_table_template(request: Request, data: AdminPayload = Body(...)):
     """Create a custom table-based state board template."""
     _require_admin(request)
     from app.core.state import get_config
@@ -195,7 +197,10 @@ async def create_state_table_template(request: Request, data: dict = Body(...)):
 
 
 @router.post("/admin/state/table-templates/{template_id}/clone")
-async def clone_state_table_template(template_id: str, request: Request, data: dict = Body(default={})):
+@body_as_dict
+async def clone_state_table_template(
+    template_id: str, request: Request, data: AdminPayload | None = Body(default=None)
+):
     """Clone a state board template into an editable custom template."""
     _require_admin(request)
     from app.core.state import get_config
@@ -211,7 +216,8 @@ async def clone_state_table_template(template_id: str, request: Request, data: d
 
 
 @router.put("/admin/state/table-templates/{template_id}")
-async def update_state_table_template(template_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def update_state_table_template(template_id: str, request: Request, data: AdminPayload = Body(...)):
     """Replace an editable custom state board template."""
     _require_admin(request)
     from app.core.state import get_config
@@ -245,7 +251,8 @@ async def delete_state_table_template(template_id: str, request: Request):
 
 
 @router.post("/admin/state/table-templates/{template_id}/tables")
-async def add_state_table_template_table(template_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def add_state_table_template_table(template_id: str, request: Request, data: AdminPayload = Body(...)):
     """Add a tab/table to a state board template. Built-ins are cloned automatically."""
     _require_admin(request)
     from app.core.state import get_config
@@ -259,7 +266,10 @@ async def add_state_table_template_table(template_id: str, request: Request, dat
 
 
 @router.patch("/admin/state/table-templates/{template_id}/tables/{table_key}")
-async def update_state_table_template_table(template_id: str, table_key: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def update_state_table_template_table(
+    template_id: str, table_key: str, request: Request, data: AdminPayload = Body(...)
+):
     """Update a tab/table in a custom state board template."""
     _require_admin(request)
     from app.core.state import get_config
@@ -291,7 +301,10 @@ async def delete_state_table_template_table(template_id: str, table_key: str, re
 
 
 @router.post("/admin/state/table-templates/{template_id}/tables/{table_key}/columns")
-async def add_state_table_template_column(template_id: str, table_key: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def add_state_table_template_column(
+    template_id: str, table_key: str, request: Request, data: AdminPayload = Body(...)
+):
     """Add a column to one state board table. Built-ins are cloned automatically."""
     _require_admin(request)
     from app.core.state import get_config
@@ -307,8 +320,9 @@ async def add_state_table_template_column(template_id: str, table_key: str, requ
 
 
 @router.patch("/admin/state/table-templates/{template_id}/tables/{table_key}/columns/{column_key}")
+@body_as_dict
 async def update_state_table_template_column(
-    template_id: str, table_key: str, column_key: str, request: Request, data: dict = Body(...)
+    template_id: str, table_key: str, column_key: str, request: Request, data: AdminPayload = Body(...)
 ):
     """Update a column in a custom state board template."""
     _require_admin(request)
@@ -347,8 +361,9 @@ async def get_conversation_state_tables(conversation_id: str, request: Request):
 
 
 @router.post("/admin/conversations/{conversation_id}/state/tables/{table_key}/rows")
+@body_as_dict
 async def upsert_conversation_state_table_row(
-    conversation_id: str, table_key: str, request: Request, data: dict = Body(...)
+    conversation_id: str, table_key: str, request: Request, data: AdminPayload = Body(...)
 ):
     """Create or update one row in a table-based state board."""
     _require_admin(request)
@@ -402,7 +417,8 @@ async def delete_conversation_state_table_row(row_id: str, request: Request):
 
 
 @router.post("/admin/state/table-rows/batch")
-async def batch_update_state_table_rows(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def batch_update_state_table_rows(request: Request, data: AdminPayload = Body(...)):
     """Batch operations on state table rows (delete, set_priority, set_status)."""
     _require_admin(request)
     from app.core.state import get_config
@@ -420,7 +436,8 @@ async def batch_update_state_table_rows(request: Request, data: dict = Body(...)
 
 
 @router.patch("/admin/state/table-rows/{row_id}/cells/{column_key}")
-async def patch_state_table_cell(row_id: str, column_key: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def patch_state_table_cell(row_id: str, column_key: str, request: Request, data: AdminPayload = Body(...)):
     """Update a single cell value in a state table row."""
     _require_admin(request)
     from app.core.state import get_config
@@ -526,7 +543,8 @@ async def preview_state_board(conversation_id: str, request: Request):
 
 
 @router.post("/admin/conversations/{conversation_id}/state/fill")
-async def fill_conversation_state_once(conversation_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def fill_conversation_state_once(conversation_id: str, request: Request, data: AdminPayload = Body(...)):
     """Manually run the model-driven state board filler."""
     _require_admin(request)
     from app.core.state import get_config
@@ -606,7 +624,8 @@ async def list_conversation_state_events(
 
 
 @router.post("/admin/conversations/{conversation_id}/state/revert")
-async def revert_conversation_state_events(conversation_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def revert_conversation_state_events(conversation_id: str, request: Request, data: AdminPayload = Body(...)):
     """Revert state table events (undo operations)."""
     _require_admin(request)
     from app.core.state import get_config

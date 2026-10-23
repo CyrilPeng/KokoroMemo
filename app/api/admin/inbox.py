@@ -6,7 +6,8 @@ import contextlib
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
-from app.api.admin._helpers import _require_admin
+from app.api.admin._helpers import _require_admin, body_as_dict
+from app.api.admin.schemas import AdminPayload
 
 router = APIRouter()
 
@@ -219,7 +220,8 @@ async def delete_inbox_item(inbox_id: str):
 
 
 @router.post("/admin/inbox/cleanup-discarded")
-async def cleanup_discarded_inbox(data: dict = Body(default=None)):
+@body_as_dict
+async def cleanup_discarded_inbox(data: AdminPayload | None = Body(default=None)):
     """按当前 keep_limit（或请求传入）裁剪 discarded 条目。"""
     from app.core.state import get_config
     from app.storage.sqlite_cards import trim_discarded_inbox
@@ -240,7 +242,8 @@ async def cleanup_discarded_inbox(data: dict = Body(default=None)):
 
 
 @router.post("/admin/inbox/batch")
-async def batch_inbox_action(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def batch_inbox_action(request: Request, data: AdminPayload = Body(...)):
     """批量批准或拒绝收件箱项。"""
     _require_admin(request)
 

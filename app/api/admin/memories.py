@@ -6,7 +6,8 @@ import contextlib
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 
-from app.api.admin._helpers import _require_admin
+from app.api.admin._helpers import _require_admin, body_as_dict
+from app.api.admin.schemas import AdminPayload
 
 router = APIRouter()
 
@@ -92,7 +93,8 @@ async def list_memories(
 
 
 @router.post("/admin/memories")
-async def create_memory_card(data: dict = Body(...)):
+@body_as_dict
+async def create_memory_card(data: AdminPayload = Body(...)):
     """Manually create an approved memory card."""
     from app.core.ids import generate_id
     from app.core.services import get_embedding_provider, get_lancedb_store
@@ -142,7 +144,8 @@ async def create_memory_card(data: dict = Body(...)):
 
 
 @router.put("/admin/memories/{card_id}")
-async def update_memory_card(card_id: str, data: dict = Body(...)):
+@body_as_dict
+async def update_memory_card(card_id: str, data: AdminPayload = Body(...)):
     """Edit a memory card's content, type, or importance."""
     import aiosqlite
 
@@ -366,7 +369,8 @@ async def get_index_migration_status_api(request: Request):
 
 
 @router.post("/admin/start-index-migration")
-async def start_index_migration_api(request: Request, data: dict = Body(default=None)):
+@body_as_dict
+async def start_index_migration_api(request: Request, data: AdminPayload | None = Body(default=None)):
     """Start an asynchronous embedding index migration with the current config."""
     _require_admin(request)
     from app.core.services import (

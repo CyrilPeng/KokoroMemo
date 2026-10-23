@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
-from app.api.admin._helpers import _require_admin
+from app.api.admin._helpers import _require_admin, body_as_dict
+from app.api.admin.schemas import AdminPayload
 
 router = APIRouter()
 
@@ -22,7 +23,8 @@ async def list_memory_libraries_api(request: Request):
 
 
 @router.post("/admin/memory-libraries")
-async def create_memory_library_api(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def create_memory_library_api(request: Request, data: AdminPayload = Body(...)):
     """Create a memory library or save selected libraries as a new preset."""
     _require_admin(request)
     from app.core.state import get_config
@@ -39,7 +41,8 @@ async def create_memory_library_api(request: Request, data: dict = Body(...)):
 
 
 @router.put("/admin/memory-libraries/{library_id}")
-async def update_memory_library_api(library_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def update_memory_library_api(library_id: str, request: Request, data: AdminPayload = Body(...)):
     """Rename or describe a memory library."""
     _require_admin(request)
     from app.core.state import get_config
@@ -80,7 +83,8 @@ async def list_memory_mount_presets_api(request: Request):
 
 
 @router.post("/admin/memory-mount-presets")
-async def create_memory_mount_preset_api(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def create_memory_mount_preset_api(request: Request, data: AdminPayload = Body(...)):
     """Create a new memory mount preset."""
     _require_admin(request)
     from app.core.state import get_config
@@ -98,7 +102,8 @@ async def create_memory_mount_preset_api(request: Request, data: dict = Body(...
 
 
 @router.put("/admin/memory-mount-presets/{preset_id}")
-async def update_memory_mount_preset_api(preset_id: str, request: Request, data: dict = Body(...)):
+@body_as_dict
+async def update_memory_mount_preset_api(preset_id: str, request: Request, data: AdminPayload = Body(...)):
     """Update a memory mount preset."""
     _require_admin(request)
     from app.core.state import get_config
@@ -169,7 +174,8 @@ async def export_memory_library(library_id: str, request: Request):
 
 
 @router.post("/admin/memory-libraries/import")
-async def import_memory_library(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def import_memory_library(request: Request, data: AdminPayload = Body(...)):
     """Import a memory library from exported JSON."""
     _require_admin(request)
     from app.core.ids import generate_id
@@ -255,7 +261,8 @@ async def export_mount_preset(preset_id: str, request: Request):
 
 
 @router.post("/admin/memory-mount-presets/import")
-async def import_mount_preset(request: Request, data: dict = Body(...)):
+@body_as_dict
+async def import_mount_preset(request: Request, data: AdminPayload = Body(...)):
     """Import a memory mount preset from exported JSON."""
     _require_admin(request)
     import json as json_mod

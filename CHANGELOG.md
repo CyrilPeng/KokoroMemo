@@ -27,7 +27,7 @@
 ### 修复
 
 - 修复 Termux 使用 pydantic v1 时后端因 `ConfigDict` / `model_validate` / `model_dump` 导入失败而无法启动的问题：新增 pydantic v1/v2 兼容层，CI 增加 pydantic v1 后端导入与请求模型测试，Android `doctor.sh` 也会检查后端完整导入。
-- 修复 Termux 一键安装脚本默认安装 0.10.0 旧版本的问题：兜底版本同步为 `0.14.0`，并新增 CI 测试校验脚本兜底版本与 `pyproject.toml` 一致。
+- 修复 Termux 一键安装脚本默认安装 0.10.0 旧版本的问题：兜底版本同步为当前修复版本，并新增 CI 测试校验脚本兜底版本与 `pyproject.toml` 一致。
 - 提升 Android 后台稳定性：启动时尝试获取 Termux wake lock，停止时释放；首次启动等待从 15 秒延长到 90 秒，旧进程先进行 10 秒健康等待再重启；日志改为轮转到 `server.log.previous`，避免启动时清空上次错误。
 - 修复 Android 启动脚本每次强制覆盖 `server.port` 的问题：端口改为仅缺省时写入，GUI 修改端口并重启后可以生效；Web/Termux 模式保存需要重启的配置时改为明确提示执行 `kokoromemo restart`，不再误报自动重启失败。
 - 仪表盘初始加载在后端尚未就绪时进行有限退避重试，避免 Android/Termux 冷启动期间页面空白或误判离线。

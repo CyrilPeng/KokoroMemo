@@ -550,6 +550,8 @@ async def _persist_response_turn(
     assistant_text: str,
     response_json: str | None,
     stream_text: str | None,
+    *,
+    finish_reason: str | None = None,
 ) -> tuple[str | None, int | None]:
     try:
         resp_id = generate_id("resp_")
@@ -560,6 +562,7 @@ async def _persist_response_turn(
             ctx.conversation_id,
             body_json=response_json,
             stream_text=stream_text,
+            finish_reason=finish_reason,
         )
         all_msgs = list(original_messages)
         if assistant_text:
@@ -592,6 +595,7 @@ async def _schedule_post_process_turn(
     turn_index: int | None,
     *,
     name: str,
+    finish_reason: str | None = None,
 ) -> None:
     spawn_background(
         _post_process_turn(
@@ -602,6 +606,7 @@ async def _schedule_post_process_turn(
             assistant_text,
             turn_id,
             turn_index,
+            finish_reason=finish_reason,
         ),
         name=name,
     )
@@ -615,6 +620,8 @@ async def _post_process_turn(
     assistant_text: str,
     turn_id: str | None,
     turn_index: int | None,
+    *,
+    finish_reason: str | None = None,
 ) -> None:
     async with conversation_lock(ctx.conversation_id):
         await _update_state_and_extract_memories(
@@ -625,6 +632,7 @@ async def _post_process_turn(
             assistant_text,
             turn_id,
             turn_index,
+            finish_reason=finish_reason,
         )
 
 
@@ -636,7 +644,17 @@ async def _update_state_and_extract_memories(
     assistant_text: str,
     turn_id: str | None,
     turn_index: int | None,
+    *,
+    finish_reason: str | None = None,
 ) -> None:
+    if _is_truncated_finish_reason(finish_reason):
+        logger.warning(
+            "Skipped state update and memory extraction for conv=%s: assistant response was truncated (finish_reason=%s)",
+            ctx.conversation_id,
+            finish_reason,
+        )
+        return
+
     conversation_config = None
     if cfg.memory.enabled:
         try:
@@ -757,6 +775,10 @@ def _should_run_state_updater(cfg, turn_index: int | None) -> bool:
     return turn_index % every_n == 0
 
 
+def _is_truncated_finish_reason(finish_reason: str | None) -> bool:
+    return str(finish_reason or "").strip().lower() in {"length", "max_tokens"}
+
+
 async def _non_stream_proxy(
     provider,
     body: dict,
@@ -770,12 +792,19 @@ async def _non_stream_proxy(
         resp_data = await provider.chat(body, timeout)
 
         assistant_text = ""
+        finish_reason = None
         choices = resp_data.get("choices", [])
         if choices:
             assistant_text = choices[0].get("message", {}).get("content", "")
+            finish_reason = choices[0].get("finish_reason")
 
         turn_id, turn_index = await _persist_response_turn(
-            ctx, original_messages, assistant_text, json.dumps(resp_data, ensure_ascii=False), None
+            ctx,
+            original_messages,
+            assistant_text,
+            json.dumps(resp_data, ensure_ascii=False),
+            None,
+            finish_reason=finish_reason,
         )
         await _schedule_post_process_turn(
             ctx,
@@ -786,6 +815,7 @@ async def _non_stream_proxy(
             turn_id,
             turn_index,
             name=f"post_process_turn:{ctx.request_id}",
+            finish_reason=finish_reason,
         )
 
         return JSONResponse(content=resp_data, status_code=200)
@@ -826,14 +856,16 @@ async def _stream_proxy(
     services: ServiceRegistry,
 ):
     collected_text: list[str] = []
+    finish_reason = None
     try:
         async for line in provider.stream_chat(body, timeout):
             yield f"{line}\n\n"
             if line.startswith("data: ") and not line.startswith("data: [DONE]"):
                 try:
                     chunk = json.loads(line[6:])
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    content = delta.get("content")
+                    choice = chunk.get("choices", [{}])[0]
+                    finish_reason = choice.get("finish_reason") or finish_reason
+                    content = choice.get("delta", {}).get("content")
                     if content:
                         collected_text.append(content)
                 except (json.JSONDecodeError, IndexError, KeyError):
@@ -850,7 +882,14 @@ async def _stream_proxy(
         return
 
     full_text = "".join(collected_text)
-    turn_id, turn_index = await _persist_response_turn(ctx, original_messages, full_text, None, full_text)
+    turn_id, turn_index = await _persist_response_turn(
+        ctx,
+        original_messages,
+        full_text,
+        None,
+        full_text,
+        finish_reason=finish_reason,
+    )
     await _schedule_post_process_turn(
         ctx,
         cfg,
@@ -860,4 +899,5 @@ async def _stream_proxy(
         turn_id,
         turn_index,
         name=f"post_process_turn_stream:{ctx.request_id}",
+        finish_reason=finish_reason,
     )

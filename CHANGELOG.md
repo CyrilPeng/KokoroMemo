@@ -35,6 +35,7 @@
 - 补充向量后端选择、LanceDB 重建兜底、召回过滤隔离、judge 证据过滤、语义去重、截断保护、配置清单、降级登记和相对时间回归测试；全量后端测试和 AIRP benchmark 10/10 门禁通过。
 - CI 新增真实 LanceDB 的 `full` extras 测试 Job，覆盖带过滤检索和 staging 晋升兜底；前端 Job 在构建前运行 `npm test`。
 - 同步 README、DESIGN 和 `config.example.yaml` 的向量后端、AVX2 环境、向量诊断接口、配置清单、降级登记、默认状态板模板和记忆防幻觉说明。
+- 将设置页高级配置和帮助弹窗拆为 `AdvancedSettingsPanel.vue` 与 `SettingsHelpModal.vue`，`Settings.vue` 只保留配置加载/保存、标签编排和服务配置等页面级逻辑。
 
 ### 已知限制与后续安排
 

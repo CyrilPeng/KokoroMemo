@@ -4,11 +4,12 @@ import {
   NCard, NForm, NFormItem, NInput, NSwitch, NInputNumber,
   NButton, NSpace, NDivider, NAlert, NSelect,
   NTabs, NTabPane, NModal,
-  NDynamicTags, NSlider, NProgress, NTag, NPopconfirm,
-  NMenu,
+  NProgress, NTag, NPopconfirm,
   useMessage,
 } from 'naive-ui'
 import { apiFetch, friendlyError, getServerUrl, setServerUrl, resolveBackendUrl } from '../api'
+import AdvancedSettingsPanel from '../components/settings/AdvancedSettingsPanel.vue'
+import SettingsHelpModal from '../components/settings/SettingsHelpModal.vue'
 import { useI18n } from 'vue-i18n'
 import { setLanguage, getLanguage } from '../i18n'
 import { useUpdateCheck } from '../composables/useUpdateCheck'
@@ -41,10 +42,6 @@ const portDraft = ref<number | null>(null)
 
 const logLoading = ref(false)
 const logInfo = ref({ path: '', content: '', message: '', status: '' })
-const conversationIdentityModes = computed(() => [
-  { label: t('settings.adv.convIdentityRequest'), value: 'request' },
-  { label: t('settings.adv.convIdentityApiKey'), value: 'api_key' },
-])
 
 const currentBackendUrl = computed(() => backendUrl.value || getServerUrl())
 const openaiBaseUrl = computed(() => `${currentBackendUrl.value.replace(/\/$/, '')}/v1`)
@@ -171,7 +168,6 @@ const config = ref({
   // 高级：会话自动检测
   conv_identity_mode: 'request',
   conv_auto_gap: 0,
-  conv_detect_prompt_change: false,
   conv_detect_count_reset: false,
   // 高级：记忆顶层配置
   inject_enabled: true,
@@ -186,8 +182,6 @@ const config = ref({
   ext_min_importance: 0.45,
   ext_min_confidence: 0.55,
   ext_semantic_dedup_threshold: 0.92,
-  ext_after_each_turn: true,
-  ext_fallback_rule_based: true,
   ext_discarded_keep_limit: 200,
   // 高级：评分权重
   score_vector: 0.55,
@@ -206,7 +200,6 @@ const config = ref({
   rg_skip_when_state_sufficient: true,
   // 高级：热上下文
   hc_enabled: true,
-  hc_inject_always: true,
   hc_max_chars: 1200,
 })
 
@@ -226,32 +219,6 @@ const vectorStoreOptions = computed(() => [
   { label: t('settings.vectorStoreAuto'), value: 'auto' },
   { label: 'LanceDB', value: 'lancedb' },
   { label: 'SQLite + numpy', value: 'sqlite' },
-])
-
-const retrievalGateModes = computed(() => [
-  { label: t('settings.adv.gateModeAuto'), value: 'auto' },
-  { label: t('settings.adv.gateModeAlways'), value: 'always' },
-  { label: t('settings.adv.gateModeNever'), value: 'never' },
-  { label: t('settings.adv.gateModeKeyword'), value: 'keyword_only' },
-])
-
-const scoringTotal = computed(() => {
-  return (config.value.score_vector || 0)
-    + (config.value.score_importance || 0)
-    + (config.value.score_recency || 0)
-    + (config.value.score_scope || 0)
-    + (config.value.score_confidence || 0)
-})
-
-const advancedSection = ref('memoryTop')
-const advancedMenuOptions = computed(() => [
-  { label: t('settings.adv.memoryTop'), key: 'memoryTop' },
-  { label: t('settings.adv.conversation'), key: 'conversation' },
-  { label: t('settings.adv.scopes'), key: 'scopes' },
-  { label: t('settings.adv.extraction'), key: 'extraction' },
-  { label: t('settings.adv.scoring'), key: 'scoring' },
-  { label: t('settings.adv.retrievalGate'), key: 'gate' },
-  { label: t('settings.adv.hotContext'), key: 'hotContext' },
 ])
 
 const judgeModeOptions = computed(() => [
@@ -438,7 +405,6 @@ const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform
   ['state_filler_prompt',                'memory.state_updater.prompt',                       ''],
   ['conv_identity_mode',                 'conversation.session_identity_mode',                 'request'],
   ['conv_auto_gap',                      'conversation.auto_new_session_gap_minutes',          0],
-  ['conv_detect_prompt_change',          'conversation.detect_system_prompt_change',           false],
   ['conv_detect_count_reset',            'conversation.detect_message_count_reset',            false],
   ['inject_enabled',                     'memory.inject_enabled',                             true],
   ['extraction_enabled',                 'memory.extraction_enabled',                         true],
@@ -450,8 +416,6 @@ const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform
   ['ext_min_importance',                 'memory.extraction.min_importance',                  0.45],
   ['ext_min_confidence',                 'memory.extraction.min_confidence',                  0.55],
   ['ext_semantic_dedup_threshold',       'memory.extraction.semantic_dedup_threshold',        0.92],
-  ['ext_after_each_turn',                'memory.extraction.extract_after_each_turn',         true],
-  ['ext_fallback_rule_based',            'memory.extraction.fallback_rule_based',             true],
   ['ext_discarded_keep_limit',           'memory.extraction.discarded_keep_limit',            200],
   ['score_vector',                       'memory.scoring.vector_weight',                      0.55],
   ['score_importance',                   'memory.scoring.importance_weight',                  0.20],
@@ -466,7 +430,6 @@ const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform
   ['rg_skip_chars_below',               'memory.retrieval_gate.skip_when_latest_user_text_chars_below', 4],
   ['rg_skip_when_state_sufficient',     'memory.retrieval_gate.skip_when_state_is_sufficient', true],
   ['hc_enabled',                         'memory.hot_context.enabled',                        true],
-  ['hc_inject_always',                   'memory.hot_context.inject_always',                  true],
   ['hc_max_chars',                       'memory.hot_context.max_chars',                      1200],
 ]
 
@@ -555,8 +518,6 @@ async function saveConfig(): Promise<boolean> {
           min_importance: config.value.ext_min_importance,
           min_confidence: config.value.ext_min_confidence,
           semantic_dedup_threshold: config.value.ext_semantic_dedup_threshold,
-          extract_after_each_turn: config.value.ext_after_each_turn,
-          fallback_rule_based: config.value.ext_fallback_rule_based,
           discarded_keep_limit: config.value.ext_discarded_keep_limit,
         },
         retrieval_gate: {
@@ -571,7 +532,6 @@ async function saveConfig(): Promise<boolean> {
         },
         hot_context: {
           enabled: config.value.hc_enabled,
-          inject_always: config.value.hc_inject_always,
           max_chars: config.value.hc_max_chars,
         },
         judge: {
@@ -606,7 +566,6 @@ async function saveConfig(): Promise<boolean> {
     payload.conversation = {
       session_identity_mode: config.value.conv_identity_mode,
       auto_new_session_gap_minutes: config.value.conv_auto_gap,
-      detect_system_prompt_change: config.value.conv_detect_prompt_change,
       detect_message_count_reset: config.value.conv_detect_count_reset,
     }
 
@@ -676,24 +635,6 @@ async function rebuildIndex() {
     }
   } catch (e) {
     message.error(t('common.backendConnectionFailed'))
-  }
-}
-
-async function cleanupDiscardedInbox() {
-  try {
-    const resp = await apiFetch('/admin/inbox/cleanup-discarded', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keep_limit: config.value.ext_discarded_keep_limit }),
-    })
-    const data = await resp.json()
-    if (data.status === 'ok') {
-      message.success(t('settings.adv.extDiscardedCleaned', { removed: data.removed, keep: data.keep_limit }))
-    } else {
-      message.error(data.message || t('common.failed'))
-    }
-  } catch (e: any) {
-    message.error(friendlyError(e.message || String(e), 'settings.operation'))
   }
 }
 
@@ -1301,139 +1242,7 @@ onMounted(() => {
       </NTabPane>
 
       <NTabPane v-if="settingsMode === 'advanced'" name="advanced" :tab="$t('settings.tabAdvanced')">
-        <NCard style="background: #18181b; border: 1px solid #27272a;">
-          <template #header>
-            <NSpace align="center">
-              <span>{{ $t('settings.adv.title') }}</span>
-            </NSpace>
-          </template>
-          <p style="color: #71717a; font-size: 13px; margin: 0 0 14px;">{{ $t('settings.adv.subtitle') }}</p>
-
-          <div class="adv-layout">
-            <div class="adv-sidebar">
-              <NMenu
-                :options="advancedMenuOptions"
-                :value="advancedSection"
-                @update:value="(v: string) => { advancedSection = v }"
-                :indent="14"
-              />
-            </div>
-            <div class="adv-content">
-              <div v-if="advancedSection === 'memoryTop'">
-                <div class="adv-section-header">
-                  <h3 class="adv-section-title">{{ $t('settings.adv.memoryTop') }}</h3>
-                  <NButton quaternary size="tiny" @click="helpModal = 'adv_memoryTop'"><span class="help-icon">?</span></NButton>
-                </div>
-                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
-                  <NFormItem :label="$t('settings.adv.injectEnabled')"><NSwitch v-model:value="config.inject_enabled" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.extractionEnabled')"><NSwitch v-model:value="config.extraction_enabled" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.maxRecentTurns')"><NInputNumber v-model:value="config.max_recent_turns_for_query" :min="1" :max="50" style="width: 200px;" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.vectorTopK')"><NInputNumber v-model:value="config.vector_top_k" :min="1" :max="200" style="width: 200px;" /></NFormItem>
-                </NForm>
-              </div>
-
-              <div v-else-if="advancedSection === 'conversation'">
-                <div class="adv-section-header">
-                  <h3 class="adv-section-title">{{ $t('settings.adv.conversation') }}</h3>
-                  <NButton quaternary size="tiny" @click="helpModal = 'adv_conversation'"><span class="help-icon">?</span></NButton>
-                </div>
-                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
-                  <NFormItem :label="$t('settings.adv.convIdentityMode')">
-                    <NSelect v-model:value="config.conv_identity_mode" :options="conversationIdentityModes" style="width: 260px;" />
-                  </NFormItem>
-                  <NFormItem :label="$t('settings.adv.convAutoGap')">
-                    <NInputNumber v-model:value="config.conv_auto_gap" :min="0" :max="1440" style="width: 160px;" />
-                    <span style="color: #71717a; font-size: 12px; margin-left: 12px;">{{ $t('settings.adv.convAutoGapHint') }}</span>
-                  </NFormItem>
-                  <NFormItem :label="$t('settings.adv.convDetectPrompt')"><NSwitch v-model:value="config.conv_detect_prompt_change" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.convDetectCount')"><NSwitch v-model:value="config.conv_detect_count_reset" /></NFormItem>
-                </NForm>
-              </div>
-
-              <div v-else-if="advancedSection === 'scopes'">
-                <div class="adv-section-header">
-                  <h3 class="adv-section-title">{{ $t('settings.adv.scopes') }}</h3>
-                  <NButton quaternary size="tiny" @click="helpModal = 'adv_scopes'"><span class="help-icon">?</span></NButton>
-                </div>
-                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
-                  <NFormItem :label="$t('settings.adv.scopeGlobal')"><NSwitch v-model:value="config.scope_global" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.scopeCharacter')"><NSwitch v-model:value="config.scope_character" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.scopeConversation')"><NSwitch v-model:value="config.scope_conversation" /></NFormItem>
-                </NForm>
-              </div>
-
-              <div v-else-if="advancedSection === 'extraction'">
-                <div class="adv-section-header">
-                  <h3 class="adv-section-title">{{ $t('settings.adv.extraction') }}</h3>
-                  <NButton quaternary size="tiny" @click="helpModal = 'adv_extraction'"><span class="help-icon">?</span></NButton>
-                </div>
-                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
-                  <NFormItem :label="$t('settings.adv.extMinImportance')">
-                    <NSlider v-model:value="config.ext_min_importance" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 360px;" />
-                  </NFormItem>
-                  <NFormItem :label="$t('settings.adv.extMinConfidence')">
-                    <NSlider v-model:value="config.ext_min_confidence" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 360px;" />
-                  </NFormItem>
-                  <NFormItem :label="$t('settings.adv.extSemanticDedupThreshold')">
-                    <NSlider v-model:value="config.ext_semantic_dedup_threshold" :min="0.5" :max="1" :step="0.01" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 360px;" />
-                  </NFormItem>
-                  <NFormItem :label="$t('settings.adv.extAfterEachTurn')"><NSwitch v-model:value="config.ext_after_each_turn" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.extFallbackRules')"><NSwitch v-model:value="config.ext_fallback_rule_based" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.extDiscardedKeepLimit')">
-                    <NSpace align="center">
-                      <NInputNumber v-model:value="config.ext_discarded_keep_limit" :min="0" :max="10000" :step="50" style="width: 180px;" />
-                      <NButton size="small" @click="cleanupDiscardedInbox">{{ $t('settings.adv.extDiscardedCleanup') }}</NButton>
-                    </NSpace>
-                  </NFormItem>
-                </NForm>
-              </div>
-
-              <div v-else-if="advancedSection === 'scoring'">
-                <div class="adv-section-header">
-                  <h3 class="adv-section-title">{{ $t('settings.adv.scoring') }}</h3>
-                  <NButton quaternary size="tiny" @click="helpModal = 'adv_scoring'"><span class="help-icon">?</span></NButton>
-                </div>
-                <p class="adv-hint">{{ $t('settings.adv.scoringHint', { total: scoringTotal.toFixed(2) }) }}</p>
-                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
-                  <NFormItem :label="$t('settings.adv.scoreVector')"><NSlider v-model:value="config.score_vector" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 420px;" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.scoreImportance')"><NSlider v-model:value="config.score_importance" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 420px;" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.scoreRecency')"><NSlider v-model:value="config.score_recency" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 420px;" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.scoreScope')"><NSlider v-model:value="config.score_scope" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 420px;" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.scoreConfidence')"><NSlider v-model:value="config.score_confidence" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 420px;" /></NFormItem>
-                </NForm>
-              </div>
-
-              <div v-else-if="advancedSection === 'gate'">
-                <div class="adv-section-header">
-                  <h3 class="adv-section-title">{{ $t('settings.adv.retrievalGate') }}</h3>
-                  <NButton quaternary size="tiny" @click="helpModal = 'adv_gate'"><span class="help-icon">?</span></NButton>
-                </div>
-                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
-                  <NFormItem :label="$t('settings.adv.gateEnabled')"><NSwitch v-model:value="config.rg_enabled" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.gateMode')"><NSelect v-model:value="config.rg_mode" :options="retrievalGateModes" style="width: 220px;" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.gateOnNewSession')"><NSwitch v-model:value="config.rg_on_new_session" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.gateEveryNTurns')"><NInputNumber v-model:value="config.rg_every_n_turns" :min="0" :max="50" style="width: 160px;" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.gateStateConfBelow')"><NSlider v-model:value="config.rg_state_conf_below" :min="0" :max="1" :step="0.05" :format-tooltip="(v: number) => v.toFixed(2)" style="max-width: 360px;" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.gateTriggerKeywords')"><NDynamicTags v-model:value="config.rg_trigger_keywords" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.gateSkipCharsBelow')"><NInputNumber v-model:value="config.rg_skip_chars_below" :min="0" :max="200" style="width: 160px;" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.gateSkipWhenSufficient')"><NSwitch v-model:value="config.rg_skip_when_state_sufficient" /></NFormItem>
-                </NForm>
-              </div>
-
-              <div v-else-if="advancedSection === 'hotContext'">
-                <div class="adv-section-header">
-                  <h3 class="adv-section-title">{{ $t('settings.adv.hotContext') }}</h3>
-                  <NButton quaternary size="tiny" @click="helpModal = 'adv_hotContext'"><span class="help-icon">?</span></NButton>
-                </div>
-                <NForm label-placement="left" label-width="220" :show-feedback="false" class="adv-form">
-                  <NFormItem :label="$t('settings.adv.hcEnabled')"><NSwitch v-model:value="config.hc_enabled" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.hcInjectAlways')"><NSwitch v-model:value="config.hc_inject_always" /></NFormItem>
-                  <NFormItem :label="$t('settings.adv.hcMaxChars')"><NInputNumber v-model:value="config.hc_max_chars" :min="100" :max="10000" :step="100" style="width: 200px;" /></NFormItem>
-                </NForm>
-              </div>
-            </div>
-          </div>
-        </NCard>
+        <AdvancedSettingsPanel v-model:config="config" @open-help="helpModal = $event" />
       </NTabPane>
     </NTabs>
 
@@ -1464,106 +1273,7 @@ onMounted(() => {
       </template>
     </NModal>
 
-    <!-- 帮助弹窗 -->
-    <NModal :show="!!helpModal" preset="card" :title="$t('settings.helpTitle')" style="width: min(600px, 96vw); background: #18181b;" :mask-closable="true" @update:show="(v: boolean) => { if (!v) helpModal = '' }">
-      <div v-if="helpModal === 'llm'" class="help-content">
-        <p><strong>{{ $t('settings.forwardMode') }}</strong>: {{ $t('settings.forwardModeHelp') }}</p>
-        <p><strong>{{ $t('settings.provider') }}</strong>: {{ $t('settings.providerHelp') }}</p>
-        <p><strong>Base URL</strong>: {{ $t('settings.baseUrlHelp') }}</p>
-        <p><strong>API Key</strong>: {{ $t('settings.apiKeyHelp') }}</p>
-        <p><strong>{{ $t('settings.modelName') }}</strong>: {{ $t('settings.modelNameHelp') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'embedding'" class="help-content">
-        <p>{{ $t('settings.embeddingHelp') }}</p>
-        <p><strong>{{ $t('settings.dimension') }}</strong>: {{ $t('settings.dimensionHelp') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'rerank'" class="help-content">
-        <p>{{ $t('settings.rerankHelp') }}</p>
-        <p><strong>{{ $t('settings.maxDocsPerBatch') }}</strong>: {{ $t('settings.maxDocsHelp') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'stateFiller'" class="help-content">
-        <p>{{ $t('settings.stateFillerHelp') }}</p>
-        <p><strong>{{ $t('settings.fillMode') }}</strong>: {{ $t('settings.fillModeHelp') }}</p>
-        <p><strong>{{ $t('settings.minConfidence') }}</strong>: {{ $t('settings.minConfidenceHelp') }}</p>
-        <p><strong>{{ $t('settings.timeout') }}</strong>: {{ $t('settings.timeoutHelp') }}</p>
-        <p><strong>{{ $t('settings.temperature') }}</strong>: {{ $t('settings.temperatureHelp') }}</p>
-        <p><strong>{{ $t('settings.customPrompt') }}</strong>: {{ $t('settings.customPromptHelp') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'memory'" class="help-content">
-        <p>{{ $t('settings.memoryHelp') }}</p>
-        <p><strong>{{ $t('settings.maxInjectChars') }}</strong>: {{ $t('settings.maxInjectCharsHelp') }}</p>
-        <p><strong>{{ $t('settings.memoryJudge') }}</strong>: {{ $t('settings.memoryJudgeHelp') }}</p>
-        <p><strong>{{ $t('settings.judgeMode') }}</strong>: {{ $t('settings.judgeModeHelp') }}</p>
-        <p><strong>{{ $t('settings.userRules') }}</strong>: {{ $t('settings.userRulesHelp') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'server'" class="help-content">
-        <p><strong>{{ $t('settings.openaiBaseUrl') }}</strong>: {{ $t('settings.openaiBaseUrlHelp') }}</p>
-        <p><strong>{{ $t('settings.localPort') }}</strong>: {{ $t('settings.localPortHelp') }}</p>
-        <p><strong>{{ $t('settings.storageDir') }}</strong>: {{ $t('settings.storageDirHelp') }}</p>
-        <p><strong>{{ $t('settings.timezone') }}</strong>: {{ $t('settings.timezoneHelp') }}</p>
-        <p><strong>{{ $t('settings.language') }}</strong>: {{ $t('settings.languageHelp') }}</p>
-        <p><strong>{{ $t('settings.closeToTray') }}</strong>: {{ $t('settings.closeToTrayHelp') }}</p>
-        <p><strong>{{ $t('settings.updateCheck') }}</strong>: {{ $t('settings.updateCheckHelp') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'adv_memoryTop'" class="help-content">
-        <p>{{ $t('settings.adv.helpDetail.memoryTop.intro') }}</p>
-        <p><strong>{{ $t('settings.adv.injectEnabled') }}</strong>: {{ $t('settings.adv.helpDetail.memoryTop.inject') }}</p>
-        <p><strong>{{ $t('settings.adv.extractionEnabled') }}</strong>: {{ $t('settings.adv.helpDetail.memoryTop.extraction') }}</p>
-        <p><strong>{{ $t('settings.adv.maxRecentTurns') }}</strong>: {{ $t('settings.adv.helpDetail.memoryTop.recentTurns') }}</p>
-        <p><strong>{{ $t('settings.adv.vectorTopK') }}</strong>: {{ $t('settings.adv.helpDetail.memoryTop.topK') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'adv_conversation'" class="help-content">
-        <p>{{ $t('settings.adv.helpDetail.conversation.intro') }}</p>
-        <p><strong>{{ $t('settings.adv.convIdentityMode') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.identityMode') }}</p>
-        <p><strong>{{ $t('settings.adv.convAutoGap') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.gap') }}</p>
-        <p><strong>{{ $t('settings.adv.convDetectPrompt') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.prompt') }}</p>
-        <p><strong>{{ $t('settings.adv.convDetectCount') }}</strong>: {{ $t('settings.adv.helpDetail.conversation.count') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'adv_scopes'" class="help-content">
-        <p>{{ $t('settings.adv.helpDetail.scopes.intro') }}</p>
-        <p><strong>{{ $t('settings.adv.scopeGlobal') }}</strong>: {{ $t('settings.adv.helpDetail.scopes.global') }}</p>
-        <p><strong>{{ $t('settings.adv.scopeCharacter') }}</strong>: {{ $t('settings.adv.helpDetail.scopes.character') }}</p>
-        <p><strong>{{ $t('settings.adv.scopeConversation') }}</strong>: {{ $t('settings.adv.helpDetail.scopes.conversation') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'adv_extraction'" class="help-content">
-        <p>{{ $t('settings.adv.helpDetail.extraction.intro') }}</p>
-        <p><strong>{{ $t('settings.adv.extMinImportance') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.importance') }}</p>
-        <p><strong>{{ $t('settings.adv.extMinConfidence') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.confidence') }}</p>
-        <p><strong>{{ $t('settings.adv.extSemanticDedupThreshold') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.semanticDedup') }}</p>
-        <p><strong>{{ $t('settings.adv.extAfterEachTurn') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.afterEachTurn') }}</p>
-        <p><strong>{{ $t('settings.adv.extFallbackRules') }}</strong>: {{ $t('settings.adv.helpDetail.extraction.fallback') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'adv_scoring'" class="help-content">
-        <p>{{ $t('settings.adv.helpDetail.scoring.intro') }}</p>
-        <p><strong>{{ $t('settings.adv.scoreVector') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.vector') }}</p>
-        <p><strong>{{ $t('settings.adv.scoreImportance') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.importance') }}</p>
-        <p><strong>{{ $t('settings.adv.scoreRecency') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.recency') }}</p>
-        <p><strong>{{ $t('settings.adv.scoreScope') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.scope') }}</p>
-        <p><strong>{{ $t('settings.adv.scoreConfidence') }}</strong>: {{ $t('settings.adv.helpDetail.scoring.confidence') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'adv_gate'" class="help-content">
-        <p>{{ $t('settings.adv.helpDetail.gate.intro') }}</p>
-        <p><strong>{{ $t('settings.adv.gateMode') }}</strong>: {{ $t('settings.adv.helpDetail.gate.mode') }}</p>
-        <p><strong>{{ $t('settings.adv.gateOnNewSession') }}</strong>: {{ $t('settings.adv.helpDetail.gate.newSession') }}</p>
-        <p><strong>{{ $t('settings.adv.gateEveryNTurns') }}</strong>: {{ $t('settings.adv.helpDetail.gate.everyN') }}</p>
-        <p><strong>{{ $t('settings.adv.gateStateConfBelow') }}</strong>: {{ $t('settings.adv.helpDetail.gate.confBelow') }}</p>
-        <p><strong>{{ $t('settings.adv.gateTriggerKeywords') }}</strong>: {{ $t('settings.adv.helpDetail.gate.keywords') }}</p>
-        <p><strong>{{ $t('settings.adv.gateSkipCharsBelow') }}</strong>: {{ $t('settings.adv.helpDetail.gate.skipChars') }}</p>
-        <p><strong>{{ $t('settings.adv.gateSkipWhenSufficient') }}</strong>: {{ $t('settings.adv.helpDetail.gate.skipSufficient') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'adv_hotContext'" class="help-content">
-        <p>{{ $t('settings.adv.helpDetail.hotContext.intro') }}</p>
-        <p><strong>{{ $t('settings.adv.hcInjectAlways') }}</strong>: {{ $t('settings.adv.helpDetail.hotContext.always') }}</p>
-        <p><strong>{{ $t('settings.adv.hcMaxChars') }}</strong>: {{ $t('settings.adv.helpDetail.hotContext.maxChars') }}</p>
-        <p><strong>{{ $t('settings.adv.hcSections') }}</strong>: {{ $t('settings.adv.helpDetail.hotContext.sections') }}</p>
-      </div>
-      <div v-else-if="helpModal === 'vectorMaintenance'" class="help-content">
-        <p>{{ $t('settings.vectorHelp.intro') }}</p>
-        <p><strong>{{ $t('settings.rebuildIndex') }}</strong>: {{ $t('settings.vectorHelp.rebuild') }}</p>
-        <p><strong>{{ $t('settings.startMigration') }}</strong>: {{ $t('settings.vectorHelp.migration') }}</p>
-        <p><strong>{{ $t('settings.retryVectorSync') }}</strong>: {{ $t('settings.vectorHelp.retry') }}</p>
-      </div>
-    </NModal>
+    <SettingsHelpModal v-model:help="helpModal" />
   </div>
 </template>
 

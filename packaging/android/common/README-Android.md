@@ -60,7 +60,7 @@ Base URL: http://127.0.0.1:14514/v1
 API Key: 任意非空字符串，除非你在 config.yaml 配置了 admin_token
 ```
 
-如果 Web UI 在 Android 浏览器中操作很慢，先执行 `bash doctor.sh` 确认 `/health` 正常；同时建议在系统设置中将 Termux 电池策略设为“不受限制”。
+如果 Web UI 在 Android 浏览器中操作很慢，先执行 `bash doctor.sh` 确认 `/health` 正常。启动脚本会尝试获取 Termux wake lock，并最多等待 90 秒让后端完成首次启动；仍然建议在系统设置中将 Termux 电池策略设为“不受限制”，避免系统在后台冻结进程。每次启动会把上一份日志保留为 `logs/server.log.previous`，方便排查上次启动失败的原因。
 
 ## 常用命令
 

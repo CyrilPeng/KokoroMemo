@@ -18,3 +18,12 @@ def test_termux_setup_fallback_version_matches_project_version():
 
     assert match is not None
     assert match.group(1) == _project_version()
+
+
+def test_android_start_script_supports_wake_lock_and_log_rotation():
+    script = (ROOT / "packaging" / "android" / "common" / "start.sh").read_text(encoding="utf-8")
+
+    assert "termux-wake-lock" in script
+    assert "LOG_FILE.previous" in script
+    assert "seq 1 180" in script
+

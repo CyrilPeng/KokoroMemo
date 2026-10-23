@@ -144,6 +144,8 @@ kokoromemo doctor
 
 启动后浏览器打开 `http://127.0.0.1:14514`，AIRP 客户端填写 `http://127.0.0.1:14514/v1`。如果启动脚本输出了其他实际端口，请以实际输出为准。
 
+Android 包启动脚本会尝试获取 Termux wake lock，并为首次启动保留最多 90 秒的等待时间；启动日志会轮转到 `logs/server.log.previous`。仍建议在系统设置中把 Termux 电池策略设为“不受限制”。
+
 Android 包内置一键更新脚本：
 
 ```bash

@@ -10,6 +10,18 @@ PID_FILE="$ROOT_DIR/kokoromemo.pid"
 
 mkdir -p "$LOG_DIR"
 
+acquire_wake_lock() {
+  if command -v termux-wake-lock >/dev/null 2>&1; then
+    termux-wake-lock >/dev/null 2>&1 || true
+  fi
+}
+
+release_wake_lock() {
+  if command -v termux-wake-unlock >/dev/null 2>&1; then
+    termux-wake-unlock >/dev/null 2>&1 || true
+  fi
+}
+
 read_port() {
   local port=""
   if [[ -f "$ROOT_DIR/.port" ]]; then
@@ -33,7 +45,7 @@ import urllib.request
 
 port = sys.argv[1]
 try:
-    with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1.5) as response:
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=3.0) as response:
         raise SystemExit(0 if response.status == 200 else 1)
 except Exception:
     raise SystemExit(1)
@@ -64,6 +76,8 @@ if [[ ! -x "$VENV_DIR/bin/python" ]]; then
   exit 1
 fi
 
+acquire_wake_lock
+
 if [[ -f "$PID_FILE" ]]; then
   OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
   if [[ -n "$OLD_PID" ]] && kill -0 "$OLD_PID" 2>/dev/null; then
@@ -73,7 +87,16 @@ if [[ -f "$PID_FILE" ]]; then
       print_urls "$PORT"
       exit 0
     fi
-    echo "发现旧进程 PID=$OLD_PID，但 /health 不可访问，正在重启..."
+    echo "发现旧进程 PID=$OLD_PID，等待其完成启动..."
+    for _ in $(seq 1 20); do
+      if health_ok "$PORT"; then
+        echo "KokoroMemo 已启动，PID=$OLD_PID"
+        print_urls "$PORT"
+        exit 0
+      fi
+      sleep 0.5
+    done
+    echo "旧进程仍未通过健康检查，正在重启..."
     kill "$OLD_PID" 2>/dev/null || true
     sleep 1
     kill -9 "$OLD_PID" 2>/dev/null || true
@@ -107,18 +130,22 @@ path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encod
 PY
 
 rm -f "$ROOT_DIR/.port" "$APP_DIR/.port"
-: > "$LOG_FILE"
+if [[ -s "$LOG_FILE" ]]; then
+  mv -f "$LOG_FILE" "$LOG_FILE.previous"
+fi
+printf '=== %s start ===\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
 
 cd "$APP_DIR"
-nohup "$VENV_DIR/bin/python" -m app.main > "$LOG_FILE" 2>&1 &
+nohup "$VENV_DIR/bin/python" -m app.main >> "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"
 PID="$(cat "$PID_FILE")"
 
 PORT="14514"
-for _ in $(seq 1 60); do
+for _ in $(seq 1 180); do
   if ! kill -0 "$PID" 2>/dev/null; then
     rm -f "$PID_FILE"
     show_failure_log
+    release_wake_lock
     exit 1
   fi
 
@@ -128,8 +155,10 @@ for _ in $(seq 1 60); do
     print_urls "$PORT"
     exit 0
   fi
-  sleep 0.25
+  sleep 0.5
 done
 
 show_failure_log
+echo "进程仍在运行（PID=$PID），可能仍在启动；可查看上方日志，必要时执行 bash stop.sh 后重试。"
+release_wake_lock
 exit 1

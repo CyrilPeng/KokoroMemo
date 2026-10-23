@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from app.core.pydantic_compat import CompatBaseModel
 
 
-class AdminPayload(BaseModel):
+class AdminPayload(CompatBaseModel):
     """Flexible admin request body.
 
     Extra keys are intentionally preserved while the admin API is migrated from
     raw dictionaries to explicit request models. Routes can promote stable keys
     to typed fields without breaking existing clients.
     """
-
-    model_config = ConfigDict(extra="allow")

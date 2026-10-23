@@ -6,34 +6,31 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from app.api.protocol_common import format_model_item, get_exposed_models
+from app.core.pydantic_compat import CompatBaseModel, validate_model
 from app.pipeline.chat import ChatPipeline
 
 router = APIRouter()
 
 
-class ChatMessage(BaseModel):
+class ChatMessage(CompatBaseModel):
     role: str
     content: Any = None  # string, list, or null (tool calls only)
     name: str | None = None
     tool_calls: list[dict] | None = None
     tool_call_id: str | None = None
 
-    model_config = ConfigDict(extra="allow")
 
-
-class ChatCompletionRequest(BaseModel):
+class ChatCompletionRequest(CompatBaseModel):
     """Minimal OpenAI chat completion request shape for early validation."""
 
-    messages: list[ChatMessage] = Field(..., min_length=1)
+    messages: list[ChatMessage] = Field(...)
     model: str | None = None
     stream: bool = False
     temperature: float | None = None
     max_tokens: int | None = None
-
-    model_config = ConfigDict(extra="allow")
 
 
 @router.get("/v1/models")
@@ -56,8 +53,14 @@ async def chat_completions(request: Request):
             content={"error": {"message": "请求体不是有效的 JSON", "type": "invalid_request_error"}},
         )
 
+    if not isinstance(raw_body.get("messages"), list) or not raw_body["messages"]:
+        return JSONResponse(
+            status_code=422,
+            content={"error": {"message": "请求体必须包含至少一条 messages", "type": "invalid_request_error"}},
+        )
+
     try:
-        ChatCompletionRequest.model_validate(raw_body)
+        validate_model(ChatCompletionRequest, raw_body)
     except Exception as exc:
         return JSONResponse(
             status_code=422,

@@ -33,6 +33,20 @@ for mod in mods:
     except Exception as exc:
         print(f"[FAIL] Python module: {mod}: {exc}")
 PY
+
+  echo "[INFO] 检查后端完整导入..."
+  if (
+    cd "$APP_DIR"
+    KOKOROMEMO_CONFIG_PATH="$ROOT_DIR/config.yaml" PYTHONPATH="$APP_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+      "$VENV_DIR/bin/python" - <<'PY'
+import app.main
+print("[OK] backend import")
+PY
+  ); then
+    :
+  else
+    echo "[FAIL] backend import：请查看上方异常，常见原因是 pydantic 版本或依赖缺失。"
+  fi
 fi
 
 if [[ -x "$VENV_DIR/bin/python" ]]; then

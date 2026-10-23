@@ -10,6 +10,9 @@ from typing import Any
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
+from app.api.admin.schemas import AdminPayload  # noqa: F401  # resolved by FastAPI from wrapper globals
+from app.core.pydantic_compat import dump_model
+
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
@@ -59,13 +62,13 @@ def body_as_dict(func: Callable[..., Any]) -> Callable[..., Any]:
             if data_index < len(args):
                 value = args[data_index]
                 if isinstance(value, BaseModel):
-                    args = (*args[:data_index], value.model_dump(), *args[data_index + 1 :])
+                    args = (*args[:data_index], dump_model(value), *args[data_index + 1 :])
                 elif value is None:
                     args = (*args[:data_index], {}, *args[data_index + 1 :])
             elif "data" in kwargs:
                 value = kwargs["data"]
                 if isinstance(value, BaseModel):
-                    kwargs["data"] = value.model_dump()
+                    kwargs["data"] = dump_model(value)
                 elif value is None:
                     kwargs["data"] = {}
             else:

@@ -362,7 +362,15 @@ GUI 入口：记忆库页"导入 SillyTavern"按钮，导入完成后弹窗确�
 | 路径 | 内容 |
 |---|---|
 | `./data/vector_indexes/{model}_{dim}/lancedb/` | LanceDB 向量索引（桌面端） |
-| `./data/vector_indexes/{model}_{dim}/lancedb/vectors.sqlite` | SQLite 向量存储（LanceDB 不可用时自动创建） |
+| `./data/vector_indexes/{model}_{dim}/lancedb/vectors.sqlite` | SQLite 向量存储（LanceDB 不可用或显式选择 SQLite 时创建） |
+
+`storage.vector_store` 控制后端选择：
+
+- `auto`（默认）：优先 LanceDB；LanceDB 导入或初始化失败时自动回退 SQLite。
+- `lancedb`：强制 LanceDB，不可用时抛出明确错误。
+- `sqlite`：强制 SQLite + numpy，适用于不支持 AVX2 的老 CPU、容器和 Termux 环境。
+
+切换后端后需要重建向量索引；SQLite 是权威数据源，索引本身始终可重建。
 
 ### 设计原则
 
@@ -487,7 +495,9 @@ ConversationConfig
 
 ### 默认模板
 
-普通角色扮演默认表格模板为 `tpl_rimtalk_roleplay_tables`，面向 RimTalk/连续角色扮演：
+普通角色扮演默认使用 `tpl_roleplay_light_tables`，只保留当前互动、互动规则、关系状态和近期摘要，适合日常陪伴和轻量 RP。
+
+需要更完整的状态结构时，可在会话策略中选择 `tpl_rimtalk_roleplay_tables`，面向 RimTalk/连续角色扮演：
 
 | table_key | 表名 | 用途 |
 |---|---|---|
@@ -499,12 +509,11 @@ ConversationConfig
 | `important_events` | 重要事件 | 影响后续的关键事件及其影响 |
 | `important_items` | 重要物品 | 重要道具、证据、资源和归属 |
 
-另有两个专用模板：
+另有三个专用模板：
 
+- `tpl_roleplay_light_tables`：轻量陪伴/RP 模板，普通角色扮演默认使用。
 - `tpl_rimtalk_colony_tables`：殖民地概况、小人状态、小人关系、资源库存、建筑设施、威胁事件、阵营关系。
 - `tpl_ttrpg_story_tables`：队伍成员、当前场景、任务线索、重要 NPC、地点阵营、剧情旗标。
-
-`tpl_roleplay_light_tables` 作为轻量陪伴/RP 模板。
 
 ### 操作式填充流程
 
@@ -551,9 +560,9 @@ ConversationConfig
 
 ### 注入渲染
 
-请求转发前，`routes_openai.py` 会优先读取 v2 表格状态：
+请求转发前，`ChatPipeline` 会读取当前会话配置的 v2 表格状态：
 
-1. 读取 `tpl_rimtalk_roleplay_tables`。
+1. 读取当前会话绑定的表格模板（普通角色扮演默认 `tpl_roleplay_light_tables`）。
 2. 读取当前会话 active 行和单元格。
 3. `render_state_tables` 按 `prompt_priority`、`priority`、`confidence`、更新时间排序。
 4. 每张表最多注入 `max_prompt_rows` 行。
@@ -563,10 +572,10 @@ ConversationConfig
 
 ```text
 【KokoroMemo 会话状态板】
-当前会话状态板模板：RimTalk 角色扮演表格版。以下表格用于保持角色扮演、剧情与互动连续性：
-【当前场景】
-- 场景: 图书馆地下室；焦点: 两人正在寻找失踪档案；下一步: 检查上锁柜子
-【扮演规则】
+当前会话状态板模板：轻量角色扮演表格版。以下表格用于保持角色扮演、剧情与互动连续性：
+【当前互动】
+- 话题: 两人在图书馆地下室寻找失踪档案；下一步: 检查上锁柜子
+【互动规则】
 - 规则: Yuki 需要保持冷静但嘴硬的语气；范围: 全局
 ```
 
@@ -628,6 +637,8 @@ Retrieval Gate 是 v0.2.0 引入的优化机制，避免每轮都执行昂贵的
 | `high_recall` | 扩大候选和注入数量，适合长剧情回顾 |
 | `state_first` | 状态板优先，长期记忆只补关键事实 |
 | `memory_first` | 长期记忆优先，适合偏好、设定和历史事实密集会话 |
+
+`balanced`（默认）的 `vector_top_k`、`final_top_k` 和 `max_injected_chars` 来自全局 `memory.vector_top_k`、`memory.final_top_k`、`memory.max_injected_chars`，便于设置页统一调整；其余命名策略保留固定预设。向量召回路径的评分权重来自 `memory.scoring.*`。
 
 ### 决策逻辑
 
@@ -747,7 +758,7 @@ KokoroMemo 强调"任何记忆系统失败都不影响聊天主链路"。下表�
 - 审计层：`state_table_events` 记录手动编辑和模型操作，`state_table_debug_runs` 预留调试运行记录。
 - 注入层：渲染 `state_table_rows` 中 active 行；表格为空时直接跳过状态注入，不再保留旧字段式回退。
 
-默认 `tpl_rimtalk_roleplay_tables` 包含当前场景、角色状态、关系状态、扮演规则、承诺与任务、重要事件、重要物品。State Filler v2 要求模型返回 JSON 操作列表，而不是自然语言总结或单字段大段文本，便于校验、合并和回滚。
+内置 `tpl_rimtalk_roleplay_tables` 包含当前场景、角色状态、关系状态、扮演规则、承诺与任务、重要事件、重要物品；普通角色扮演默认使用更轻量的 `tpl_roleplay_light_tables`。State Filler v2 要求模型返回 JSON 操作列表，而不是自然语言总结或单字段大段文本，便于校验、合并和回滚。
 
 ### 为什么用 SQLite 而不是 PostgreSQL？
 

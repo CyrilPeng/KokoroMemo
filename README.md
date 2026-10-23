@@ -377,6 +377,16 @@ Get-NetTCPConnection -LocalPort 14514
 
 可以。向量索引是可重建缓存，正式记忆以 SQLite 为准。删除后需要在设置或维护功能中重建索引。
 
+### 老 CPU 不支持 AVX2 / LanceDB 无法启动怎么办？
+
+KokoroMemo 支持显式选择向量后端。将 `config.yaml` 中的 `storage.vector_store` 设为 `sqlite`，或在 GUI 的“服务配置 → 向量存储后端”中选择“SQLite + numpy”，即可完全不依赖 LanceDB。切换后端后请在设置页执行一次“重建向量索引”，把已批准卡片重新写入新的向量存储。
+
+`storage.vector_store` 可选值：
+
+- `auto`：默认，优先 LanceDB，初始化失败时自动回退 SQLite。
+- `lancedb`：强制使用 LanceDB，不可用时明确报错。
+- `sqlite`：强制使用 SQLite + numpy，适合不支持 AVX2 的老 CPU、容器或 Termux 环境。
+
 ### 多角色会串记忆吗？
 
 KokoroMemo 使用 `user_id`、`character_id`、`conversation_id` 和作用域隔离记忆。建议客户端显式传入对应 Header，尤其是多角色同时使用时。

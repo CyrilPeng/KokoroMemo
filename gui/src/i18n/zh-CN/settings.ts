@@ -304,6 +304,7 @@ export default {
     saveConfig: '保存配置',
     configSaved: '配置已保存',
     restartingService: '配置已保存，正在重启服务…',
+    manualRestartRequired: '配置已保存，但端口或存储目录变更需要重启后端。请在 Termux 执行 kokoromemo restart（或 bash restart.sh），然后刷新页面。',
     serviceRestarted: '服务已重启',
     autoRestartFailed: '自动重启失败，请手动重启服务',
     migrationStatus: {

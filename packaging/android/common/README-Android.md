@@ -51,7 +51,7 @@ Web UI: http://127.0.0.1:14514
 OpenAI Base URL: http://127.0.0.1:14514/v1
 ```
 
-Android 包默认固定使用 `127.0.0.1:14514`。如果端口被占用，启动脚本会直接失败并在 `server.log` 提示原因；请先停止占用端口的旧进程，再重新执行 `bash start.sh`。
+Android 包默认使用 `127.0.0.1:14514`。端口可以在 GUI 中修改，保存后执行 `kokoromemo restart`（或 `bash restart.sh`）生效；客户端中的 Base URL 需要同步改成新端口。如果端口被占用，启动脚本会直接失败并在 `server.log` 提示原因；请先停止占用端口的旧进程，再重新执行 `bash start.sh`。
 
 AIRP / 其他 OpenAI-compatible 客户端请填写：
 

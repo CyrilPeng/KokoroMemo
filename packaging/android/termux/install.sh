@@ -67,8 +67,8 @@ path = Path(sys.argv[1])
 data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 server = data.setdefault("server", {})
 server["host"] = "127.0.0.1"
-server["port"] = 14514
-server["allow_remote_access"] = False
+server.setdefault("port", 14514)
+server.setdefault("allow_remote_access", False)
 path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
 PY
 

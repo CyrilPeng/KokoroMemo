@@ -26,4 +26,6 @@ def test_android_start_script_supports_wake_lock_and_log_rotation():
     assert "termux-wake-lock" in script
     assert "LOG_FILE.previous" in script
     assert "seq 1 180" in script
+    assert 'server["port"] = 14514' not in script
+    assert 'server.setdefault("port", 14514)' in script
 

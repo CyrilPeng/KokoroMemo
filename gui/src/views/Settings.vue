@@ -579,6 +579,10 @@ async function saveConfig(): Promise<boolean> {
       message.success(data.message || t('settings.configSaved'))
       return true
     } else if (data.status === 'restart_required') {
+      if (!window.__TAURI_INTERNALS__) {
+        message.warning(t('settings.manualRestartRequired'))
+        return true
+      }
       message.success(data.message || t('settings.restartingService'))
       try {
         await tauriInvoke('restart_backend')

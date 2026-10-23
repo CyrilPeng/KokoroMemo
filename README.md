@@ -80,7 +80,7 @@ KokoroMemo 不优先服务：
 
 前往 GitHub Releases 下载对应系统的桌面版本。启动后在设置页填写模型服务商的 Base URL、API Key 和模型名。
 
-如果配置端口 `14514` 不可用，后端会自动切换到可用端口。请以 GUI 中显示的 `OpenAI Base URL` 为准。
+如果配置端口 `14514` 不可用，后端会自动切换到可用端口。请以 GUI 中显示的 `OpenAI Base URL` 为准。Android/Termux 包会严格使用配置端口；在 GUI 修改端口后执行 `kokoromemo restart` 生效。
 
 后续更新可以在“设置 → 检查更新”中完成。KokoroMemo 会先读取 GitHub 更新清单，连接失败时可使用 Gitee 镜像；PC 端会匹配当前系统的安装包，点击“下载更新包”即可获取。
 

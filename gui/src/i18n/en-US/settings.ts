@@ -304,6 +304,7 @@ export default {
     saveConfig: 'Save Config',
     configSaved: 'Config saved',
     restartingService: 'Config saved, restarting service…',
+    manualRestartRequired: 'Config saved, but port or storage directory changes require a backend restart. Run kokoromemo restart (or bash restart.sh) in Termux, then reload the page.',
     serviceRestarted: 'Service restarted',
     autoRestartFailed: 'Auto-restart failed; please restart the service manually',
     migrationStatus: {

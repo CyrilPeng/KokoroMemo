@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.degradation import record_degradation
 from app.core.json_utils import parse_json_object, safe_float
 from app.memory.state_filler import StateFillerConfigView
 from app.memory.state_schema import StateTableOperation, StateTableRow, StateTableSchema, StateTableTemplate
@@ -85,6 +86,7 @@ async def fill_conversation_state_tables(
                 config.timeout_seconds,
             )
         except Exception as exc:
+            record_degradation("state.fill", exc, conversation_id=conversation_id)
             result.notes.append(f"llm_error:{exc}")
             return result
 

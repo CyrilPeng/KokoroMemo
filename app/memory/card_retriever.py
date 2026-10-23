@@ -15,6 +15,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.core.degradation import record_degradation
 from app.core.time_util import naive_local_now
 from app.memory.graph import get_active_edges_for_cards
 from app.memory.query_builder import RetrievalQuery
@@ -194,6 +195,7 @@ async def retrieve_cards(
                 )
             )
     except Exception as e:
+        record_degradation("retrieval.pinned", e, conversation_id=conversation_id)
         logger.warning("Pinned cards retrieval failed: %s", e)
 
     # --- 路径 2：向量召回（LanceDB）---
@@ -238,6 +240,7 @@ async def retrieve_cards(
                         )
                     results = fallback_results
             except Exception as exc:
+                record_degradation("retrieval.vector_fallback", exc, conversation_id=conversation_id)
                 logger.warning("Unfiltered LanceDB fallback failed: %s", exc)
                 results = []
 
@@ -278,6 +281,7 @@ async def retrieve_cards(
                 )
             )
     except Exception as e:
+        record_degradation("retrieval.vector", e, conversation_id=conversation_id)
         logger.warning("Vector retrieval failed (degraded): %s", e)
 
     # --- 路径 3：近期重要卡片 ---
@@ -299,6 +303,7 @@ async def retrieve_cards(
                 )
             )
     except Exception as e:
+        record_degradation("retrieval.recent", e, conversation_id=conversation_id)
         logger.warning("Recent cards retrieval failed: %s", e)
 
     # --- 路径 4：图关系扩展 ---
@@ -365,6 +370,7 @@ async def retrieve_cards(
                     )
                 )
     except Exception as e:
+        record_degradation("retrieval.graph", e, conversation_id=conversation_id)
         logger.warning("Graph expansion failed: %s", e)
 
     if rerank_provider and all_candidates:
@@ -406,6 +412,11 @@ async def _rerank_candidates(
         try:
             results = await rerank_provider.rerank(query.query_text, documents)
         except Exception as exc:
+            record_degradation(
+                "retrieval.rerank",
+                exc,
+                conversation_id=query.scope_filter.get("conversation_id"),
+            )
             logger.warning("Rerank failed (degraded): %s", exc)
             return candidates
 

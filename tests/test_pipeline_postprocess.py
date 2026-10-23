@@ -5,7 +5,7 @@ import pytest
 
 from app.core.conversation_locks import conversation_lock, get_conversation_lock
 from app.core.services import ServiceRegistry
-from app.pipeline import chat
+from app.pipeline import chat, postprocess
 
 
 @pytest.mark.asyncio
@@ -22,7 +22,7 @@ async def test_scheduled_post_process_runs_under_conversation_lock(monkeypatch):
         await release.wait()
         completed.set()
 
-    monkeypatch.setattr(chat, "_update_state_and_extract_memories", fake_update)
+    monkeypatch.setattr(postprocess, "_update_state_and_extract_memories", fake_update)
     ctx = SimpleNamespace(conversation_id="conv_lock_test")
 
     await chat._schedule_post_process_turn(
@@ -51,7 +51,7 @@ async def test_scheduling_post_process_does_not_wait_for_lock(monkeypatch):
         await release.wait()
         completed.set()
 
-    monkeypatch.setattr(chat, "_update_state_and_extract_memories", fake_update)
+    monkeypatch.setattr(postprocess, "_update_state_and_extract_memories", fake_update)
     ctx = SimpleNamespace(conversation_id="conv_nonblocking_schedule")
 
     async with conversation_lock(ctx.conversation_id):
@@ -84,11 +84,11 @@ async def test_truncated_response_skips_state_and_memory_processing(monkeypatch)
     async def fake_extract(*args, **kwargs):
         memory_calls.append((args, kwargs))
 
-    monkeypatch.setattr(chat, "fill_conversation_state_tables", fake_state)
+    monkeypatch.setattr(postprocess, "fill_conversation_state_tables", fake_state)
     monkeypatch.setattr("app.memory.card_extractor.extract_and_route", fake_extract)
 
     ctx = SimpleNamespace(conversation_id="conv_truncated", user_id="u1", character_id=None)
-    await chat._update_state_and_extract_memories(
+    await postprocess._update_state_and_extract_memories(
         ctx,
         SimpleNamespace(),
         ServiceRegistry(),

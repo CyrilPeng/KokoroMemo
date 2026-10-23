@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 
+from app.core.degradation import record_degradation
 from app.core.ids import generate_id
 from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
 from app.memory.review_policy import auto_review, determine_risk_level
@@ -66,6 +67,7 @@ async def extract_and_route(
             lang=lang,
         )
     except Exception as e:
+        record_degradation("memory.judge", e, conversation_id=conversation_id)
         logger.warning("Memory judge failed: %s", e)
         return
 
@@ -178,6 +180,7 @@ async def extract_and_route(
                     logger.info("Auto-approved card: %s (type=%s)", card_id, mem.memory_type)
                     await _emit_card_event("card_approved", card_id, mem)
                 except Exception as e:
+                    record_degradation("vector_sync.sync", e, card_id=card_id)
                     await enqueue_card_vector_sync(db_path, card_id, str(e))
                     logger.warning("Vector sync failed for card %s: %s", card_id, e)
             else:
@@ -226,6 +229,7 @@ async def extract_and_route(
             if removed:
                 logger.debug("Trimmed %s old discarded inbox items", removed)
         except Exception as e:
+            record_degradation("inbox.trim", e, conversation_id=conversation_id)
             logger.warning("Failed to trim discarded inbox: %s", e)
 
 
@@ -297,7 +301,8 @@ async def _find_semantic_duplicate(
                 if best is None or similarity > best[1]:
                     best = (card_id, similarity)
         return best
-    except Exception:
+    except Exception as exc:
+        record_degradation("memory.semantic_dedup", exc, user_id=user_id)
         return None
 
 

@@ -5,15 +5,16 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Any
 
 from app.core.config import AppConfig
+from app.core.degradation import record_degradation
 from app.providers.embedding_base import EmbeddingProvider
 from app.providers.embedding_dummy import DummyEmbeddingProvider
 from app.providers.embedding_openai_compatible import OpenAICompatibleEmbeddingProvider
 from app.providers.rerank_base import RerankProvider
 from app.providers.rerank_none import NoRerankProvider
 from app.providers.rerank_openai_compatible import OpenAICompatibleRerankProvider
+from app.storage.vector_store_base import VectorStore
 
 _LANCEDB_IMPORT_ERROR: Exception | None = None
 try:
@@ -46,7 +47,7 @@ class ServiceRegistry:
         self.embedding_signature: tuple | None = None
         self.rerank_provider: RerankProvider | None = None
         self.rerank_signature: tuple | None = None
-        self.lancedb_store: Any = None
+        self.lancedb_store: VectorStore | None = None
         self.lancedb_signature: tuple | None = None
         self.index_migration_status: dict | None = None
 
@@ -85,7 +86,7 @@ class ServiceRegistry:
 
             self.reset()
             ep = self.get_embedding_provider(cfg)
-            store = self.get_lancedb_store(cfg)
+            store = self.get_vector_store(cfg)
             if not ep or not store:
                 raise RuntimeError("Embedding provider or LanceDB store unavailable for migration")
             result = await rebuild_vector_index_v2(
@@ -177,7 +178,7 @@ class ServiceRegistry:
         self.rerank_signature = signature
         return self.rerank_provider
 
-    def get_lancedb_store(self, cfg: AppConfig) -> Any:
+    def get_vector_store(self, cfg: AppConfig) -> VectorStore | None:
         lancedb_path = resolve_lancedb_path(cfg)
         vector_store = normalize_vector_store(cfg.storage.vector_store)
         signature = (
@@ -207,6 +208,7 @@ class ServiceRegistry:
                 )
                 store.connect()
             except Exception as exc:
+                record_degradation("vector_store.init", exc, configured_mode=vector_store)
                 if vector_store == "lancedb":
                     raise RuntimeError(f"LanceDB initialization failed: {exc}") from exc
                 logger.warning("LanceDB initialization failed, falling back to SQLite vector store: %s", exc)
@@ -222,8 +224,12 @@ class ServiceRegistry:
         self.lancedb_signature = signature
         return self.lancedb_store
 
+    def get_lancedb_store(self, cfg: AppConfig) -> VectorStore | None:
+        """Deprecated alias for get_vector_store."""
+        return self.get_vector_store(cfg)
+
     @staticmethod
-    def _connect_sqlite_store(cfg: AppConfig, lancedb_path: str):
+    def _connect_sqlite_store(cfg: AppConfig, lancedb_path: str) -> VectorStore:
         from app.storage.sqlite_vector_store import SqliteVectorStore
 
         sqlite_path = str(Path(lancedb_path) / "vectors.sqlite")
@@ -288,5 +294,10 @@ def get_rerank_provider(cfg: AppConfig) -> RerankProvider | None:
     return _service_registry.get_rerank_provider(cfg)
 
 
-def get_lancedb_store(cfg: AppConfig) -> Any:
-    return _service_registry.get_lancedb_store(cfg)
+def get_vector_store(cfg: AppConfig) -> VectorStore | None:
+    return _service_registry.get_vector_store(cfg)
+
+
+def get_lancedb_store(cfg: AppConfig) -> VectorStore | None:
+    """Deprecated alias for get_vector_store."""
+    return get_vector_store(cfg)

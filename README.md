@@ -369,6 +369,11 @@ Get-NetTCPConnection -LocalPort 14514
 
 常见原因包括：记忆尚未审核、作用域不匹配、Embedding 未配置、Retrieval Gate 判断当前请求不需要召回，或相关记忆分数不够高。可以调用 `GET /admin/vector-backend-status` 查看当前向量后端、索引行数以及一次带过滤检索自检是否正常；如果 `filtered_search_ok` 为 `false`，优先检查向量索引是否需要重建，或切换到 SQLite 向量后端。
 
+### 如何查看最近的降级和配置项？
+
+- `GET /admin/degradation-status`：查看进程内各降级通道的累计次数、最近错误和最近上下文，例如检索、记忆抽取、状态填表和向量同步。
+- `GET /admin/config-schema`：查看完整配置字段、默认值、类型和已废弃配置项，便于排查“设置项没有生效”的问题。
+
 ### Rerank 必须开启吗？
 
 不必须。默认关闭即可使用。记忆数量变多后，开启 Rerank 可以改善最终注入质量，但会增加一次模型调用。

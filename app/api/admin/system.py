@@ -197,6 +197,15 @@ async def get_stats(request: Request):
     return result
 
 
+@router.get("/admin/degradation-status")
+async def get_degradation_status(request: Request):
+    """Return process-local counters for handled degradation events."""
+    _require_admin(request)
+    from app.core.degradation import get_degradation_snapshot
+
+    return get_degradation_snapshot()
+
+
 def _build_config_status(cfg) -> dict:
     def _check(base_url: str, api_key: str, model: str, *, enabled: bool = True) -> dict:
         if not enabled:
@@ -772,12 +781,9 @@ async def get_current_config(request: Request):
             "extraction": {
                 "min_importance": cfg.memory.extraction.min_importance,
                 "min_confidence": cfg.memory.extraction.min_confidence,
-                "extract_after_each_turn": cfg.memory.extraction.extract_after_each_turn,
-                "fallback_rule_based": cfg.memory.extraction.fallback_rule_based,
             },
             "hot_context": {
                 "enabled": cfg.memory.hot_context.enabled,
-                "inject_always": cfg.memory.hot_context.inject_always,
                 "max_chars": cfg.memory.hot_context.max_chars,
             },
             "retrieval_gate": {
@@ -830,10 +836,18 @@ async def get_current_config(request: Request):
         "conversation": {
             "session_identity_mode": cfg.conversation.session_identity_mode,
             "auto_new_session_gap_minutes": cfg.conversation.auto_new_session_gap_minutes,
-            "detect_system_prompt_change": cfg.conversation.detect_system_prompt_change,
             "detect_message_count_reset": cfg.conversation.detect_message_count_reset,
         },
     }
+
+
+@router.get("/admin/config-schema")
+async def get_config_schema_api(request: Request):
+    """Return machine-readable configuration metadata and deprecated fields."""
+    _require_admin(request)
+    from app.core.config_schema import get_config_schema
+
+    return get_config_schema()
 
 
 @router.post("/admin/config")

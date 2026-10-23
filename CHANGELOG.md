@@ -11,6 +11,7 @@
 - 新增 `/admin/airp-recall-explanation` 契约，汇总最近会话 retrieval trace、最终注入记忆、隔离排除原因和潜在串记风险；仪表盘增加官方召回解释入口，展示当前角色、本轮选中记忆、角色/会话/记忆库隔离排除和下一步入口。
 - 新增 `/admin/airp-memory-audit` 契约，汇总当前角色已批准记忆、待审核候选、已拒绝候选和状态板 active 行；仪表盘增加记忆账本入口和状态快照，让用户直接看到角色记住了什么、哪些内容被拒绝以及当前剧情停在哪里。
 - 新增 `GET /admin/vector-backend-status` 诊断接口，报告配置后端、实际生效后端、索引行数和带过滤检索自检；索引非空但过滤检索返回空时会标记 `degraded` 并提示重建或切换 SQLite 后端（#7）。
+- 新增 `GET /admin/config-schema` 配置清单接口，返回字段路径、类型、默认值和废弃原因；`GET /admin/degradation-status` 汇总检索、抽取、状态填表和向量同步等降级通道的累计次数与最近错误，便于排查“设置不生效”和静默降级。
 
 ### 改进
 
@@ -18,6 +19,9 @@
 - LanceDB 元数据过滤返回 0 行时自动重试一次无过滤检索，并在 Python 侧重新校验 user、character、conversation、scope 和记忆库可见性，避免过滤兼容问题导致“记忆存了却用不上”；无过滤仍为空时输出明确 warning 并提示切换 `storage.vector_store=sqlite`，不绕过隔离（#7）。
 - CI 与 Release 预检新增 `验证 AIRP 召回解释契约`、`验证 AIRP 记忆隔离门禁` 和 `验证 AIRP 记忆账本契约` 步骤，覆盖空状态、正常召回解释、跨角色误召回风险、跨会话和未挂载记忆库不会进入最终注入，以及角色记忆、待审核、已拒绝和状态板位置。
 - 模型回复被 `max_tokens` 截断（`finish_reason=length/max_tokens`）时，不再触发状态板填表和记忆抽取，避免把不完整回答中的幻觉内容写入长期记忆或当前状态；流式与非流式代理都会记录该结束原因（#7）。
+- 配置清理：`fallback_rule_based`、`extract_after_each_turn`、`hot_context.inject_always`、`auto_expire_resolved_items`、`detect_system_prompt_change` 这些未参与运行逻辑的开关已从 GUI、`/admin/config` 和示例配置中移除，并在配置清单中标记为废弃，减少“设置了但没效果”的误导。
+- 向量存储统一为 `VectorStore` Protocol 和 `get_vector_store` 规范入口，`get_lancedb_store` 保留为兼容别名；管理路由统一由 router 级鉴权依赖保护。
+- 将聊天后的响应持久化、状态板填表和记忆抽取从 `chat.py` 拆分到 `pipeline/postprocess.py`，主链路请求编排与后台处理职责分离。
 
 ### 修复
 
@@ -28,14 +32,15 @@
 
 ### 维护与文档
 
-- 补充向量后端选择、LanceDB 重建兜底、召回过滤隔离、judge 证据过滤、语义去重、截断保护和相对时间回归测试；全量后端测试和 AIRP benchmark 10/10 门禁通过。
+- 补充向量后端选择、LanceDB 重建兜底、召回过滤隔离、judge 证据过滤、语义去重、截断保护、配置清单、降级登记和相对时间回归测试；全量后端测试和 AIRP benchmark 10/10 门禁通过。
 - CI 新增真实 LanceDB 的 `full` extras 测试 Job，覆盖带过滤检索和 staging 晋升兜底；前端 Job 在构建前运行 `npm test`。
-- 同步 README、DESIGN 和 `config.example.yaml` 的向量后端、AVX2 环境、向量诊断接口、默认状态板模板和记忆防幻觉说明。
+- 同步 README、DESIGN 和 `config.example.yaml` 的向量后端、AVX2 环境、向量诊断接口、配置清单、降级登记、默认状态板模板和记忆防幻觉说明。
 
 ### 已知限制与后续安排
 
 - 打包版 LanceDB 在部分原生依赖组合下仍可能出现静默空召回，本次通过无过滤兜底和显式 SQLite 后端提供规避路径，仍需在 Nuitka 发行包上复测（#7）。
 - 批量导入历史对话时保留原始 `created_at` 尚未实现，时间线与 recent 通道的原始日期保留留待后续增强（#7）。
+- `Settings.vue` 的进一步组件拆分和全部管理请求的 Pydantic 契约迁移仍待分批推进；本次先完成配置清单、降级登记、向量接口协议和路由级鉴权。
 
 ## v0.14.0 (2026-06-15)
 

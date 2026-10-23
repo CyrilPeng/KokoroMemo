@@ -14,6 +14,7 @@ from app.core.services import (
 )
 from app.providers.embedding_dummy import DummyEmbeddingProvider
 from app.storage.sqlite_vector_store import SqliteVectorStore
+from app.storage.vector_store_base import VectorStore
 
 
 def test_service_registry_isolates_cached_embedding_provider():
@@ -79,9 +80,21 @@ def test_sqlite_vector_store_mode_uses_sqlite(tmp_path):
     cfg.storage.vector_store = "sqlite"
     cfg.embedding.dimension = 8
 
-    store = ServiceRegistry().get_lancedb_store(cfg)
+    store = ServiceRegistry().get_vector_store(cfg)
 
     assert isinstance(store, SqliteVectorStore)
+    assert isinstance(store, VectorStore)
+
+
+def test_vector_store_getter_keeps_deprecated_alias(tmp_path):
+    cfg = AppConfig()
+    cfg.storage.root_dir = str(tmp_path)
+    cfg.storage.vector_store = "sqlite"
+    cfg.embedding.dimension = 8
+    registry = ServiceRegistry()
+
+    store = registry.get_vector_store(cfg)
+    assert registry.get_lancedb_store(cfg) is store
 
 
 def test_lancedb_mode_raises_when_backend_is_unavailable(tmp_path, monkeypatch):

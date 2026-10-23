@@ -7,6 +7,7 @@ import inspect
 import json
 import logging
 
+from app.core.degradation import record_degradation
 from app.core.services import ServiceRegistry, get_service_registry
 from app.providers.embedding_base import EmbeddingProvider
 
@@ -78,6 +79,7 @@ class VectorSyncWorker:
                 )
             return result
         except Exception as exc:
+            record_degradation("vector_sync.worker", exc)
             logger.warning("Vector sync worker run failed: %s", exc)
             return {"status": "error", "message": str(exc)}
 
@@ -147,6 +149,7 @@ async def retry_card_vector_sync_jobs(
             await update_job_status(db_path, job["job_id"], "done")
             success += 1
         except Exception as exc:
+            record_degradation("vector_sync.job", exc, job_id=job.get("job_id"))
             await update_job_status(db_path, job["job_id"], "failed", str(exc))
             failed += 1
     return {"status": "ok", "total": len(jobs), "success": success, "failed": failed}

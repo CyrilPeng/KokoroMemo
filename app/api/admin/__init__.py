@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.api.admin._helpers import _require_admin, _resolve_mount_selection
 from app.api.admin.airp import router as airp_router
@@ -16,7 +16,7 @@ from app.api.admin.memories import router as memories_router
 from app.api.admin.state import router as state_router
 from app.api.admin.system import router as system_router
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(_require_admin)])
 
 for sub in [
     system_router,

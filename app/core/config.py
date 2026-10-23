@@ -93,6 +93,7 @@ class ExtractionConfig:
     min_importance: float = 0.45
     min_confidence: float = 0.55
     semantic_dedup_threshold: float = 0.92
+    # Deprecated: retained for config compatibility, see app.core.config_schema.
     extract_after_each_turn: bool = True
     fallback_rule_based: bool = True
     discarded_keep_limit: int = 200
@@ -108,6 +109,7 @@ class ScopesConfig:
 @dataclass
 class HotContextConfig:
     enabled: bool = True
+    # Deprecated: injection follows the conversation injection policy.
     inject_always: bool = True
     max_chars: int = 1200
 
@@ -118,6 +120,7 @@ class StateUpdaterConfig(_ApiKeyMixin):
     update_after_each_turn: bool = True
     update_every_n_turns: int = 1
     min_confidence: float = 0.55
+    # Deprecated: automatic expiry is not implemented; resolved rows stay for audit.
     auto_expire_resolved_items: bool = True
     provider: str = "openai_compatible"
     base_url: str = ""
@@ -232,6 +235,7 @@ class ConversationConfig:
         "request"  # "request" = use client session/conversation IDs, "api_key" = group by inbound API key
     )
     auto_new_session_gap_minutes: int = 0
+    # Deprecated: system-prompt change detection is not implemented.
     detect_system_prompt_change: bool = False
     detect_message_count_reset: bool = False
 

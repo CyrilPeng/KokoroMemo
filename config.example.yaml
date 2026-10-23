@@ -73,8 +73,6 @@ memory:
     min_importance: 0.45
     min_confidence: 0.55
     semantic_dedup_threshold: 0.92  # 语义去重相似度阈值，越低越容易判为重复
-    extract_after_each_turn: true
-    fallback_rule_based: true
     discarded_keep_limit: 200
   judge:
     enabled: true
@@ -91,14 +89,12 @@ memory:
     reject_unverified: true  # 拒绝助手来源或无法在用户发言中找到原文依据的候选
   hot_context:
     enabled: true
-    inject_always: true
     max_chars: 1200
   state_updater:
     enabled: true
     update_after_each_turn: true
     update_every_n_turns: 1
     min_confidence: 0.55
-    auto_expire_resolved_items: true
     provider: "openai_compatible"
     base_url: ""
     api_key: ""
@@ -155,7 +151,6 @@ conversation:
   # request: use x-conversation-id/metadata session IDs; api_key: group requests by inbound API key.
   session_identity_mode: "request"
   auto_new_session_gap_minutes: 0
-  detect_system_prompt_change: false
   detect_message_count_reset: false
 
 compatibility:

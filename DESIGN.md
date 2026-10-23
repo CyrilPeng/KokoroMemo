@@ -748,6 +748,12 @@ KokoroMemo 强调"任何记忆系统失败都不影响聊天主链路"。下表�
 - **可观察**：日志中必有 WARNING 或 ERROR 级别记录，方便排查
 - **可恢复**：用户能在 GUI 内手动触发重试 / 重建（向量同步重试、索引重建等）
 
+### 降级登记与配置清单
+
+- `app/core/degradation.py` 维护进程内降级登记表，记录通道、累计次数、最近错误和脱敏后的上下文；检索、记忆抽取、状态填表、向量同步等关键降级点都会登记。`GET /admin/degradation-status` 用于查看当前快照，避免只依赖日志排查。
+- `app/core/config_schema.py` 从 `AppConfig` 数据类生成字段清单，并维护已废弃配置项。`GET /admin/config-schema` 返回字段路径、类型、默认值和废弃原因；GUI 和 `/admin/config` 不再暴露已知无效开关。
+- 向量存储通过 `VectorStore` Protocol 统一 `search / upsert / count / staging` 等契约，`get_vector_store` 是规范入口，`get_lancedb_store` 仅保留为兼容别名。
+
 ---
 
 ## 11. 设计决策记录

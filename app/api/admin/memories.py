@@ -253,6 +253,56 @@ async def memory_diagnostics_api(
     return data
 
 
+@router.get("/admin/vector-backend-status")
+async def vector_backend_status(request: Request):
+    """Report the selected vector backend and run a filtered-search self-check."""
+    _require_admin(request)
+    from app.core.services import get_lancedb_store, normalize_vector_store
+    from app.core.state import get_config
+
+    cfg = get_config()
+    result = {
+        "status": "ok",
+        "configured_mode": normalize_vector_store(cfg.storage.vector_store),
+        "effective_backend": None,
+        "embedding_dimension": cfg.embedding.dimension,
+        "indexed_rows": 0,
+        "filtered_search_ok": True,
+        "filtered_search_rows": 0,
+        "warning": None,
+    }
+    if not cfg.embedding.enabled:
+        result.update(status="disabled", warning="embedding is disabled")
+        return result
+
+    try:
+        store = get_lancedb_store(cfg)
+    except Exception as exc:
+        result.update(status="error", warning=str(exc))
+        return result
+    if not store:
+        result.update(status="disabled", warning="vector store is unavailable")
+        return result
+
+    result["effective_backend"] = getattr(store, "backend_name", type(store).__name__)
+    try:
+        result["indexed_rows"] = store.count()
+        if result["indexed_rows"] > 0:
+            dimension = max(int(cfg.embedding.dimension or 1), 1)
+            query_vector = [1.0] + [0.0] * (dimension - 1)
+            rows = store.search(query_vector, where="status = 'active'", top_k=1)
+            result["filtered_search_rows"] = len(rows)
+            if not rows:
+                result["status"] = "degraded"
+                result["filtered_search_ok"] = False
+                result["warning"] = (
+                    "metadata filter returned 0 rows; set storage.vector_store=sqlite or rebuild the index"
+                )
+    except Exception as exc:
+        result.update(status="error", warning=str(exc))
+    return result
+
+
 @router.post("/admin/memories/{card_id}/deprecate")
 async def deprecate_memory_card(card_id: str, note: str = Body(default="")):
     """Mark a memory card as deprecated so it is no longer recalled by default."""

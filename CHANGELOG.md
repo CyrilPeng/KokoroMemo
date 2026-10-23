@@ -31,6 +31,7 @@
 - 提升 Android 后台稳定性：启动时尝试获取 Termux wake lock，停止时释放；首次启动等待从 15 秒延长到 90 秒，旧进程先进行 10 秒健康等待再重启；日志改为轮转到 `server.log.previous`，避免启动时清空上次错误。
 - 修复 Android 启动脚本每次强制覆盖 `server.port` 的问题：端口改为仅缺省时写入，GUI 修改端口并重启后可以生效；Web/Termux 模式保存需要重启的配置时改为明确提示执行 `kokoromemo restart`，不再误报自动重启失败。
 - 仪表盘初始加载在后端尚未就绪时进行有限退避重试，避免 Android/Termux 冷启动期间页面空白或误判离线。
+- 版本号提升到 `0.14.1`，Termux 一键安装兜底版本同步为 `0.14.1`；由于 0.13.0/0.14.0 的 Termux 包受 pydantic v1 兼容问题影响，兜底列表暂不使用这两个版本，修复版发布前回退到 0.11.1。
 - 修复 `/admin/rebuild-vector-index` 在 LanceDB OSS 上因 `rename_table is not supported` 返回 500 的问题：原子重建的 staging 晋升失败时改为读取 Arrow 数据重建正式表，保留原表隔离边界，并在真实 LanceDB OSS 环境验证重建结果（#7）。
 - 修复记忆语义去重的三个失效点：嵌入调用使用不存在的 `embed_texts`、对同步 `search` 使用了 `await`、向量状态过滤使用 `approved` 而索引实际写入 `active`；同时改用 `memory_id` 读取卡片 ID，语义重复候选现在可以正确识别并进入已丢弃审计（#7）。
 - 修复长期记忆注入缺少相对时间前缀的问题：候选补充 `created_at`，恢复“刚才 / 昨天 / N 天前”的标签，避免所有记忆都以当前时间呈现。

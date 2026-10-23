@@ -347,9 +347,24 @@ function openMemoryAuditTarget(target?: string | null) {
   router.push(nextTarget)
 }
 
+let initialLoadCancelled = false
+
+async function refreshInitialDataWithRetry() {
+  const retryDelays = [0, 1000, 2000, 4000]
+  for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+    if (initialLoadCancelled) return
+    if (retryDelays[attempt] > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelays[attempt]))
+    }
+    if (initialLoadCancelled) return
+    await refreshFirstRunStatus()
+    if (health.value) return
+  }
+}
+
 onMounted(() => {
   window.setTimeout(() => {
-    refreshFirstRunStatus()
+    refreshInitialDataWithRetry()
   }, 0)
 })
 
@@ -365,7 +380,10 @@ function onWsEvent(e: any) {
   }
 }
 onMounted(() => window.addEventListener('kokoromemo:event', onWsEvent))
-onBeforeUnmount(() => window.removeEventListener('kokoromemo:event', onWsEvent))
+onBeforeUnmount(() => {
+  initialLoadCancelled = true
+  window.removeEventListener('kokoromemo:event', onWsEvent)
+})
 </script>
 
 <template>

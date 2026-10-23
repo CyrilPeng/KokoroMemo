@@ -100,6 +100,7 @@ async def test_state_table_filler_writes_rows_with_project_provider_api(monkeypa
         assert timeout == 17
         assert body["model"] == "fake-model"
         assert body["messages"][0]["role"] == "system"
+        assert "助手单方面" in body["messages"][0]["content"]
 
         template = await store.get_conversation_table_template(conversation_id)
         rows = await store.list_table_rows(conversation_id, template.template_id)

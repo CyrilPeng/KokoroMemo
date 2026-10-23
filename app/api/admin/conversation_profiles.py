@@ -29,9 +29,10 @@ async def list_conversation_profiles_api(request: Request):
 async def list_retrieval_profiles_api(request: Request):
     """List built-in long-term memory retrieval strategy profiles."""
     _require_admin(request)
+    from app.core.state import get_config
     from app.memory.conversation_policy import list_retrieval_profiles
 
-    return {"items": [profile.to_dict() for profile in list_retrieval_profiles()]}
+    return {"items": [profile.to_dict() for profile in list_retrieval_profiles(get_config().memory)]}
 
 
 @router.post("/admin/conversation-profiles")

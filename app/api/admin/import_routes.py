@@ -123,6 +123,7 @@ async def extract_memories_from_import(conversation_id: str, request: Request, d
             mode=cfg.memory.judge.mode,
             user_rules=cfg.memory.judge.user_rules,
             prompt=cfg.memory.judge.prompt,
+            reject_unverified=cfg.memory.judge.reject_unverified,
         )
 
     max_pairs = data.get("max_pairs", 50)

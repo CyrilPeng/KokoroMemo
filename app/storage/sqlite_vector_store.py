@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS {table} (
 
 
 class SqliteVectorStore:
+    backend_name = "sqlite"
+
     def __init__(self, db_path: str, table_name: str = "memories", dimension: int = 4096):
         self.db_path = db_path
         self.table_name = table_name

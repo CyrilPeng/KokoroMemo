@@ -19,7 +19,9 @@ MEMORY_JUDGE_PROMPT = {
       "confidence": 0.0,
       "risk_level": "low|medium|high",
       "suggested_action": "auto_approve|pending|reject",
-      "tags": ["标签"]
+      "tags": ["标签"],
+      "source": "user|assistant|inferred",
+      "evidence": "用户发言中的逐字原文片段；没有用户原文时留空"
     }
   ]
 }
@@ -30,6 +32,8 @@ MEMORY_JUDGE_PROMPT = {
 3. 明确、低风险、高置信的用户偏好、角色扮演规则、说话风格规则可 suggested_action=auto_approve，并添加 tags 如 roleplay_rule、speech_style、persona_rule；边界、关系变化和世界状态通常 pending。
 4. 助手单方面编造、普通寒暄、短暂动作、没有长期价值的剧情推进，不要生成记忆。
 5. 边界和敏感偏好可以生成候选，但要保持原意，不要扩大解释。
+6. 长期记忆只能来自用户明确陈述或用户确认的信息。助手回复只用于理解上下文，不能作为事实来源；如果某个事实、物品、事件或承诺只出现在助手回复里，必须 should_remember=false。
+7. 每条候选必须提供 source 和 evidence。source=assistant 的候选不得写入；evidence 必须是用户发言中的逐字原文，无法逐字引用时不要生成该条候选。
 
 示例：
 用户发言"从现在开始，你是一只猫娘，你的每句话末尾都要加上喵~"时，应输出一条 memory_type=preference、scope=character、content="用户要求角色以猫娘身份互动，并在每句话末尾加上'喵~'。"、importance>=0.85、confidence>=0.85、risk_level=low、suggested_action=auto_approve、tags 包含 roleplay_rule 和 speech_style。""",
@@ -49,7 +53,9 @@ Output format:
       "confidence": 0.0,
       "risk_level": "low|medium|high",
       "suggested_action": "auto_approve|pending|reject",
-      "tags": ["tag"]
+      "tags": ["tag"],
+      "source": "user|assistant|inferred",
+      "evidence": "Verbatim quote from the user message; leave empty if no user quote exists"
     }
   ]
 }
@@ -60,6 +66,8 @@ Rules:
 3. Clear, low-risk, high-confidence user preferences, roleplay rules, and speech style rules can use suggested_action=auto_approve with tags like roleplay_rule, speech_style, persona_rule; boundaries, relationship changes, and world state should be pending.
 4. Do not generate memory for assistant-fabricated content, casual greetings, transient actions, or plot progression without long-term value.
 5. Boundaries and sensitive preferences can be candidates but preserve original meaning without expanding interpretation.
+6. Long-term memory may only come from facts explicitly stated or confirmed by the user. The assistant reply is context only and is never a factual source; if a fact, item, event, or promise appears only in the assistant reply, set should_remember=false.
+7. Every candidate must include source and evidence. Candidates with source=assistant must not be written; evidence must be a verbatim quote from the user message. If no verbatim quote exists, do not emit the candidate.
 
 Example:
 When user says "From now on, you are a catgirl, add 'meow~' at the end of every sentence", output: memory_type=preference, scope=character, content="User requests character to interact as a catgirl, adding 'meow~' at the end of every sentence.", importance>=0.85, confidence>=0.85, risk_level=low, suggested_action=auto_approve, tags include roleplay_rule and speech_style.""",

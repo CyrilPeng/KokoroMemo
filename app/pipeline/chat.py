@@ -155,7 +155,8 @@ class ChatPipeline:
                 max_recent_turns=cfg.memory.max_recent_turns_for_query,
             )
             retrieval_profile = get_retrieval_profile(
-                prepared.conversation_config.retrieval_profile_id if prepared.conversation_config else None
+                prepared.conversation_config.retrieval_profile_id if prepared.conversation_config else None,
+                cfg.memory,
             )
             should_retrieve = True
             if cfg.memory.retrieval_gate.enabled:
@@ -221,6 +222,13 @@ class ChatPipeline:
                 cards_db_path=cfg.storage.sqlite.memory_db,
                 vector_top_k=retrieval_profile.vector_top_k,
                 final_top_k=retrieval_profile.final_top_k,
+                scoring_weights={
+                    "vector_weight": cfg.memory.scoring.vector_weight,
+                    "importance_weight": cfg.memory.scoring.importance_weight,
+                    "recency_weight": cfg.memory.scoring.recency_weight,
+                    "scope_weight": cfg.memory.scoring.scope_weight,
+                    "confidence_weight": cfg.memory.scoring.confidence_weight,
+                },
                 allowed_scopes=allowed_scopes,
                 rerank_provider=reranker,
                 rerank_top_k=cfg.rerank.candidate_top_k,
@@ -712,6 +720,7 @@ async def _update_state_and_extract_memories(
                 mode=cfg.memory.judge.mode,
                 user_rules=user_rules,
                 prompt=cfg.memory.judge.prompt,
+                reject_unverified=cfg.memory.judge.reject_unverified,
             )
 
         await extract_and_route(

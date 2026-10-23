@@ -196,6 +196,13 @@ async def test_retrieval_profile_controls_retrieval_limits(monkeypatch):
         provider = FakeChatProvider()
         monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
 
+        cfg.memory.vector_top_k = 12
+        cfg.memory.final_top_k = 3
+        cfg.memory.max_injected_chars = 777
+        cfg.memory.scoring.vector_weight = 0.4
+        cfg.memory.scoring.importance_weight = 0.3
+        set_config(cfg)
+
         store = SQLiteStateStore(cfg.storage.sqlite.memory_db)
         await store.set_conversation_config(
             {
@@ -227,6 +234,52 @@ async def test_retrieval_profile_controls_retrieval_limits(monkeypatch):
         assert resp.status_code == 200
         assert captured["vector_top_k"] == 50
         assert captured["final_top_k"] == 10
+        assert captured["scoring_weights"] == {
+            "vector_weight": 0.4,
+            "importance_weight": 0.3,
+            "recency_weight": 0.1,
+            "scope_weight": 0.1,
+            "confidence_weight": 0.05,
+        }
+    finally:
+        cleanup_test_dir(test_dir)
+
+
+@pytest.mark.asyncio
+async def test_balanced_retrieval_uses_memory_config_limits(monkeypatch):
+    test_dir = make_test_dir()
+    captured: dict[str, object] = {}
+    try:
+        cfg = configure_app(test_dir)
+        cfg.memory.vector_top_k = 14
+        cfg.memory.final_top_k = 3
+        cfg.memory.max_injected_chars = 888
+        set_config(cfg)
+        provider = FakeChatProvider()
+        monkeypatch.setattr("app.proxy.llm_providers.create_llm_provider", lambda **kwargs: provider)
+
+        def fake_embedding(_self, _cfg):
+            return object()
+
+        async def fake_retrieve_cards(*args, **kwargs):
+            captured.update(kwargs)
+            return []
+
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_embedding_provider", fake_embedding)
+        monkeypatch.setattr("app.core.services.ServiceRegistry.get_lancedb_store", lambda _self, _cfg: object())
+        monkeypatch.setattr("app.memory.card_retriever.retrieve_cards", fake_retrieve_cards)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "你还记得我的喜好吗"}],
+                    "metadata": {"conversation_id": "conv_balanced_custom"},
+                },
+            )
+        assert resp.status_code == 200
+        assert captured["vector_top_k"] == 14
+        assert captured["final_top_k"] == 3
     finally:
         cleanup_test_dir(test_dir)
 

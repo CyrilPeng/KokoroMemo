@@ -142,6 +142,7 @@ class MemoryJudgeConfig(_ApiKeyMixin):
     mode: str = "model_only"
     user_rules: list[str] = field(default_factory=list)
     prompt: str = ""
+    reject_unverified: bool = True
 
 
 @dataclass
@@ -212,6 +213,7 @@ class LanceDBConfig:
 @dataclass
 class StorageConfig:
     root_dir: str = "./data"
+    vector_store: str = "auto"  # auto | lancedb | sqlite
     sqlite: SQLiteConfig = field(default_factory=SQLiteConfig)
     lancedb: LanceDBConfig = field(default_factory=LanceDBConfig)
 

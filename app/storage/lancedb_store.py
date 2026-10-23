@@ -14,6 +14,8 @@ logger = logging.getLogger("kokoromemo.lancedb")
 
 
 class LanceDBStore:
+    backend_name = "lancedb"
+
     def __init__(self, db_path: str, table_name: str = "memories", dimension: int = 4096):
         self.db_path = db_path
         self.table_name = table_name
@@ -128,17 +130,16 @@ class LanceDBStore:
         staging.merge_insert("memory_id").when_matched_update_all().when_not_matched_insert_all().execute(rows)
 
     def promote_staging(self, staging_name: str) -> None:
-        """Atomically replace the live table with the staging table.
+        """Replace the live table with the staging table.
 
-        After all writes have completed successfully into staging, drop the live table and
-        rename staging to the live name. If anything has failed before this is called, the
-        live table is untouched.
+        Uses rename when available and falls back to copying staging data for
+        LanceDB OSS builds that do not support rename_table.
         """
         if not self._db:
             self.connect()
-        with contextlib.suppress(Exception):
-            self._db.drop_table(self.table_name)
-        self._db.rename_table(staging_name, self.table_name)
+        from app.storage.vector_promote import promote_staging_table
+
+        promote_staging_table(self._db, self.table_name, staging_name)
         self._table = self._db.open_table(self.table_name)
 
     def drop_staging(self, staging_name: str) -> None:

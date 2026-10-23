@@ -277,14 +277,14 @@ async def _find_semantic_duplicate(
 ) -> tuple[str, float] | None:
     """Return (card_id, similarity) of the most similar existing card if above threshold."""
     try:
-        vectors = await embedding_provider.embed_texts([content])
-        if not vectors or not vectors[0]:
+        vector = await embedding_provider.embed_text(content)
+        if not vector:
             return None
         safe_user_id = user_id.replace("'", "''")
-        results = await lancedb_store.search(
-            vectors[0],
+        results = lancedb_store.search(
+            vector,
             top_k=3,
-            where=f"user_id = '{safe_user_id}' AND status = 'approved'",
+            where=f"user_id = '{safe_user_id}' AND status = 'active'",
         )
         if not results:
             return None
@@ -293,7 +293,7 @@ async def _find_semantic_duplicate(
             distance = r.get("_distance", 1.0)
             similarity = 1.0 - distance
             if similarity >= threshold:
-                card_id = r.get("card_id") or r.get("id") or ""
+                card_id = r.get("memory_id") or r.get("card_id") or r.get("id") or ""
                 if best is None or similarity > best[1]:
                     best = (card_id, similarity)
         return best

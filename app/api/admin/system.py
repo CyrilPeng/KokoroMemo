@@ -725,8 +725,12 @@ async def get_current_config(request: Request):
             "webui_port": cfg.server.webui_port,
             "timezone": cfg.server.timezone,
         },
-        "storage": {"root_dir": cfg.storage.root_dir},
-        "vector_index": {"path": resolve_lancedb_path(cfg), "table": cfg.storage.lancedb.table},
+        "storage": {"root_dir": cfg.storage.root_dir, "vector_store": cfg.storage.vector_store},
+        "vector_index": {
+            "path": resolve_lancedb_path(cfg),
+            "table": cfg.storage.lancedb.table,
+            "backend": cfg.storage.vector_store,
+        },
         "embedding": {
             "enabled": cfg.embedding.enabled,
             "provider": cfg.embedding.provider,
@@ -797,6 +801,7 @@ async def get_current_config(request: Request):
                 "temperature": cfg.memory.judge.temperature,
                 "mode": cfg.memory.judge.mode,
                 "user_rules": cfg.memory.judge.user_rules,
+                "reject_unverified": cfg.memory.judge.reject_unverified,
                 "prompt": cfg.memory.judge.prompt,
             },
             "state_updater": {

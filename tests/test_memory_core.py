@@ -3,13 +3,15 @@ from __future__ import annotations
 import shutil
 import sqlite3
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from app.core.variables import relative_time_label
-from app.memory.card_extractor import extract_and_route
-from app.memory.card_retriever import retrieve_cards
+from app.memory.card_extractor import _find_semantic_duplicate, extract_and_route
+from app.memory.card_injector import inject_cards
+from app.memory.card_retriever import MemoryCandidate, _library_filter_clause, retrieve_cards
 from app.memory.graph import insert_edge
 from app.memory.judge import MemoryJudgeConfigView, judge_memories_with_llm
 from app.memory.query_builder import RetrievalQuery
@@ -53,6 +55,58 @@ def cleanup_test_dir(path: Path) -> None:
 def test_relative_time_accepts_local_sqlite_timestamp():
     now_text = sqlite3.connect(":memory:").execute("SELECT datetime('now', 'localtime')").fetchone()[0]
     assert relative_time_label(now_text) == "\u521a\u624d"
+
+
+def test_memory_candidate_from_card_keeps_created_at():
+    candidate = MemoryCandidate.from_card(
+        {
+            "card_id": "card_time",
+            "content": "用户喜欢热茶",
+            "scope": "global",
+            "created_at": "2026-01-01 00:00:00",
+        },
+        source="vector",
+    )
+
+    assert candidate.created_at == "2026-01-01 00:00:00"
+
+
+def test_inject_cards_adds_relative_time_prefix():
+    created_at = (datetime.now() - timedelta(days=2)).isoformat(sep=" ", timespec="seconds")
+    candidate = MemoryCandidate(
+        card_id="card_time",
+        content="用户喜欢热茶",
+        scope="global",
+        card_type="preference",
+        importance=0.8,
+        confidence=0.9,
+        vector_score=0.8,
+        final_score=0.8,
+        source="vector",
+        created_at=created_at,
+    )
+
+    messages = inject_cards([{"role": "system", "content": "base"}], [candidate], max_chars=500)
+
+    assert "2\u5929\u524d" in messages[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_semantic_duplicate_searches_active_vectors_and_reads_memory_id():
+    class CapturingStore:
+        where = ""
+
+        def search(self, vector, top_k=3, where=""):
+            self.where = where
+            return [{"memory_id": "card_dup", "_distance": 0.02}]
+
+    store = CapturingStore()
+    match = await _find_semantic_duplicate(DummyEmbeddingProvider(8), store, "user'1", "用户喜欢热茶", threshold=0.9)
+
+    assert match is not None
+    assert match[0] == "card_dup"
+    assert match[1] == pytest.approx(0.98)
+    assert store.where == "user_id = 'user''1' AND status = 'active'"
 
 
 @pytest.mark.asyncio
@@ -212,6 +266,110 @@ def test_roleplay_speech_style_can_auto_approve():
         )
         == "approve"
     )
+
+
+def test_library_filter_clause_uses_equality_for_single_library():
+    assert _library_filter_clause(["lib_default"]) == "library_id = 'lib_default'"
+    assert _library_filter_clause(["lib_a", "lib_b"]) == "library_id IN ('lib_a', 'lib_b')"
+
+
+@pytest.mark.asyncio
+async def test_vector_search_retries_without_filter_and_rechecks_isolation():
+    test_dir = make_test_dir()
+    memory_db = test_dir / "memory.sqlite"
+    try:
+        await init_cards_db(str(memory_db))
+        other_library = await create_memory_library(str(memory_db), "其他世界观", "隔离测试")
+        await set_conversation_mounts(str(memory_db), "conv1", [DEFAULT_MEMORY_LIBRARY_ID])
+        await insert_card(
+            str(memory_db),
+            "card_own",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "preference",
+            "用户喜欢热茶",
+            status="approved",
+        )
+        await insert_card(
+            str(memory_db),
+            "card_other_user",
+            "u2",
+            None,
+            None,
+            "global",
+            "preference",
+            "另一个用户的偏好",
+            status="approved",
+        )
+        await insert_card(
+            str(memory_db),
+            "card_other_library",
+            "u1",
+            "c1",
+            "conv1",
+            "character",
+            "preference",
+            "其他世界的设定",
+            status="approved",
+            library_id=other_library,
+        )
+        await insert_card(
+            str(memory_db),
+            "card_other_character",
+            "u1",
+            "c2",
+            "conv1",
+            "character",
+            "preference",
+            "其他角色的记忆",
+            status="approved",
+        )
+
+        class FilterBrokenStore:
+            backend_name = "lancedb"
+
+            def __init__(self):
+                self.calls: list[str | None] = []
+
+            def search(self, vector, where=None, top_k=30, select_columns=None):
+                self.calls.append(where)
+                if where:
+                    return []
+                return [
+                    {"memory_id": card_id, "_distance": 0.1}
+                    for card_id in (
+                        "card_own",
+                        "card_other_user",
+                        "card_other_library",
+                        "card_other_character",
+                    )
+                ][:top_k]
+
+            def count(self):
+                return 4
+
+        store = FilterBrokenStore()
+        query = RetrievalQuery(
+            "偏好", "偏好", "user: 偏好", {"user_id": "u1", "character_id": "c1", "conversation_id": "conv1"}
+        )
+        results = await retrieve_cards(
+            query,
+            DummyEmbeddingProvider(8),
+            store,
+            str(memory_db),
+            vector_top_k=10,
+            final_top_k=10,
+            allowed_scopes={"global", "character", "conversation"},
+        )
+
+        assert len(store.calls) == 2
+        assert store.calls[0] is not None
+        assert store.calls[1] is None
+        assert {result.card_id for result in results} == {"card_own"}
+    finally:
+        cleanup_test_dir(test_dir)
 
 
 @pytest.mark.asyncio
@@ -597,6 +755,81 @@ async def test_llm_memory_judge_extracts_catgirl_speech_rule(monkeypatch):
     assert memories[0].memory_type == "preference"
     assert "猫娘" in memories[0].content
     assert "speech_style" in memories[0].tags
+
+
+@pytest.mark.asyncio
+async def test_llm_memory_judge_rejects_assistant_sourced_and_unverified_candidates(monkeypatch):
+    class FakeProvider:
+        async def chat(self, body, timeout):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"memories":['
+                                '{"should_remember":true,"scope":"character","memory_type":"preference",'
+                                '"content":"用户喜欢键盘","importance":0.9,"confidence":0.9,'
+                                '"source":"user","evidence":"我很喜欢键盘"},'
+                                '{"should_remember":true,"scope":"conversation","memory_type":"event",'
+                                '"content":"用户收到了手表","importance":0.9,"confidence":0.9,'
+                                '"source":"assistant","evidence":"还给你买了手表"},'
+                                '{"should_remember":true,"scope":"character","memory_type":"preference",'
+                                '"content":"用户喜欢蓝色","importance":0.9,"confidence":0.9,'
+                                '"source":"user","evidence":"用户说喜欢蓝色"},'
+                                '{"should_remember":true,"scope":"character","memory_type":"preference",'
+                                '"content":"用户喜欢绿色","importance":0.9,"confidence":0.9,'
+                                '"source":"user"}'
+                                "]}"
+                            )
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
+    memories = await judge_memories_with_llm(
+        "我很喜欢键盘，请记住",
+        "好的，我记住了你喜欢的键盘，还给你买了手表。",
+        "c1",
+        MemoryJudgeConfigView("openai_compatible", "http://judge", "key", "cheap-model"),
+    )
+
+    assert [memory.content for memory in memories] == ["用户喜欢键盘"]
+
+
+@pytest.mark.asyncio
+async def test_llm_memory_judge_can_disable_unverified_filter(monkeypatch):
+    class FakeProvider:
+        async def chat(self, body, timeout):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"memories":[{"should_remember":true,"scope":"conversation","memory_type":"event",'
+                                '"content":"用户收到了手表","importance":0.9,"confidence":0.9,'
+                                '"source":"assistant","evidence":"还给你买了手表"}]}'
+                            )
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr("app.memory.judge.create_llm_provider", lambda **kwargs: FakeProvider())
+    memories = await judge_memories_with_llm(
+        "我很喜欢键盘",
+        "还给你买了手表。",
+        "c1",
+        MemoryJudgeConfigView(
+            "openai_compatible",
+            "http://judge",
+            "key",
+            "cheap-model",
+            reject_unverified=False,
+        ),
+    )
+
+    assert [memory.content for memory in memories] == ["用户收到了手表"]
 
 
 @pytest.mark.asyncio

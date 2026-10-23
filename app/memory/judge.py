@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from app.core.json_utils import parse_json_object
@@ -12,6 +13,8 @@ from app.core.prompts import (
     get_text,
 )
 from app.proxy.llm_providers import create_llm_provider
+
+logger = logging.getLogger("kokoromemo.judge")
 
 
 @dataclass
@@ -35,6 +38,7 @@ class MemoryJudgeConfigView:
     mode: str = "model_only"
     user_rules: list[str] | None = None
     prompt: str = ""
+    reject_unverified: bool = True
 
 
 async def judge_memories_with_llm(
@@ -83,6 +87,18 @@ async def judge_memories_with_llm(
         confidence = float(item.get("confidence", 0.6))
         if not memory_content or importance < min_importance or confidence < min_confidence:
             continue
+        source = str(item.get("source") or "").strip().lower()
+        evidence = str(item.get("evidence") or "").strip()
+        if config.reject_unverified:
+            if source == "assistant":
+                logger.debug("Dropped assistant-sourced memory candidate: %s", memory_content[:60])
+                continue
+            if evidence and not _has_user_evidence(evidence, user_message):
+                logger.debug("Dropped memory candidate without user evidence: %s", memory_content[:60])
+                continue
+            if source and not evidence:
+                logger.debug("Dropped memory candidate missing evidence: %s", memory_content[:60])
+                continue
         tags = item.get("tags") or [memory_type]
         if not isinstance(tags, list):
             tags = [str(tags)]
@@ -103,6 +119,17 @@ async def judge_memories_with_llm(
             )
         )
     return memories
+
+
+def _normalize_evidence_text(text: str) -> str:
+    return "".join(text.split()).lower()
+
+
+def _has_user_evidence(evidence: str, user_message: str) -> bool:
+    quote = evidence.strip().strip("\"'“”‘’")
+    if not quote:
+        return False
+    return _normalize_evidence_text(quote) in _normalize_evidence_text(user_message)
 
 
 def _build_prompt(config: MemoryJudgeConfigView, lang: str = "zh") -> str:

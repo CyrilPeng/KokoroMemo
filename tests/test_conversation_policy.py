@@ -3,7 +3,13 @@ from uuid import uuid4
 
 import pytest
 
-from app.memory.conversation_policy import get_profile, list_profiles, list_retrieval_profiles
+from app.core.config import MemoryConfig
+from app.memory.conversation_policy import (
+    get_profile,
+    get_retrieval_profile,
+    list_profiles,
+    list_retrieval_profiles,
+)
 from app.storage.sqlite_state import SQLiteStateStore
 
 
@@ -74,3 +80,25 @@ def test_builtin_retrieval_profiles_cover_required_modes():
     assert {"conservative", "balanced", "high_recall", "state_first", "memory_first"} <= set(profiles)
     assert profiles["balanced"].final_top_k == 6
     assert profiles["high_recall"].vector_top_k > profiles["balanced"].vector_top_k
+
+
+def test_balanced_retrieval_profile_uses_global_memory_config():
+    memory = MemoryConfig(vector_top_k=12, final_top_k=3, max_injected_chars=777)
+
+    balanced = get_retrieval_profile("balanced", memory)
+    assert balanced.vector_top_k == 12
+    assert balanced.final_top_k == 3
+    assert balanced.max_injected_chars == 777
+
+    high_recall = get_retrieval_profile("high_recall", memory)
+    assert high_recall.vector_top_k == 50
+    assert high_recall.final_top_k == 10
+    assert high_recall.max_injected_chars == 2200
+
+
+def test_list_retrieval_profiles_applies_global_config_to_balanced_only():
+    memory = MemoryConfig(vector_top_k=12, final_top_k=3, max_injected_chars=777)
+    profiles = {profile.profile_id: profile for profile in list_retrieval_profiles(memory)}
+
+    assert profiles["balanced"].vector_top_k == 12
+    assert profiles["high_recall"].vector_top_k == 50

@@ -49,6 +49,7 @@ class MemoryCandidate:
     recency_score: float = 0.0
     scope_score: float = 0.0
     confidence_score: float = 0.0
+    created_at: str | None = None
 
     @classmethod
     def from_card(
@@ -80,6 +81,7 @@ class MemoryCandidate:
             recency_score=_recency_score(card.get("created_at")),
             scope_score=_scope_score(scope),
             confidence_score=confidence,
+            created_at=card.get("created_at"),
         )
 
 
@@ -105,6 +107,15 @@ def _recency_score(created_at: str | None) -> float:
 
 def _scope_score(scope: str) -> float:
     return {"conversation": 1.0, "character": 0.85, "global": 0.70}.get(scope, 0.5)
+
+
+def _library_filter_clause(library_ids: list[str]) -> str:
+    """Single-library mounts use equality to avoid fragile single-element IN filters."""
+    escaped = [library_id.replace("'", "''") for library_id in library_ids]
+    if len(escaped) == 1:
+        return f"library_id = '{escaped[0]}'"
+    joined = ", ".join(f"'{library_id}'" for library_id in escaped)
+    return f"library_id IN ({joined})"
 
 
 async def _resolve_query_vector(
@@ -171,7 +182,7 @@ async def retrieve_cards(
             cid = card.get("card_id", "")
             if cid in seen_ids:
                 continue
-            if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
+            if not _is_card_visible_for_query(card, allowed_scopes, user_id, character_id, conversation_id):
                 continue
             seen_ids.add(cid)
             all_candidates.append(
@@ -193,9 +204,7 @@ async def retrieve_cards(
         safe_user_id = user_id.replace("'", "''")
         clauses = ["status = 'active'", f"user_id = '{safe_user_id}'"]
         if mounted_library_ids:
-            escaped_ids = [library_id.replace("'", "''") for library_id in mounted_library_ids]
-            library_filter = ", ".join(f"'{library_id}'" for library_id in escaped_ids)
-            clauses.append(f"library_id IN ({library_filter})")
+            clauses.append(_library_filter_clause(mounted_library_ids))
         scope_clauses = []
         if "global" in allowed_scopes:
             scope_clauses.append("scope = 'global'")
@@ -211,6 +220,26 @@ async def retrieve_cards(
         where = " AND ".join(clauses)
 
         results = lancedb_store.search(query_vector, where=where, top_k=vector_top_k)
+        if not results and mounted_library_ids and getattr(lancedb_store, "backend_name", "") == "lancedb":
+            # Some bundled LanceDB builds silently ignore metadata filters. Because every
+            # candidate is re-validated against SQLite below, an unfiltered retry is safe.
+            try:
+                if lancedb_store.count() != 0:
+                    fallback_results = lancedb_store.search(query_vector, top_k=max(vector_top_k * 2, 50))
+                    if fallback_results:
+                        logger.warning(
+                            "LanceDB metadata filter returned 0 rows; unfiltered retry recovered %d rows",
+                            len(fallback_results),
+                        )
+                    else:
+                        logger.warning(
+                            "LanceDB returned 0 rows even without a metadata filter; "
+                            "consider setting storage.vector_store=sqlite"
+                        )
+                    results = fallback_results
+            except Exception as exc:
+                logger.warning("Unfiltered LanceDB fallback failed: %s", exc)
+                results = []
 
         card_ids = [row.get("memory_id", "") for row in results if row.get("memory_id")]
         sqlite_cards = await get_cards_by_ids(cards_db_path, card_ids)
@@ -222,7 +251,7 @@ async def retrieve_cards(
                 continue
             if mounted_library_set and card.get("library_id") not in mounted_library_set:
                 continue
-            if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
+            if not _is_card_visible_for_query(card, allowed_scopes, user_id, character_id, conversation_id):
                 continue
             seen_ids.add(cid)
 
@@ -258,7 +287,7 @@ async def retrieve_cards(
             cid = card.get("card_id", "")
             if cid in seen_ids:
                 continue
-            if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
+            if not _is_card_visible_for_query(card, allowed_scopes, user_id, character_id, conversation_id):
                 continue
             seen_ids.add(cid)
             all_candidates.append(
@@ -320,7 +349,7 @@ async def retrieve_cards(
             for card in graph_cards.values():
                 if card.get("status") != "approved":
                     continue
-                if not _is_card_visible_for_query(card, allowed_scopes, character_id, conversation_id):
+                if not _is_card_visible_for_query(card, allowed_scopes, user_id, character_id, conversation_id):
                     continue
                 if mounted_library_set and card.get("library_id") not in mounted_library_set:
                     continue
@@ -399,9 +428,12 @@ async def _rerank_candidates(
 def _is_card_visible_for_query(
     card: dict,
     allowed_scopes: set[str],
+    user_id: str,
     character_id: str | None,
     conversation_id: str | None,
 ) -> bool:
+    if card.get("user_id") != user_id:
+        return False
     scope = card.get("scope")
     if scope not in allowed_scopes:
         return False

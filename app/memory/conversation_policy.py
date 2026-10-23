@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Literal
 
 MemoryWritePolicy = Literal["disabled", "candidate", "stable_only", "auto"]
@@ -190,9 +190,18 @@ def list_profiles() -> list[ConversationProfile]:
     return list(BUILTIN_CONVERSATION_PROFILES.values())
 
 
-def get_retrieval_profile(profile_id: str | None) -> RetrievalProfile:
-    return BUILTIN_RETRIEVAL_PROFILES.get(profile_id or "", BUILTIN_RETRIEVAL_PROFILES[DEFAULT_RETRIEVAL_PROFILE_ID])
+def get_retrieval_profile(profile_id: str | None, memory_config=None) -> RetrievalProfile:
+    profile = BUILTIN_RETRIEVAL_PROFILES.get(profile_id or "", BUILTIN_RETRIEVAL_PROFILES[DEFAULT_RETRIEVAL_PROFILE_ID])
+    if memory_config is None or profile.profile_id != DEFAULT_RETRIEVAL_PROFILE_ID:
+        return profile
+    # 默认 balanced 策略与全局记忆配置保持一致，其余命名策略保留固定预设。
+    return replace(
+        profile,
+        vector_top_k=memory_config.vector_top_k,
+        final_top_k=memory_config.final_top_k,
+        max_injected_chars=memory_config.max_injected_chars,
+    )
 
 
-def list_retrieval_profiles() -> list[RetrievalProfile]:
-    return list(BUILTIN_RETRIEVAL_PROFILES.values())
+def list_retrieval_profiles(memory_config=None) -> list[RetrievalProfile]:
+    return [get_retrieval_profile(profile.profile_id, memory_config) for profile in BUILTIN_RETRIEVAL_PROFILES.values()]

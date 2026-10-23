@@ -88,6 +88,7 @@ memory:
     mode: "model_only"  # model_only | model_with_user_rules
     user_rules: []
     prompt: ""
+    reject_unverified: true  # 拒绝助手来源或无法在用户发言中找到原文依据的候选
   hot_context:
     enabled: true
     inject_always: true
@@ -132,6 +133,11 @@ memory:
 
 storage:
   root_dir: "./data"
+  # 向量存储后端: auto | lancedb | sqlite
+  # auto: 优先 LanceDB，初始化失败时自动回退 SQLite
+  # lancedb: 强制使用 LanceDB，不可用时明确报错
+  # sqlite: 强制使用 SQLite + numpy（适合不支持 AVX2 的老 CPU / 容器环境）
+  vector_store: "auto"
   sqlite:
     app_db: "./data/app.sqlite"
     memory_db: "./data/memory/memory.sqlite"

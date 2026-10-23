@@ -127,6 +127,7 @@ const {
 const config = ref({
   server_port: 14514,
   storage_root_dir: './data',
+  vector_store: 'auto',
   llm_forward_mode: 'override',
   llm_provider: 'openai_compatible',
   llm_base_url: '',
@@ -157,6 +158,7 @@ const config = ref({
   judge_mode: 'model_only',
   judge_user_rules: '',
   judge_prompt: '',
+  judge_reject_unverified: true,
   state_filler_enabled: true,
   state_filler_provider: 'openai_compatible',
   state_filler_base_url: '',
@@ -218,6 +220,12 @@ const providerOptions = computed(() => [
   { label: 'OpenAI Responses API', value: 'openai_responses' },
   { label: 'Anthropic Claude', value: 'anthropic' },
   { label: 'Google Gemini', value: 'gemini' },
+])
+
+const vectorStoreOptions = computed(() => [
+  { label: t('settings.vectorStoreAuto'), value: 'auto' },
+  { label: 'LanceDB', value: 'lancedb' },
+  { label: 'SQLite + numpy', value: 'sqlite' },
 ])
 
 const retrievalGateModes = computed(() => [
@@ -387,6 +395,7 @@ function applyConfigToForm(data: any) {
 const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform?: (v: any) => any][] = [
   ['server_port',                        'server.port',                                       14514],
   ['storage_root_dir',                   'storage.root_dir',                                  './data'],
+  ['vector_store',                       'storage.vector_store',                              'auto'],
   ['llm_forward_mode',                   'llm.forward_mode',                                  'override'],
   ['llm_provider',                       'llm.provider',                                      'openai_compatible'],
   ['llm_base_url',                       'llm.base_url',                                      ''],
@@ -417,6 +426,7 @@ const CONFIG_FIELDS: [formKey: string, apiPath: string, fallback: any, transform
   ['judge_mode',                         'memory.judge.mode',                                 'model_only'],
   ['judge_user_rules',                   'memory.judge.user_rules',                           '', (v: any) => (Array.isArray(v) ? v : []).join('\n')],
   ['judge_prompt',                       'memory.judge.prompt',                               ''],
+  ['judge_reject_unverified',            'memory.judge.reject_unverified',                    true],
   ['state_filler_enabled',               'memory.state_updater.enabled',                      true],
   ['state_filler_provider',              'memory.state_updater.provider',                     'openai_compatible'],
   ['state_filler_base_url',              'memory.state_updater.base_url',                     ''],
@@ -500,7 +510,7 @@ async function saveConfig(): Promise<boolean> {
   try {
     const payload: any = {
       server: { port: config.value.server_port, timezone: timezone.value || undefined },
-      storage: { root_dir: config.value.storage_root_dir },
+      storage: { root_dir: config.value.storage_root_dir, vector_store: config.value.vector_store },
       llm: {
         forward_mode: config.value.llm_forward_mode,
         provider: config.value.llm_provider,
@@ -575,6 +585,7 @@ async function saveConfig(): Promise<boolean> {
           mode: config.value.judge_mode,
           user_rules: config.value.judge_user_rules.split('\n').map((line: string) => line.trim()).filter(Boolean),
           prompt: config.value.judge_prompt,
+          reject_unverified: config.value.judge_reject_unverified,
         },
         state_updater: {
           enabled: config.value.state_filler_enabled,
@@ -1075,6 +1086,12 @@ onMounted(() => {
                 <NFormItem :label="$t('settings.customPrompt')">
                   <NInput v-model:value="config.judge_prompt" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.judgePromptPlaceholder')" />
                 </NFormItem>
+                <NFormItem :label="$t('settings.judgeRejectUnverified')">
+                  <NSpace vertical :size="4">
+                    <NSwitch v-model:value="config.judge_reject_unverified" />
+                    <span style="color: #71717a; font-size: 12px;">{{ $t('settings.judgeRejectUnverifiedHelp') }}</span>
+                  </NSpace>
+                </NFormItem>
                 <NSpace style="margin-top: 8px;" align="center">
                   <NButton size="small" :loading="connectTestLoading['judge']" @click="runConnectivityTest('judge')">
                     {{ $t('settings.testConnection') }}
@@ -1240,6 +1257,12 @@ onMounted(() => {
                   <NInput v-model:value="config.storage_root_dir" placeholder="./data" style="flex: 1;" />
                   <NButton size="small" @click="pickFolder" :title="$t('settings.selectFolder')">📁</NButton>
                 </div>
+              </NFormItem>
+              <NFormItem :label="$t('settings.vectorStore')">
+                <NSpace vertical :size="4">
+                  <NSelect v-model:value="config.vector_store" :options="vectorStoreOptions" style="width: 260px;" />
+                  <span style="color: #71717a; font-size: 12px;">{{ $t('settings.vectorStoreHelp') }}</span>
+                </NSpace>
               </NFormItem>
               <NFormItem :label="$t('settings.timezone')">
                 <NInput v-model:value="timezone" :placeholder="$t('settings.timezonePlaceholder')" style="width: 280px;" />

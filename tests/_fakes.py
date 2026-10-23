@@ -42,6 +42,9 @@ class FakeLanceDBStore:
     ) -> list[dict]:
         return self.rows[:top_k]
 
+    def count(self) -> int:
+        return len(self.rows)
+
     async def upsert(self, records: list[dict]) -> None:
         if self.on_upsert:
             self.on_upsert(records)

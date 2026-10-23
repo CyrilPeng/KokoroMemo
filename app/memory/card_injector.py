@@ -78,9 +78,8 @@ def inject_cards(
 
         lines = [f"\n[{section_name}]"]
         for c in items:
-            # 如果卡片有 created_at，则添加相对时间前缀
             time_label = ""
-            if hasattr(c, "created_at") and c.created_at:
+            if c.created_at:
                 rel = relative_time_label(c.created_at)
                 if rel:
                     time_label = f"({rel}) "

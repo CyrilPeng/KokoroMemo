@@ -15,14 +15,27 @@ from app.providers.rerank_base import RerankProvider
 from app.providers.rerank_none import NoRerankProvider
 from app.providers.rerank_openai_compatible import OpenAICompatibleRerankProvider
 
+_LANCEDB_IMPORT_ERROR: Exception | None = None
 try:
     from app.storage.lancedb_store import LanceDBStore
 
     _LANCEDB_AVAILABLE = True
-except ImportError:
+except Exception as exc:
+    # Native LanceDB imports can fail with more than ImportError on unsupported CPUs.
     _LANCEDB_AVAILABLE = False
+    _LANCEDB_IMPORT_ERROR = exc
 
 logger = logging.getLogger("kokoromemo.services")
+
+_VECTOR_STORE_MODES = {"auto", "lancedb", "sqlite"}
+
+
+def normalize_vector_store(value: str | None) -> str:
+    mode = (value or "auto").strip().lower()
+    if mode not in _VECTOR_STORE_MODES:
+        logger.warning("Unknown storage.vector_store '%s', using auto", value)
+        return "auto"
+    return mode
 
 
 class ServiceRegistry:
@@ -166,11 +179,13 @@ class ServiceRegistry:
 
     def get_lancedb_store(self, cfg: AppConfig) -> Any:
         lancedb_path = resolve_lancedb_path(cfg)
+        vector_store = normalize_vector_store(cfg.storage.vector_store)
         signature = (
             cfg.embedding.enabled,
             lancedb_path,
             cfg.storage.lancedb.table,
             cfg.embedding.dimension,
+            vector_store,
         )
         if self.lancedb_store and self.lancedb_signature == signature:
             return self.lancedb_store
@@ -178,26 +193,48 @@ class ServiceRegistry:
         if not cfg.embedding.enabled:
             return None
 
+        if vector_store == "sqlite":
+            self.lancedb_store = self._connect_sqlite_store(cfg, lancedb_path)
+            self.lancedb_signature = signature
+            return self.lancedb_store
+
         if _LANCEDB_AVAILABLE:
-            self.lancedb_store = LanceDBStore(
-                db_path=lancedb_path,
-                table_name=cfg.storage.lancedb.table,
-                dimension=cfg.embedding.dimension or 4096,
-            )
-        else:
-            from app.storage.sqlite_vector_store import SqliteVectorStore
+            try:
+                store = LanceDBStore(
+                    db_path=lancedb_path,
+                    table_name=cfg.storage.lancedb.table,
+                    dimension=cfg.embedding.dimension or 4096,
+                )
+                store.connect()
+            except Exception as exc:
+                if vector_store == "lancedb":
+                    raise RuntimeError(f"LanceDB initialization failed: {exc}") from exc
+                logger.warning("LanceDB initialization failed, falling back to SQLite vector store: %s", exc)
+            else:
+                self.lancedb_store = store
+                self.lancedb_signature = signature
+                return store
+        elif vector_store == "lancedb":
+            detail = f": {_LANCEDB_IMPORT_ERROR}" if _LANCEDB_IMPORT_ERROR else ""
+            raise RuntimeError(f"LanceDB is not available in this environment{detail}")
 
-            sqlite_path = str(Path(lancedb_path) / "vectors.sqlite")
-            self.lancedb_store = SqliteVectorStore(
-                db_path=sqlite_path,
-                table_name=cfg.storage.lancedb.table,
-                dimension=cfg.embedding.dimension or 4096,
-            )
-            logger.info("LanceDB unavailable, using SQLite vector fallback: %s", sqlite_path)
-
-        self.lancedb_store.connect()
+        self.lancedb_store = self._connect_sqlite_store(cfg, lancedb_path)
         self.lancedb_signature = signature
         return self.lancedb_store
+
+    @staticmethod
+    def _connect_sqlite_store(cfg: AppConfig, lancedb_path: str):
+        from app.storage.sqlite_vector_store import SqliteVectorStore
+
+        sqlite_path = str(Path(lancedb_path) / "vectors.sqlite")
+        store = SqliteVectorStore(
+            db_path=sqlite_path,
+            table_name=cfg.storage.lancedb.table,
+            dimension=cfg.embedding.dimension or 4096,
+        )
+        store.connect()
+        logger.info("Using SQLite vector store: %s", sqlite_path)
+        return store
 
 
 _service_registry = ServiceRegistry()

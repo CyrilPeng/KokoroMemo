@@ -674,6 +674,10 @@ return False
 
 `retrieval_traces` 是调试与 GUI 注入来源面板的主数据源。trace 写入失败只记录 warning，不影响聊天主链路。
 
+### 向量后端诊断
+
+`GET /admin/vector-backend-status` 返回当前配置的后端、实际生效后端、Embedding 维度、索引行数，以及一次带 `status = 'active'` 过滤的检索自检。索引非空但过滤检索返回 0 行时，`status` 会标记为 `degraded`，提示重建索引或切换 `storage.vector_store=sqlite`，用于快速定位打包版 LanceDB 或索引状态异常。
+
 ---
 
 ## 10. 发布与分发

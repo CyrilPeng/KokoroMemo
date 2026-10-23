@@ -367,7 +367,7 @@ Get-NetTCPConnection -LocalPort 14514
 
 ### 为什么角色没有想起某件事？
 
-常见原因包括：记忆尚未审核、作用域不匹配、Embedding 未配置、Retrieval Gate 判断当前请求不需要召回，或相关记忆分数不够高。
+常见原因包括：记忆尚未审核、作用域不匹配、Embedding 未配置、Retrieval Gate 判断当前请求不需要召回，或相关记忆分数不够高。可以调用 `GET /admin/vector-backend-status` 查看当前向量后端、索引行数以及一次带过滤检索自检是否正常；如果 `filtered_search_ok` 为 `false`，优先检查向量索引是否需要重建，或切换到 SQLite 向量后端。
 
 ### Rerank 必须开启吗？
 
